@@ -57,6 +57,22 @@ export interface BusinessMapping {
   category?: Category;
 }
 
+export interface BankAccount {
+  id: string;
+  household_id: string;
+  provider_name: string;
+  account_number_masked: string;
+  account_type: 'checking' | 'credit_card' | 'savings' | 'investment';
+  currency: string;
+  current_balance: number;
+  sync_status: 'active' | 'syncing' | 'error' | 'disconnected';
+  last_synced_at: string | null;
+  auth_token_ref?: string | null;
+  metadata?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Transaction {
   id: string;
   household_id: string;
@@ -69,6 +85,8 @@ export interface Transaction {
   payment_method?: string;
   card_last_digits?: string | null;
   is_hidden: boolean; // Soft delete / filter flag
+  source_reference_id?: string | null; // Deduplication ref for Open Banking webhooks
+  bank_account_id?: string | null;
   notes?: string | null;
   created_by?: string | null;
   created_at: string;

@@ -14,6 +14,7 @@ import { ManualEntryScreen } from './components/ManualEntry/ManualEntryScreen';
 import { FloatingActionButton } from './components/ManualEntry/FloatingActionButton';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { HistoricalMigrationScreen } from './components/Admin/HistoricalMigrationScreen';
+import { ConnectedAccountsScreen } from './components/Settings/ConnectedAccountsScreen';
 
 const MainScreen: React.FC = () => {
   const { user, isDemoMode, isLoading, activeTab } = useAuth();
@@ -39,6 +40,7 @@ const MainScreen: React.FC = () => {
         {activeTab === 'transactions' && <TransactionsView />}
         {activeTab === 'manual-entry' && <ManualEntryScreen />}
         {activeTab === 'import' && <ImportWizard />}
+        {activeTab === 'bank-accounts' && <ConnectedAccountsScreen />}
         {activeTab === 'migration' && <HistoricalMigrationScreen />}
         {activeTab === 'budgets' && <BudgetsView />}
         {activeTab === 'savings' && <SavingsView />}

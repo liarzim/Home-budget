@@ -516,3 +516,50 @@ CREATE TRIGGER update_budgets_modtime BEFORE UPDATE ON public.budgets FOR EACH R
 
 DROP TRIGGER IF EXISTS update_savings_modtime ON public.savings;
 CREATE TRIGGER update_savings_modtime BEFORE UPDATE ON public.savings FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- ============================================================================
+-- 8. BANK_ACCOUNTS (Open Banking & External Connections)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.bank_accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    provider_name TEXT NOT NULL,
+    account_number_masked TEXT NOT NULL,
+    account_type TEXT NOT NULL DEFAULT 'checking' CHECK (account_type IN ('checking', 'credit_card', 'savings', 'investment')),
+    currency TEXT NOT NULL DEFAULT 'ILS',
+    current_balance NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+    sync_status TEXT NOT NULL DEFAULT 'active' CHECK (sync_status IN ('active', 'syncing', 'error', 'disconnected')),
+    last_synced_at TIMESTAMPTZ,
+    auth_token_ref TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.bank_accounts ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_bank_accounts_household ON public.bank_accounts(household_id);
+
+DROP POLICY IF EXISTS "Tenant isolation for bank_accounts (SELECT)" ON public.bank_accounts;
+CREATE POLICY "Tenant isolation for bank_accounts (SELECT)"
+    ON public.bank_accounts FOR SELECT
+    USING (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP POLICY IF EXISTS "Tenant isolation for bank_accounts (INSERT)" ON public.bank_accounts;
+CREATE POLICY "Tenant isolation for bank_accounts (INSERT)"
+    ON public.bank_accounts FOR INSERT
+    WITH CHECK (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP POLICY IF EXISTS "Tenant isolation for bank_accounts (UPDATE)" ON public.bank_accounts;
+CREATE POLICY "Tenant isolation for bank_accounts (UPDATE)"
+    ON public.bank_accounts FOR UPDATE
+    USING (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP POLICY IF EXISTS "Tenant isolation for bank_accounts (DELETE)" ON public.bank_accounts;
+CREATE POLICY "Tenant isolation for bank_accounts (DELETE)"
+    ON public.bank_accounts FOR DELETE
+    USING (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP TRIGGER IF EXISTS update_bank_accounts_modtime ON public.bank_accounts;
+CREATE TRIGGER update_bank_accounts_modtime BEFORE UPDATE ON public.bank_accounts FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+

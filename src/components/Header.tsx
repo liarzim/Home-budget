@@ -15,6 +15,7 @@ import {
   UploadCloud,
   PlusCircle,
   FileSpreadsheet,
+  Landmark,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -51,6 +52,7 @@ export const Header: React.FC = () => {
     { id: 'transactions', label: 'Transactions', icon: Receipt },
     { id: 'manual-entry', label: 'Manual Entry', icon: PlusCircle },
     { id: 'import', label: 'Import Wizard', icon: UploadCloud },
+    { id: 'bank-accounts', label: 'Bank Sync', icon: Landmark },
     { id: 'migration', label: 'Yearly Migration', icon: FileSpreadsheet },
     { id: 'budgets', label: 'Budgets', icon: PieChart },
     { id: 'savings', label: 'Savings Ledger', icon: PiggyBank },
