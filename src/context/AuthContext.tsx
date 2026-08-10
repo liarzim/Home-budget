@@ -47,6 +47,8 @@ interface AuthContextType {
   addBatchTransactions: (txs: Transaction[]) => void;
   addHousehold: (name: string, currency?: string) => void;
   addBusinessMapping: (pattern: string, categoryId: string) => void;
+  updateBusinessMapping: (id: string, pattern: string, categoryId: string) => void;
+  deleteBusinessMapping: (id: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -393,6 +395,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateBusinessMapping = (id: string, pattern: string, categoryId: string) => {
+    setBusinessMappings((prev) =>
+      prev.map((bm) =>
+        bm.id === id
+          ? {
+              ...bm,
+              pattern: pattern.toUpperCase(),
+              category_id: categoryId,
+              updated_at: new Date().toISOString(),
+            }
+          : bm
+      )
+    );
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase
+        .from('business_mapping')
+        .update({
+          pattern: pattern.toUpperCase(),
+          category_id: categoryId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .then();
+    }
+  };
+
+  const deleteBusinessMapping = (id: string) => {
+    setBusinessMappings((prev) => prev.filter((bm) => bm.id !== id));
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase
+        .from('business_mapping')
+        .delete()
+        .eq('id', id)
+        .then();
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -421,6 +462,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addBatchTransactions,
         addHousehold,
         addBusinessMapping,
+        updateBusinessMapping,
+        deleteBusinessMapping,
       }}
     >
       {children}

@@ -1,21 +1,61 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Sparkles, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Plus, Sparkles, ArrowRight, ArrowLeft, Edit3, Trash2 } from 'lucide-react';
 import { t, formatCategoryName } from '../lib/i18n';
+import { BusinessMapping } from '../lib/types';
 
 export const BusinessMappingView: React.FC = () => {
-  const { businessMappings, categories, addBusinessMapping, language, dir } = useAuth();
+  const {
+    businessMappings,
+    categories,
+    addBusinessMapping,
+    updateBusinessMapping,
+    deleteBusinessMapping,
+    language,
+    dir,
+  } = useAuth();
 
+  // Create Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [patternInput, setPatternInput] = useState('');
   const [selectedCatId, setSelectedCatId] = useState(categories[0]?.id || '');
 
-  const handleSaveRule = (e: React.FormEvent) => {
+  // Edit Modal State
+  const [editingRule, setEditingRule] = useState<BusinessMapping | null>(null);
+  const [editPattern, setEditPattern] = useState('');
+  const [editCatId, setEditCatId] = useState('');
+
+  const handleSaveNewRule = (e: React.FormEvent) => {
     e.preventDefault();
     if (patternInput.trim() && selectedCatId) {
       addBusinessMapping(patternInput.trim(), selectedCatId);
       setPatternInput('');
       setIsAddModalOpen(false);
+    }
+  };
+
+  const handleOpenEditModal = (rule: BusinessMapping) => {
+    setEditingRule(rule);
+    setEditPattern(rule.pattern);
+    setEditCatId(rule.category_id);
+  };
+
+  const handleSaveEditRule = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingRule && editPattern.trim() && editCatId) {
+      updateBusinessMapping(editingRule.id, editPattern.trim(), editCatId);
+      setEditingRule(null);
+    }
+  };
+
+  const handleDeleteRule = (rule: BusinessMapping) => {
+    const confirmPrompt =
+      language === 'he'
+        ? `האם אתה בטוח שברצונך למחוק את כלל הסיווג עבור "${rule.pattern}"?`
+        : `Are you sure you want to delete the mapping rule for "${rule.pattern}"?`;
+
+    if (confirm(confirmPrompt)) {
+      deleteBusinessMapping(rule.id);
     }
   };
 
@@ -44,31 +84,54 @@ export const BusinessMappingView: React.FC = () => {
           const category = categories.find((c) => c.id === rule.category_id);
           return (
             <div key={rule.id} style={styles.ruleCard}>
-              <div style={styles.rulePatternBox}>
-                <Sparkles size={14} color="var(--primary)" />
-                <span style={styles.patternText}>{rule.pattern}</span>
+              <div style={styles.ruleCardLeft}>
+                <div style={styles.rulePatternBox}>
+                  <Sparkles size={14} color="var(--primary)" />
+                  <span style={styles.patternText}>{rule.pattern}</span>
+                </div>
+
+                <ArrowIcon size={16} color="var(--text-muted)" />
+
+                <div style={styles.categoryTargetWrap}>
+                  {category ? (
+                    <span
+                      style={{
+                        ...styles.categoryBadge,
+                        backgroundColor: `${category.color}15`,
+                        borderColor: `${category.color}40`,
+                        color: category.color,
+                      }}
+                    >
+                      <span
+                        style={{ ...styles.categoryDot, backgroundColor: category.color }}
+                      />
+                      {formatCategoryName(category.name, language)}
+                    </span>
+                  ) : (
+                    <span style={styles.unknownCategory}>{t('unknownCategory', language)}</span>
+                  )}
+                </div>
               </div>
 
-              <ArrowIcon size={16} color="var(--text-muted)" />
+              {/* Action Buttons: Edit & Delete */}
+              <div style={styles.ruleActions}>
+                <button
+                  style={styles.actionIconBtn}
+                  onClick={() => handleOpenEditModal(rule)}
+                  title={language === 'he' ? 'ערוך כלל' : 'Edit Rule'}
+                  aria-label="Edit rule"
+                >
+                  <Edit3 size={15} color="var(--primary)" />
+                </button>
 
-              <div style={styles.categoryTargetWrap}>
-                {category ? (
-                  <span
-                    style={{
-                      ...styles.categoryBadge,
-                      backgroundColor: `${category.color}15`,
-                      borderColor: `${category.color}40`,
-                      color: category.color,
-                    }}
-                  >
-                    <span
-                      style={{ ...styles.categoryDot, backgroundColor: category.color }}
-                    />
-                    {formatCategoryName(category.name, language)}
-                  </span>
-                ) : (
-                  <span style={styles.unknownCategory}>{t('unknownCategory', language)}</span>
-                )}
+                <button
+                  style={{ ...styles.actionIconBtn, backgroundColor: 'var(--danger-light)' }}
+                  onClick={() => handleDeleteRule(rule)}
+                  title={language === 'he' ? 'מחק כלל' : 'Delete Rule'}
+                  aria-label="Delete rule"
+                >
+                  <Trash2 size={15} color="var(--danger)" />
+                </button>
               </div>
             </div>
           );
@@ -82,7 +145,7 @@ export const BusinessMappingView: React.FC = () => {
             <h3 style={styles.modalTitle}>{t('newRuleTitle', language)}</h3>
             <p style={styles.modalSubtitle}>{t('newRuleSub', language)}</p>
 
-            <form onSubmit={handleSaveRule}>
+            <form onSubmit={handleSaveNewRule}>
               <div style={styles.formGroup}>
                 <label style={styles.inputLabel}>{t('fieldKeyword', language)}</label>
                 <input
@@ -148,6 +211,85 @@ export const BusinessMappingView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Edit Rule Modal */}
+      {editingRule && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCard} className="animate-fade-in">
+            <h3 style={styles.modalTitle}>
+              {language === 'he' ? 'עריכת כלל סיווג' : 'Edit Auto-Categorization Rule'}
+            </h3>
+            <p style={styles.modalSubtitle}>
+              {language === 'he'
+                ? 'עדכון תבנית שם בית העסק או קטגוריית היעד המשויכת אליה.'
+                : 'Update the keyword pattern or target category for automated classification.'}
+            </p>
+
+            <form onSubmit={handleSaveEditRule}>
+              <div style={styles.formGroup}>
+                <label style={styles.inputLabel}>{t('fieldKeyword', language)}</label>
+                <input
+                  style={styles.textInput}
+                  type="text"
+                  value={editPattern}
+                  onChange={(e) => setEditPattern(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.inputLabel}>{t('fieldAssignCategory', language)}</label>
+                <div style={styles.catSelectList}>
+                  {categories.map((cat) => {
+                    const isSelected = editCatId === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        style={{
+                          ...styles.catSelectRow,
+                          ...(isSelected ? styles.catSelectRowActive : {}),
+                        }}
+                        onClick={() => setEditCatId(cat.id)}
+                      >
+                        <span
+                          style={{ ...styles.categoryDot, backgroundColor: cat.color }}
+                        />
+                        <span
+                          style={{
+                            fontSize: '0.8125rem',
+                            color: isSelected ? 'var(--primary)' : 'var(--text-secondary)',
+                            fontWeight: isSelected ? '700' : '500',
+                          }}
+                        >
+                          {formatCategoryName(cat.name, language)} (
+                          {cat.type === 'expense'
+                            ? (language === 'he' ? 'הוצאה' : 'expense')
+                            : (language === 'he' ? 'הכנסה' : 'income')}
+                          )
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={styles.modalActionRow}>
+                <button
+                  type="button"
+                  style={styles.cancelBtn}
+                  onClick={() => setEditingRule(null)}
+                >
+                  {t('cancel', language)}
+                </button>
+                <button type="submit" style={styles.submitBtn}>
+                  {language === 'he' ? 'שמור שינויים' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -197,10 +339,34 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: 'var(--bg-surface)',
-    padding: '16px 20px',
+    padding: '14px 18px',
     borderRadius: 'var(--radius-lg)',
     border: '1px solid var(--border-main)',
     boxShadow: 'var(--shadow-sm)',
+    gap: '16px',
+  },
+  ruleCardLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+  ruleActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  actionIconBtn: {
+    padding: '7px',
+    borderRadius: '6px',
+    backgroundColor: 'var(--primary-light)',
+    border: 'none',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.15s ease',
   },
   rulePatternBox: {
     display: 'flex',
