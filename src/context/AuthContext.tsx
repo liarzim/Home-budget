@@ -5,6 +5,7 @@ import {
   Household,
   Category,
   BusinessMapping,
+  CardMapping,
   Transaction,
   Budget,
   Savings,
@@ -14,6 +15,7 @@ import {
   mockHouseholds,
   mockCategories,
   mockBusinessMappings,
+  mockCardMappings,
   mockTransactions,
   mockBudgets,
   mockSavings,
@@ -27,6 +29,7 @@ interface AuthContextType {
   activeHousehold: Household | null;
   categories: Category[];
   businessMappings: BusinessMapping[];
+  cardMappings: CardMapping[];
   transactions: Transaction[];
   budgets: Budget[];
   savings: Savings[];
@@ -36,8 +39,32 @@ interface AuthContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   dir: 'rtl' | 'ltr';
-  activeTab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import' | 'manual-entry' | 'migration' | 'bank-accounts';
-  setActiveTab: (tab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import' | 'manual-entry' | 'migration' | 'bank-accounts') => void;
+  activeTab:
+    | 'dashboard'
+    | 'transactions'
+    | 'budgets'
+    | 'savings'
+    | 'mappings'
+    | 'schema'
+    | 'import'
+    | 'manual-entry'
+    | 'migration'
+    | 'bank-accounts'
+    | 'system-tables';
+  setActiveTab: (
+    tab:
+      | 'dashboard'
+      | 'transactions'
+      | 'budgets'
+      | 'savings'
+      | 'mappings'
+      | 'schema'
+      | 'import'
+      | 'manual-entry'
+      | 'migration'
+      | 'bank-accounts'
+      | 'system-tables'
+  ) => void;
   loginWithOAuth: (provider: OAuthProvider) => Promise<{ success: boolean; error?: string }>;
   loginDemo: (userName?: string) => void;
   logout: () => Promise<void>;
@@ -46,9 +73,18 @@ interface AuthContextType {
   addTransaction: (tx: Partial<Transaction>) => void;
   addBatchTransactions: (txs: Transaction[]) => void;
   addHousehold: (name: string, currency?: string) => void;
+  addCategory: (name: string, type: 'expense' | 'income', color?: string, icon?: string) => void;
+  updateCategory: (id: string, name: string, color?: string, icon?: string) => void;
+  deleteCategory: (id: string) => void;
+  batchAddCategories: (cats: Partial<Category>[]) => void;
   addBusinessMapping: (pattern: string, categoryId: string) => void;
   updateBusinessMapping: (id: string, pattern: string, categoryId: string) => void;
   deleteBusinessMapping: (id: string) => void;
+  batchAddBusinessMappings: (mappings: { pattern: string; category_id: string }[]) => void;
+  addCardMapping: (rawPattern: string, displayName: string, lastDigits?: string, color?: string) => void;
+  updateCardMapping: (id: string, rawPattern: string, displayName: string, lastDigits?: string, color?: string) => void;
+  deleteCardMapping: (id: string) => void;
+  batchAddCardMappings: (mappings: Partial<CardMapping>[]) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -59,12 +95,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeHousehold, setActiveHousehold] = useState<Household | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [businessMappings, setBusinessMappings] = useState<BusinessMapping[]>([]);
+  const [cardMappings, setCardMappings] = useState<CardMapping[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [savings, setSavings] = useState<Savings[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import' | 'manual-entry' | 'migration' | 'bank-accounts'>('dashboard');
+  const [activeTab, setActiveTab] = useState<AuthContextType['activeTab']>('dashboard');
 
   // Language State - Default to Hebrew (RTL)
   const [language, setLanguageState] = useState<Language>(() => {
@@ -234,6 +271,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setActiveHousehold(mockHouseholds[0]);
     setCategories(mockCategories);
     setBusinessMappings(mockBusinessMappings);
+    setCardMappings(mockCardMappings);
     setTransactions(mockTransactions);
     setBudgets(mockBudgets);
     setSavings(mockSavings);
@@ -249,6 +287,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setHouseholds([]);
     setActiveHousehold(null);
     setCategories([]);
+    setBusinessMappings([]);
+    setCardMappings([]);
     setTransactions([]);
     setBudgets([]);
     setSavings([]);
@@ -376,10 +416,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Category Management
+  const addCategory = (name: string, type: 'expense' | 'income', color?: string, icon?: string) => {
+    if (!activeHousehold) return;
+    const newCat: Category = {
+      id: `cat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      household_id: activeHousehold.id,
+      name: name.trim(),
+      type,
+      color: color || (type === 'income' ? '#10B981' : '#4F46E5'),
+      icon: icon || (type === 'income' ? 'briefcase' : 'tag'),
+      is_system: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setCategories((prev) => [...prev, newCat]);
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('categories').insert(newCat).then();
+    }
+  };
+
+  const updateCategory = (id: string, name: string, color?: string, icon?: string) => {
+    setCategories((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              name: name.trim(),
+              ...(color ? { color } : {}),
+              ...(icon ? { icon } : {}),
+              updated_at: new Date().toISOString(),
+            }
+          : c
+      )
+    );
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase
+        .from('categories')
+        .update({
+          name: name.trim(),
+          ...(color ? { color } : {}),
+          ...(icon ? { icon } : {}),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .then();
+    }
+  };
+
+  const deleteCategory = (id: string) => {
+    setCategories((prev) => prev.filter((c) => c.id !== id));
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('categories').delete().eq('id', id).then();
+    }
+  };
+
+  const batchAddCategories = (cats: Partial<Category>[]) => {
+    if (!activeHousehold) return;
+    const newCats: Category[] = cats.map((c, i) => ({
+      id: `cat-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+      household_id: activeHousehold.id,
+      name: (c.name || '').trim(),
+      type: c.type || 'expense',
+      color: c.color || (c.type === 'income' ? '#10B981' : '#4F46E5'),
+      icon: c.icon || (c.type === 'income' ? 'briefcase' : 'tag'),
+      is_system: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+
+    setCategories((prev) => [...prev, ...newCats]);
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('categories').insert(newCats).then();
+    }
+  };
+
+  // Business Mapping Management
   const addBusinessMapping = (pattern: string, categoryId: string) => {
     if (!activeHousehold) return;
     const newMapping: BusinessMapping = {
-      id: `bm-${Date.now()}`,
+      id: `bm-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       household_id: activeHousehold.id,
       pattern: pattern.toUpperCase(),
       category_id: categoryId,
@@ -426,11 +546,120 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setBusinessMappings((prev) => prev.filter((bm) => bm.id !== id));
 
     if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('business_mapping').delete().eq('id', id).then();
+    }
+  };
+
+  const batchAddBusinessMappings = (mappings: { pattern: string; category_id: string }[]) => {
+    if (!activeHousehold) return;
+    const newMappings: BusinessMapping[] = mappings.map((m, i) => ({
+      id: `bm-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+      household_id: activeHousehold.id,
+      pattern: m.pattern.toUpperCase().trim(),
+      category_id: m.category_id,
+      priority: 10,
+      is_regex: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+
+    setBusinessMappings((prev) => [...newMappings, ...prev]);
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('business_mapping').insert(newMappings).then();
+    }
+  };
+
+  // Card / Payment Method Mapping Management
+  const addCardMapping = (
+    rawPattern: string,
+    displayName: string,
+    lastDigits?: string,
+    color?: string
+  ) => {
+    if (!activeHousehold) return;
+    const newCardMapping: CardMapping = {
+      id: `cm-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      household_id: activeHousehold.id,
+      raw_pattern: rawPattern.trim(),
+      display_name: displayName.trim(),
+      card_last_digits: lastDigits || null,
+      payment_type: 'credit_card',
+      color: color || '#4F46E5',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    setCardMappings((prev) => [newCardMapping, ...prev]);
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('payment_method_mappings').insert(newCardMapping).then();
+    }
+  };
+
+  const updateCardMapping = (
+    id: string,
+    rawPattern: string,
+    displayName: string,
+    lastDigits?: string,
+    color?: string
+  ) => {
+    setCardMappings((prev) =>
+      prev.map((cm) =>
+        cm.id === id
+          ? {
+              ...cm,
+              raw_pattern: rawPattern.trim(),
+              display_name: displayName.trim(),
+              card_last_digits: lastDigits || cm.card_last_digits,
+              ...(color ? { color } : {}),
+              updated_at: new Date().toISOString(),
+            }
+          : cm
+      )
+    );
+
+    if (isSupabaseConfigured && !isDemoMode) {
       supabase
-        .from('business_mapping')
-        .delete()
+        .from('payment_method_mappings')
+        .update({
+          raw_pattern: rawPattern.trim(),
+          display_name: displayName.trim(),
+          card_last_digits: lastDigits,
+          ...(color ? { color } : {}),
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', id)
         .then();
+    }
+  };
+
+  const deleteCardMapping = (id: string) => {
+    setCardMappings((prev) => prev.filter((cm) => cm.id !== id));
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('payment_method_mappings').delete().eq('id', id).then();
+    }
+  };
+
+  const batchAddCardMappings = (mappings: Partial<CardMapping>[]) => {
+    if (!activeHousehold) return;
+    const newItems: CardMapping[] = mappings.map((m, i) => ({
+      id: `cm-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+      household_id: activeHousehold.id,
+      raw_pattern: (m.raw_pattern || '').trim(),
+      display_name: (m.display_name || '').trim(),
+      card_last_digits: m.card_last_digits || null,
+      payment_type: m.payment_type || 'credit_card',
+      color: m.color || '#4F46E5',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+
+    setCardMappings((prev) => [...newItems, ...prev]);
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('payment_method_mappings').insert(newItems).then();
     }
   };
 
@@ -442,6 +671,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activeHousehold,
         categories,
         businessMappings,
+        cardMappings,
         transactions,
         budgets,
         savings,
@@ -461,9 +691,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addTransaction,
         addBatchTransactions,
         addHousehold,
+        addCategory,
+        updateCategory,
+        deleteCategory,
+        batchAddCategories,
         addBusinessMapping,
         updateBusinessMapping,
         deleteBusinessMapping,
+        batchAddBusinessMappings,
+        addCardMapping,
+        updateCardMapping,
+        deleteCardMapping,
+        batchAddCardMappings,
       }}
     >
       {children}

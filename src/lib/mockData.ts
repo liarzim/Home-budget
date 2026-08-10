@@ -1,4 +1,4 @@
-import { Household, Profile, Category, BusinessMapping, Transaction, Budget, Savings } from './types';
+import { Household, Profile, Category, BusinessMapping, Transaction, Budget, Savings, CardMapping } from './types';
 
 export const mockProfile: Profile = {
   id: 'usr-101',
@@ -454,3 +454,51 @@ export const mockSavings: Savings[] = [
     updated_at: '2025-12-31T00:00:00Z',
   },
 ];
+
+export const mockCardMappings: CardMapping[] = [
+  {
+    id: 'cm-1',
+    household_id: 'hh-main',
+    raw_pattern: 'כרטיס ויזה כאל 1234',
+    display_name: 'ויזה כאל זהב (אישי - מיכאל)',
+    card_last_digits: '1234',
+    payment_type: 'credit_card',
+    color: '#4F46E5',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'cm-2',
+    household_id: 'hh-main',
+    raw_pattern: 'ישראכרט 9876',
+    display_name: 'ישראכרט פלטינום (משותף)',
+    card_last_digits: '9876',
+    payment_type: 'credit_card',
+    color: '#10B981',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'cm-3',
+    household_id: 'hh-main',
+    raw_pattern: 'מקס MAX 4550',
+    display_name: 'MAX Executive (כרטיס הוצאות בית)',
+    card_last_digits: '4550',
+    payment_type: 'credit_card',
+    color: '#F59E0B',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'cm-4',
+    household_id: 'hh-main',
+    raw_pattern: 'העברה בנקאית לאומי',
+    display_name: 'חשבון עו״ש בנק לאומי',
+    card_last_digits: null,
+    payment_type: 'bank_transfer',
+    color: '#06B6D4',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+];
+

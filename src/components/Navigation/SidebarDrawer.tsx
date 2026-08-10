@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   PiggyBank,
   Sliders,
+  TableProperties,
   Database,
   Globe,
   LogOut,
@@ -79,8 +80,9 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
       ],
     },
     {
-      groupTitle: language === 'he' ? 'בנקאות ואוטומציה' : 'Banking & Automation',
+      groupTitle: language === 'he' ? 'בנקאות והגדרות מערכת' : 'Banking & System Tables',
       items: [
+        { id: 'system-tables', label: t('navSystemTables', language), icon: TableProperties, badge: language === 'he' ? '4 טבלאות' : '4 Tables' },
         { id: 'bank-accounts', label: t('navBankSync', language), icon: Landmark, badge: 'Open Banking' },
         { id: 'migration', label: t('navMigration', language), icon: FileSpreadsheet, badge: language === 'he' ? 'שנתי' : 'Yearly' },
         { id: 'mappings', label: t('navMappings', language), icon: Sliders, badge: null },

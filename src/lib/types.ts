@@ -57,6 +57,18 @@ export interface BusinessMapping {
   category?: Category;
 }
 
+export interface CardMapping {
+  id: string;
+  household_id: string;
+  raw_pattern: string; // Raw credit card name or bank provider pattern from statement e.g. "כרטיס ויזה כאל 1234"
+  display_name: string; // Friendly display source name e.g. "ויזה כאל זהב (אישי)"
+  card_last_digits?: string | null;
+  payment_type?: 'credit_card' | 'bank_transfer' | 'cash' | 'direct_debit' | 'other';
+  color?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface BankAccount {
   id: string;
   household_id: string;
