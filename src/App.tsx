@@ -12,6 +12,7 @@ import { ImportWizard } from './components/ImportWizard/ImportWizard';
 import { MainDashboard } from './components/Dashboard/MainDashboard';
 import { ManualEntryScreen } from './components/ManualEntry/ManualEntryScreen';
 import { FloatingActionButton } from './components/ManualEntry/FloatingActionButton';
+import { MobileBottomNav } from './components/MobileBottomNav';
 
 const MainScreen: React.FC = () => {
   const { user, isDemoMode, isLoading, activeTab } = useAuth();
@@ -42,8 +43,12 @@ const MainScreen: React.FC = () => {
         {activeTab === 'mappings' && <BusinessMappingView />}
         {activeTab === 'schema' && <SchemaViewer />}
       </main>
-      {/* Global Floating Action Button for Mobile & Web Quick Entry */}
-      <FloatingActionButton />
+      {/* Desktop Floating Action Button */}
+      <div className="desktop-only">
+        <FloatingActionButton />
+      </div>
+      {/* Mobile Bottom Tab Navigation */}
+      <MobileBottomNav />
     </div>
   );
 };

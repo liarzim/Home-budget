@@ -24,6 +24,8 @@ export const TransactionsView: React.FC = () => {
     addTransaction,
   } = useAuth();
 
+  const currencySymbol = activeHousehold?.currency === 'ILS' ? '₪' : activeHousehold?.currency || '$';
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'expense' | 'income'>('all');
   const [showHidden, setShowHidden] = useState(false);
@@ -185,11 +187,10 @@ export const TransactionsView: React.FC = () => {
             <span>Add Transaction</span>
           </button>
         </div>
-      </div>
-
-      {/* Transactions Table Card */}
+      </div>      {/* Transactions Table Card (Desktop & Mobile Responsive) */}
       <div style={styles.listCard}>
-        <div style={styles.tableHeaderRow}>
+        {/* Desktop Table Header */}
+        <div style={styles.tableHeaderRow} className="desktop-only">
           <div style={{ flex: 1.2 }}>Date</div>
           <div style={{ flex: 3 }}>Payee & Description</div>
           <div style={{ flex: 2.2 }}>Category</div>
@@ -212,87 +213,161 @@ export const TransactionsView: React.FC = () => {
             const isExpense = tx.transaction_type === 'expense';
 
             return (
-              <div
-                key={tx.id}
-                style={{
-                  ...styles.tableRow,
-                  ...(tx.is_hidden ? styles.tableRowHidden : {}),
-                }}
-              >
-                {/* Date */}
-                <div style={{ flex: 1.2 }}>
-                  <div style={styles.dateText}>{tx.date}</div>
-                  {tx.is_hidden && (
-                    <span style={styles.hiddenBadge}>Soft-Deleted</span>
-                  )}
-                </div>
-
-                {/* Payee */}
-                <div style={{ flex: 3 }}>
-                  <div style={styles.payeeText}>{tx.payee_name}</div>
-                  {tx.notes && <div style={styles.notesText}>{tx.notes}</div>}
-                </div>
-
-                {/* Category Badge */}
-                <div style={{ flex: 2.2 }}>
-                  {category ? (
-                    <span
-                      style={{
-                        ...styles.categoryBadge,
-                        backgroundColor: `${category.color}15`,
-                        borderColor: `${category.color}40`,
-                        color: category.color,
-                      }}
-                    >
-                      <span
-                        style={{ ...styles.categoryDot, backgroundColor: category.color }}
-                      />
-                      {category.name}
-                    </span>
-                  ) : (
-                    <span style={styles.uncategorizedText}>Uncategorized</span>
-                  )}
-                </div>
-
-                {/* Payment Method */}
-                <div style={{ flex: 1.8, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <CreditCard size={14} color="var(--text-muted)" />
-                  <span style={styles.paymentMethodText}>
-                    {tx.payment_method === 'credit_card'
-                      ? `Card ${tx.card_last_digits ? `*${tx.card_last_digits}` : ''}`
-                      : tx.payment_method || 'Bank'}
-                  </span>
-                </div>
-
-                {/* Amount */}
+              <React.Fragment key={tx.id}>
+                {/* Desktop View Row */}
                 <div
                   style={{
-                    flex: 1.8,
-                    textAlign: 'right',
-                    fontWeight: '700',
-                    fontSize: '0.9375rem',
-                    color: isExpense ? 'var(--text-primary)' : 'var(--success-text)',
+                    ...styles.tableRow,
+                    ...(tx.is_hidden ? styles.tableRowHidden : {}),
                   }}
+                  className="desktop-only"
                 >
-                  {isExpense ? '-' : '+'} {currency}{' '}
-                  {tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  {/* Date */}
+                  <div style={{ flex: 1.2 }}>
+                    <div style={styles.dateText}>{tx.date}</div>
+                    {tx.is_hidden && (
+                      <span style={styles.hiddenBadge}>Soft-Deleted</span>
+                    )}
+                  </div>
+
+                  {/* Payee */}
+                  <div style={{ flex: 3 }}>
+                    <div style={styles.payeeText}>{tx.payee_name}</div>
+                    {tx.notes && <div style={styles.notesText}>{tx.notes}</div>}
+                  </div>
+
+                  {/* Category Badge */}
+                  <div style={{ flex: 2.2 }}>
+                    {category ? (
+                      <span
+                        style={{
+                          ...styles.categoryBadge,
+                          backgroundColor: `${category.color}15`,
+                          borderColor: `${category.color}40`,
+                          color: category.color,
+                        }}
+                      >
+                        <span
+                          style={{ ...styles.categoryDot, backgroundColor: category.color }}
+                        />
+                        {category.name}
+                      </span>
+                    ) : (
+                      <span style={styles.uncategorizedBadge}>Uncategorized</span>
+                    )}
+                  </div>
+
+                  {/* Payment Method */}
+                  <div style={{ flex: 1.8, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <CreditCard size={14} color="var(--text-muted)" />
+                    <span style={styles.methodText}>
+                      {tx.card_last_digits ? `*${tx.card_last_digits}` : tx.payment_method || 'Credit Card'}
+                    </span>
+                  </div>
+
+                  {/* Amount */}
+                  <div
+                    style={{
+                      flex: 1.8,
+                      textAlign: 'right',
+                      fontWeight: '800',
+                      fontSize: '0.9375rem',
+                      color: isExpense ? 'var(--text-primary)' : 'var(--success-text)',
+                    }}
+                  >
+                    {isExpense ? '-' : '+'} {currencySymbol}{' '}
+                    {Number(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ width: '80px', display: 'flex', justifyContent: 'center' }}>
+                    <button
+                      style={{
+                        ...styles.hideBtn,
+                        ...(tx.is_hidden ? styles.hideBtnHidden : {}),
+                      }}
+                      onClick={() => toggleTransactionVisibility(tx.id)}
+                      title={tx.is_hidden ? 'Restore Transaction (is_hidden = false)' : 'Hide Transaction (is_hidden = true)'}
+                    >
+                      {tx.is_hidden ? (
+                        <EyeOff size={14} color="var(--danger)" />
+                      ) : (
+                        <Eye size={14} color="var(--text-secondary)" />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
-                {/* Actions: Soft Delete / Restore */}
-                <div style={{ width: '80px', display: 'flex', justifyContent: 'center' }}>
-                  <button
-                    style={styles.archiveActionBtn}
-                    onClick={() => toggleTransactionVisibility(tx.id)}
-                    title={tx.is_hidden ? 'Restore Transaction' : 'Soft Delete (Archive)'}
-                  >
-                    {tx.is_hidden ? (
-                      <RefreshCw size={14} color="var(--primary)" />
-                    ) : (
-                      <EyeOff size={14} color="var(--text-muted)" />
-                    )}
-                  </button>
+                {/* Mobile View Card */}
+                <div
+                  style={{
+                    ...styles.mobileCard,
+                    ...(tx.is_hidden ? styles.tableRowHidden : {}),
+                  }}
+                  className="mobile-only"
+                >
+                  <div style={styles.mobileCardTop}>
+                    <div>
+                      <div style={styles.payeeText}>{tx.payee_name}</div>
+                      <div style={styles.dateText}>{tx.date}</div>
+                    </div>
+                    <div
+                      style={{
+                        textAlign: 'right',
+                        fontWeight: '800',
+                        fontSize: '1rem',
+                        color: isExpense ? 'var(--text-primary)' : 'var(--success-text)',
+                      }}
+                    >
+                      {isExpense ? '-' : '+'} {currencySymbol}{' '}
+                      {Number(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+
+                  <div style={styles.mobileCardBottom}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      {category ? (
+                        <span
+                          style={{
+                            ...styles.categoryBadge,
+                            backgroundColor: `${category.color}15`,
+                            borderColor: `${category.color}40`,
+                            color: category.color,
+                          }}
+                        >
+                          {category.name}
+                        </span>
+                      ) : (
+                        <span style={styles.uncategorizedBadge}>Uncategorized</span>
+                      )}
+
+                      {tx.card_last_digits && (
+                        <span style={styles.cardDigitsPill}>
+                          <CreditCard size={11} />
+                          *{tx.card_last_digits}
+                        </span>
+                      )}
+                      {tx.is_hidden && (
+                        <span style={styles.hiddenBadge}>Soft-Deleted</span>
+                      )}
+                    </div>
+
+                    <button
+                      style={{
+                        ...styles.hideBtn,
+                        ...(tx.is_hidden ? styles.hideBtnHidden : {}),
+                      }}
+                      onClick={() => toggleTransactionVisibility(tx.id)}
+                    >
+                      {tx.is_hidden ? (
+                        <EyeOff size={14} color="var(--danger)" />
+                      ) : (
+                        <Eye size={14} color="var(--text-secondary)" />
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </React.Fragment>
             );
           })
         )}
@@ -635,22 +710,57 @@ const styles: { [key: string]: React.CSSProperties } = {
     height: '6px',
     borderRadius: '50%',
   },
-  uncategorizedText: {
+  uncategorizedBadge: {
     fontSize: '0.75rem',
     color: 'var(--text-muted)',
     fontStyle: 'italic',
   },
-  paymentMethodText: {
+  methodText: {
     fontSize: '0.75rem',
     color: 'var(--text-secondary)',
   },
-  archiveActionBtn: {
-    padding: '6px',
+  hideBtn: {
+    padding: '6px 10px',
     borderRadius: '6px',
     backgroundColor: 'var(--bg-surface-subtle)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    cursor: 'pointer',
+    border: '1px solid var(--border-main)',
+    transition: 'all 0.15s ease',
+  },
+  hideBtnHidden: {
+    backgroundColor: 'var(--danger-light)',
+    borderColor: '#FECACA',
+  },
+  mobileCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    padding: '14px 16px',
+    borderBottom: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--bg-surface)',
+  },
+  mobileCardTop: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  mobileCardBottom: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cardDigitsPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    fontSize: '0.6875rem',
+    color: 'var(--text-muted)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    padding: '2px 6px',
+    borderRadius: '4px',
   },
   emptyState: {
     display: 'flex',

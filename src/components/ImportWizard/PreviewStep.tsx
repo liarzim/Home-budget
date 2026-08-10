@@ -350,8 +350,8 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
 
       {/* Transactions Table Card */}
       <div style={styles.tableCard}>
-        {/* Table Header */}
-        <div style={styles.tableHeaderRow}>
+        {/* Desktop Table Header */}
+        <div style={styles.tableHeaderRow} className="desktop-only">
           <div style={{ width: '40px', display: 'flex', alignItems: 'center' }}>
             <input
               type="checkbox"
@@ -383,47 +383,169 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
             filteredRows.map((row) => {
               const category = categories.find((c) => c.id === row.category_id);
               const isExpense = row.transaction_type === 'expense';
-              const hasManualCategory = row.category_id && !row.auto_matched_rule;
 
               return (
-                <div
-                  key={row.id}
-                  style={{
-                    ...styles.tableRow,
-                    ...(row.is_hidden ? styles.tableRowHidden : {}),
-                    ...(!row.selected ? styles.tableRowDeselected : {}),
-                  }}
-                >
-                  {/* Selection Checkbox */}
-                  <div style={{ width: '40px', display: 'flex', alignItems: 'center' }}>
-                    <input
-                      type="checkbox"
-                      style={styles.checkbox}
-                      checked={row.selected}
-                      onChange={() => handleToggleRow(row.id)}
-                    />
+                <React.Fragment key={row.id}>
+                  {/* Desktop Row */}
+                  <div
+                    style={{
+                      ...styles.tableRow,
+                      ...(row.is_hidden ? styles.tableRowHidden : {}),
+                      ...(!row.selected ? styles.tableRowDeselected : {}),
+                    }}
+                    className="desktop-only"
+                  >
+                    {/* Selection Checkbox */}
+                    <div style={{ width: '40px', display: 'flex', alignItems: 'center' }}>
+                      <input
+                        type="checkbox"
+                        style={styles.checkbox}
+                        checked={row.selected}
+                        onChange={() => handleToggleRow(row.id)}
+                      />
+                    </div>
+
+                    {/* Date */}
+                    <div style={{ flex: 1.2 }}>
+                      <div style={styles.dateText}>{row.date}</div>
+                      {row.is_hidden && (
+                        <span style={styles.hiddenTag}>Hidden (Soft-Delete)</span>
+                      )}
+                    </div>
+
+                    {/* Payee */}
+                    <div style={{ flex: 3 }}>
+                      <div style={styles.payeeText}>{row.payee_name}</div>
+                      {row.notes && <div style={styles.notesText}>{row.notes}</div>}
+                    </div>
+
+                    {/* Category Assignment & Inline Auto-Rule Creator */}
+                    <div style={{ flex: 2.8, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <select
+                          style={{
+                            ...styles.categorySelect,
+                            ...(row.category_id === null ? styles.categorySelectUnassigned : {}),
+                          }}
+                          value={row.category_id || ''}
+                          onChange={(e) => handleCategoryChanged(row.id, e.target.value)}
+                        >
+                          <option value="">⚠️ Unassigned (Select Category)</option>
+                          {categories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} ({c.type})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={styles.ruleStatusRow}>
+                        {row.auto_matched_rule ? (
+                          <div style={styles.autoRulePill}>
+                            <Sparkles size={11} color="var(--primary)" />
+                            <span>Matched Rule: {row.auto_matched_rule}</span>
+                          </div>
+                        ) : row.category_id ? (
+                          <button
+                            style={styles.saveRuleBtn}
+                            disabled={savingRuleForPayee === row.payee_name}
+                            onClick={() => handleSaveInlineRule(row.payee_name, row.category_id!)}
+                            title="Save this merchant to Business_Mapping in Supabase"
+                          >
+                            <Plus size={11} color="var(--primary)" />
+                            <span>
+                              {savingRuleForPayee === row.payee_name
+                                ? 'Saving Rule...'
+                                : `Save Auto-Rule for "${row.payee_name.split(' ')[0]}"`}
+                            </span>
+                          </button>
+                        ) : (
+                          <span style={styles.unassignedPrompt}>Select category to assign</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Payment Method / Last 4 */}
+                    <div style={{ flex: 1.4, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <CreditCard size={13} color="var(--text-muted)" />
+                      <span style={styles.methodText}>
+                        {row.card_last_digits ? `*${row.card_last_digits}` : row.payment_method}
+                      </span>
+                    </div>
+
+                    {/* Amount */}
+                    <div
+                      style={{
+                        flex: 1.6,
+                        textAlign: 'right',
+                        fontWeight: '700',
+                        fontSize: '0.875rem',
+                        color: isExpense ? 'var(--text-primary)' : 'var(--success-text)',
+                      }}
+                    >
+                      {isExpense ? '-' : '+'} {currencySymbol}{' '}
+                      {row.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </div>
+
+                    {/* Row Hiding Mechanism */}
+                    <div style={{ width: '80px', display: 'flex', justifyContent: 'center' }}>
+                      <button
+                        style={{
+                          ...styles.hideToggleBtn,
+                          ...(row.is_hidden ? styles.hideToggleBtnHidden : {}),
+                        }}
+                        onClick={() => handleToggleHidden(row.id)}
+                        title={row.is_hidden ? 'Restore row (is_hidden = false)' : 'Mark row as hidden (is_hidden = true)'}
+                      >
+                        {row.is_hidden ? (
+                          <EyeOff size={15} color="var(--danger)" />
+                        ) : (
+                          <Eye size={15} color="var(--text-secondary)" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Date */}
-                  <div style={{ flex: 1.2 }}>
-                    <div style={styles.dateText}>{row.date}</div>
-                    {row.is_hidden && (
-                      <span style={styles.hiddenTag}>Hidden (Soft-Delete)</span>
-                    )}
-                  </div>
+                  {/* Mobile Preview Card */}
+                  <div
+                    style={{
+                      ...styles.mobileCard,
+                      ...(row.is_hidden ? styles.tableRowHidden : {}),
+                      ...(!row.selected ? styles.tableRowDeselected : {}),
+                    }}
+                    className="mobile-only"
+                  >
+                    <div style={styles.mobileCardTop}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="checkbox"
+                          style={styles.checkbox}
+                          checked={row.selected}
+                          onChange={() => handleToggleRow(row.id)}
+                        />
+                        <div>
+                          <div style={styles.payeeText}>{row.payee_name}</div>
+                          <div style={styles.dateText}>{row.date}</div>
+                        </div>
+                      </div>
 
-                  {/* Payee */}
-                  <div style={{ flex: 3 }}>
-                    <div style={styles.payeeText}>{row.payee_name}</div>
-                    {row.notes && <div style={styles.notesText}>{row.notes}</div>}
-                  </div>
+                      <div
+                        style={{
+                          fontWeight: '800',
+                          fontSize: '0.9375rem',
+                          color: isExpense ? 'var(--text-primary)' : 'var(--success-text)',
+                        }}
+                      >
+                        {isExpense ? '-' : '+'} {currencySymbol}{' '}
+                        {row.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
 
-                  {/* Category Assignment & Inline Auto-Rule Creator */}
-                  <div style={{ flex: 2.8, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <select
                         style={{
                           ...styles.categorySelect,
+                          maxWidth: '100%',
                           ...(row.category_id === null ? styles.categorySelectUnassigned : {}),
                         }}
                         value={row.category_id || ''}
@@ -436,74 +558,36 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
                           </option>
                         ))}
                       </select>
-                    </div>
 
-                    <div style={styles.ruleStatusRow}>
-                      {row.auto_matched_rule ? (
-                        <div style={styles.autoRulePill}>
-                          <Sparkles size={11} color="var(--primary)" />
-                          <span>Matched Rule: {row.auto_matched_rule}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {row.auto_matched_rule && (
+                            <span style={styles.autoRulePill}>
+                              Auto: {row.auto_matched_rule}
+                            </span>
+                          )}
+                          {row.is_hidden && (
+                            <span style={styles.hiddenTag}>Hidden</span>
+                          )}
                         </div>
-                      ) : row.category_id ? (
+
                         <button
-                          style={styles.saveRuleBtn}
-                          disabled={savingRuleForPayee === row.payee_name}
-                          onClick={() => handleSaveInlineRule(row.payee_name, row.category_id!)}
-                          title="Save this merchant to Business_Mapping in Supabase"
+                          style={{
+                            ...styles.hideToggleBtn,
+                            ...(row.is_hidden ? styles.hideToggleBtnHidden : {}),
+                          }}
+                          onClick={() => handleToggleHidden(row.id)}
                         >
-                          <Plus size={11} color="var(--primary)" />
-                          <span>
-                            {savingRuleForPayee === row.payee_name
-                              ? 'Saving Rule...'
-                              : `Save Auto-Rule for "${row.payee_name.split(' ')[0]}"`}
-                          </span>
+                          {row.is_hidden ? (
+                            <EyeOff size={14} color="var(--danger)" />
+                          ) : (
+                            <Eye size={14} color="var(--text-secondary)" />
+                          )}
                         </button>
-                      ) : (
-                        <span style={styles.unassignedPrompt}>Select category to assign</span>
-                      )}
+                      </div>
                     </div>
                   </div>
-
-                  {/* Payment Method / Last 4 */}
-                  <div style={{ flex: 1.4, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CreditCard size={13} color="var(--text-muted)" />
-                    <span style={styles.methodText}>
-                      {row.card_last_digits ? `*${row.card_last_digits}` : row.payment_method}
-                    </span>
-                  </div>
-
-                  {/* Amount */}
-                  <div
-                    style={{
-                      flex: 1.6,
-                      textAlign: 'right',
-                      fontWeight: '700',
-                      fontSize: '0.875rem',
-                      color: isExpense ? 'var(--text-primary)' : 'var(--success-text)',
-                    }}
-                  >
-                    {isExpense ? '-' : '+'} {currencySymbol}{' '}
-                    {row.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </div>
-
-                  {/* Row Hiding Mechanism (is_hidden toggle) */}
-                  <div style={{ width: '80px', display: 'flex', justifyContent: 'center' }}>
-                    <button
-                      style={{
-                        ...styles.hideToggleBtn,
-                        ...(row.is_hidden ? styles.hideToggleBtnHidden : {}),
-                      }}
-                      onClick={() => handleToggleHidden(row.id)}
-                      title={row.is_hidden ? 'Restore row to active (is_hidden = false)' : 'Mark row as hidden (is_hidden = true)'}
-                    >
-                      {row.is_hidden ? (
-                        <EyeOff size={15} color="var(--danger)" />
-                      ) : (
-                        <Eye size={15} color="var(--text-secondary)" />
-                      )}
-                    </button>
-                  </div>
-                </div>
+                </React.Fragment>
               );
             })
           )}
@@ -803,6 +887,19 @@ const styles: { [key: string]: React.CSSProperties } = {
   hideToggleBtnHidden: {
     backgroundColor: 'var(--danger-light)',
     borderColor: '#FECACA',
+  },
+  mobileCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    padding: '14px 16px',
+    borderBottom: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--bg-surface)',
+  },
+  mobileCardTop: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
   },
   emptyFilterState: {
     display: 'flex',

@@ -253,7 +253,7 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
                                       {tx.notes && <div style={styles.txNotes}>{tx.notes}</div>}
                                     </div>
 
-                                    <div style={styles.txMethod}>
+                                    <div style={styles.txMethod} className="desktop-only">
                                       <CreditCard size={13} color="var(--text-muted)" />
                                       <span>
                                         {tx.card_last_digits ? `*${tx.card_last_digits}` : tx.payment_method}

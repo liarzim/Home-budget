@@ -89,9 +89,58 @@ input, select, textarea {
   }
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.25s ease-out forwards;
+.animate-scale-in {
+  animation: scaleIn 0.15s ease-out forwards;
 }
+
+/* ==========================================
+   MOBILE RESPONSIVENESS & CARD VIEW STYLES
+   ========================================== */
+
+.desktop-only {
+  display: block;
+}
+
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: flex !important;
+  }
+
+  /* Safe padding for bottom navigation bar on mobile */
+  body {
+    padding-bottom: 76px;
+  }
+
+  /* Responsive card transform for tables */
+  .responsive-table-wrap {
+    overflow-x: hidden;
+  }
+
+  .responsive-table-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 16px;
+    background-color: var(--bg-surface);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-main);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 8px;
+  }
+
+  .responsive-table-header {
+    display: none !important;
+  }
+}
+
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
