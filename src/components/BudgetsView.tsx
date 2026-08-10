@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { BudgetPeriod } from '../lib/types';
 import { Calendar, AlertTriangle } from 'lucide-react';
+import { t, formatCategoryName } from '../lib/i18n';
 
 export const BudgetsView: React.FC = () => {
-  const { budgets, categories, transactions, activeHousehold } = useAuth();
+  const { budgets, categories, transactions, activeHousehold, language } = useAuth();
   const [selectedPeriod, setSelectedPeriod] = useState<BudgetPeriod>('monthly');
 
   const currency = activeHousehold?.currency === 'ILS' ? '₪' : activeHousehold?.currency || '$';
@@ -30,10 +31,8 @@ export const BudgetsView: React.FC = () => {
       {/* Top Header & Period Switcher */}
       <div style={styles.headerRow}>
         <div>
-          <h2 style={styles.title}>Category Budget Limits</h2>
-          <p style={styles.subtitle}>
-            Strict {selectedPeriod} limits per category with live expense tracking.
-          </p>
+          <h2 style={styles.title}>{t('budgetsTitle', language)}</h2>
+          <p style={styles.subtitle}>{t('budgetsSub', language)}</p>
         </div>
 
         <div style={styles.periodSwitcher}>
@@ -45,7 +44,7 @@ export const BudgetsView: React.FC = () => {
             onClick={() => setSelectedPeriod('monthly')}
           >
             <Calendar size={13} color={selectedPeriod === 'monthly' ? 'var(--primary)' : 'var(--text-secondary)'} />
-            <span>Monthly (Aug 2026)</span>
+            <span>{language === 'he' ? 'חודשי (אוגוסט 2026)' : 'Monthly (Aug 2026)'}</span>
           </button>
           <button
             style={{
@@ -55,7 +54,7 @@ export const BudgetsView: React.FC = () => {
             onClick={() => setSelectedPeriod('yearly')}
           >
             <Calendar size={13} color={selectedPeriod === 'yearly' ? 'var(--primary)' : 'var(--text-secondary)'} />
-            <span>Yearly (2026)</span>
+            <span>{language === 'he' ? 'שנתי (2026)' : 'Yearly (2026)'}</span>
           </button>
         </div>
       </div>
@@ -63,14 +62,14 @@ export const BudgetsView: React.FC = () => {
       {/* Aggregate Overview Bar */}
       <div style={styles.aggregateCard}>
         <div style={styles.aggStatColumn}>
-          <span style={styles.aggLabel}>Total Budget</span>
+          <span style={styles.aggLabel}>{t('totalBudget', language)}</span>
           <span style={styles.aggValue}>{currency} {totalLimit.toLocaleString('en-US')}</span>
         </div>
 
         <div style={styles.aggDivider} />
 
         <div style={styles.aggStatColumn}>
-          <span style={styles.aggLabel}>Total Spent</span>
+          <span style={styles.aggLabel}>{t('totalSpent', language)}</span>
           <span style={{ ...styles.aggValue, color: totalSpend > totalLimit ? 'var(--danger-text)' : 'var(--text-primary)' }}>
             {currency} {totalSpend.toLocaleString('en-US', { minimumFractionDigits: 1 })}
           </span>
@@ -79,7 +78,7 @@ export const BudgetsView: React.FC = () => {
         <div style={styles.aggDivider} />
 
         <div style={styles.aggStatColumn}>
-          <span style={styles.aggLabel}>Remaining Buffer</span>
+          <span style={styles.aggLabel}>{t('totalRemaining', language)}</span>
           <span style={{ ...styles.aggValue, color: 'var(--success-text)' }}>
             {currency} {totalRemaining.toLocaleString('en-US', { minimumFractionDigits: 1 })}
           </span>
@@ -88,7 +87,7 @@ export const BudgetsView: React.FC = () => {
         <div style={styles.aggDivider} />
 
         <div style={styles.aggStatColumn}>
-          <span style={styles.aggLabel}>Total Consumed</span>
+          <span style={styles.aggLabel}>{t('budgetUtilization', language)}</span>
           <span style={styles.aggValue}>{totalPercent}%</span>
         </div>
       </div>
@@ -116,13 +115,15 @@ export const BudgetsView: React.FC = () => {
                       backgroundColor: category?.color || 'var(--primary)',
                     }}
                   />
-                  <span style={styles.categoryName}>{category?.name || 'Category'}</span>
+                  <span style={styles.categoryName}>
+                    {category ? formatCategoryName(category.name, language) : 'קטגוריה'}
+                  </span>
                 </div>
 
                 {isOverBudget ? (
                   <div style={styles.alertBadge}>
                     <AlertTriangle size={12} color="var(--danger)" />
-                    <span>Over Budget</span>
+                    <span>{language === 'he' ? 'חריגה מתקציב' : 'Over Budget'}</span>
                   </div>
                 ) : (
                   <span style={styles.percentText}>{percent}%</span>
@@ -140,22 +141,23 @@ export const BudgetsView: React.FC = () => {
                 />
               </div>
 
-              {/* Numerical breakdown */}
-              <div style={styles.numbersRow}>
-                <span style={styles.spentText}>
-                  Spent: <strong>{currency} {spent.toLocaleString('en-US')}</strong>
-                </span>
-                <span style={styles.limitText}>
-                  Limit: {currency} {budget.limit_amount.toLocaleString('en-US')}
-                </span>
-              </div>
-
-              <div style={styles.cardFooter}>
-                <span style={styles.remainingText}>
+              {/* Spend Details */}
+              <div style={styles.cardBottom}>
+                <div style={styles.spendText}>
+                  <span style={{ fontWeight: '700', color: isOverBudget ? 'var(--danger-text)' : 'var(--text-primary)' }}>
+                    {currency} {spent.toLocaleString('en-US', { minimumFractionDigits: 1 })}
+                  </span>{' '}
+                  / {currency} {budget.limit_amount.toLocaleString('en-US')}
+                </div>
+                <div style={{ ...styles.remainingText, color: isOverBudget ? 'var(--danger)' : 'var(--text-muted)' }}>
                   {isOverBudget
-                    ? `Exceeded by ${currency} ${Math.abs(remaining).toLocaleString('en-US')}`
-                    : `Remaining: ${currency} ${remaining.toLocaleString('en-US')}`}
-                </span>
+                    ? (language === 'he'
+                        ? `חריגה של ${currency} ${Math.abs(remaining).toLocaleString('en-US', { minimumFractionDigits: 1 })}`
+                        : `${currency} ${Math.abs(remaining).toLocaleString('en-US', { minimumFractionDigits: 1 })} Over`)
+                    : (language === 'he'
+                        ? `נותרו ${currency} ${remaining.toLocaleString('en-US', { minimumFractionDigits: 1 })}`
+                        : `${currency} ${remaining.toLocaleString('en-US', { minimumFractionDigits: 1 })} Left`)}
+                </div>
               </div>
             </div>
           );

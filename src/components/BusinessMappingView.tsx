@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Sparkles, ArrowRight } from 'lucide-react';
+import { Plus, Sparkles, ArrowRight, ArrowLeft } from 'lucide-react';
+import { t, formatCategoryName } from '../lib/i18n';
 
 export const BusinessMappingView: React.FC = () => {
-  const { businessMappings, categories, addBusinessMapping } = useAuth();
+  const { businessMappings, categories, addBusinessMapping, language, dir } = useAuth();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [patternInput, setPatternInput] = useState('');
@@ -18,14 +19,14 @@ export const BusinessMappingView: React.FC = () => {
     }
   };
 
+  const ArrowIcon = dir === 'rtl' ? ArrowLeft : ArrowRight;
+
   return (
     <div style={styles.container}>
       <div style={styles.headerRow}>
         <div>
-          <h2 style={styles.title}>Merchant Auto-Categorization Rules</h2>
-          <p style={styles.subtitle}>
-            When a transaction merchant matches any keyword pattern, it is automatically assigned to that category.
-          </p>
+          <h2 style={styles.title}>{t('mappingTitle', language)}</h2>
+          <p style={styles.subtitle}>{t('mappingSub', language)}</p>
         </div>
 
         <button
@@ -33,7 +34,7 @@ export const BusinessMappingView: React.FC = () => {
           onClick={() => setIsAddModalOpen(true)}
         >
           <Plus size={16} color="#FFFFFF" />
-          <span>Add Auto-Rule</span>
+          <span>{t('btnAddRule', language)}</span>
         </button>
       </div>
 
@@ -48,7 +49,7 @@ export const BusinessMappingView: React.FC = () => {
                 <span style={styles.patternText}>{rule.pattern}</span>
               </div>
 
-              <ArrowRight size={16} color="var(--text-muted)" />
+              <ArrowIcon size={16} color="var(--text-muted)" />
 
               <div style={styles.categoryTargetWrap}>
                 {category ? (
@@ -63,10 +64,10 @@ export const BusinessMappingView: React.FC = () => {
                     <span
                       style={{ ...styles.categoryDot, backgroundColor: category.color }}
                     />
-                    {category.name}
+                    {formatCategoryName(category.name, language)}
                   </span>
                 ) : (
-                  <span style={styles.unknownCategory}>Unknown Category</span>
+                  <span style={styles.unknownCategory}>{t('unknownCategory', language)}</span>
                 )}
               </div>
             </div>
@@ -78,18 +79,16 @@ export const BusinessMappingView: React.FC = () => {
       {isAddModalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalCard} className="animate-fade-in">
-            <h3 style={styles.modalTitle}>New Auto-Categorization Rule</h3>
-            <p style={styles.modalSubtitle}>
-              Transactions containing this keyword pattern will be automatically assigned to the chosen category.
-            </p>
+            <h3 style={styles.modalTitle}>{t('newRuleTitle', language)}</h3>
+            <p style={styles.modalSubtitle}>{t('newRuleSub', language)}</p>
 
             <form onSubmit={handleSaveRule}>
               <div style={styles.formGroup}>
-                <label style={styles.inputLabel}>Merchant / Business Keyword</label>
+                <label style={styles.inputLabel}>{t('fieldKeyword', language)}</label>
                 <input
                   style={styles.textInput}
                   type="text"
-                  placeholder="e.g. BIT, WOLT, AM:PM, OSHEK"
+                  placeholder={language === 'he' ? 'לדוגמה: שופרסל, וולט, פז, ביט' : 'e.g. BIT, WOLT, AM:PM, OSHEK'}
                   value={patternInput}
                   onChange={(e) => setPatternInput(e.target.value)}
                   required
@@ -97,7 +96,7 @@ export const BusinessMappingView: React.FC = () => {
               </div>
 
               <div style={styles.formGroup}>
-                <label style={styles.inputLabel}>Assign to Category</label>
+                <label style={styles.inputLabel}>{t('fieldAssignCategory', language)}</label>
                 <div style={styles.catSelectList}>
                   {categories.map((cat) => {
                     const isSelected = selectedCatId === cat.id;
@@ -121,7 +120,11 @@ export const BusinessMappingView: React.FC = () => {
                             fontWeight: isSelected ? '700' : '500',
                           }}
                         >
-                          {cat.name} ({cat.type})
+                          {formatCategoryName(cat.name, language)} (
+                          {cat.type === 'expense'
+                            ? (language === 'he' ? 'הוצאה' : 'expense')
+                            : (language === 'he' ? 'הכנסה' : 'income')}
+                          )
                         </span>
                       </button>
                     );
@@ -135,10 +138,10 @@ export const BusinessMappingView: React.FC = () => {
                   style={styles.cancelBtn}
                   onClick={() => setIsAddModalOpen(false)}
                 >
-                  Cancel
+                  {t('cancel', language)}
                 </button>
                 <button type="submit" style={styles.submitBtn}>
-                  Save Rule
+                  {t('saveRuleBtn', language)}
                 </button>
               </div>
             </form>

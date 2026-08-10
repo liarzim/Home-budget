@@ -102,6 +102,27 @@ export const translations = {
     webhookCardTitle: 'מקלט Webhook אוטומטי (Supabase Edge Function)',
     webhookCardSub: 'ספקי Open Banking יכולים לשלוח תנועות בזמן אמת. כל תנועה נבדקת למניעת כפילויות ומסווגת אוטומטית לפי כללי Business Mapping.',
 
+    // Business Mapping (Auto-Categorization)
+    mappingTitle: 'כללי סיווג אוטומטי לבתי עסק',
+    mappingSub: 'כאשר שם בית העסק בדוח תואם לתבנית מילת מפתח, התנועה מסווגת אוטומטית לקטגוריה הנבחרת.',
+    btnAddRule: '+ הוסף כלל סיווג',
+    newRuleTitle: 'כלל סיווג אוטומטי חדש',
+    newRuleSub: 'תנועות שיכילו מילת מפתח זו יסווגו אוטומטית לקטגוריה הנבחרת.',
+    fieldKeyword: 'מילת מפתח / שם בית עסק',
+    fieldAssignCategory: 'שייך לקטגוריה',
+    saveRuleBtn: 'שמור כלל',
+    unknownCategory: 'קטגוריה לא ידועה',
+
+    // Budgets View
+    budgetsTitle: 'תקרות תקציב לפי קטגוריה',
+    budgetsSub: 'מעקב חודשי ושנתי בזמן אמת מול יעדי ההוצאות שהוגדרו.',
+    periodMonthly: 'חודשי',
+    periodYearly: 'שנתי',
+    totalBudget: 'סה"כ תקציב',
+    totalSpent: 'נוצל בפועל',
+    totalRemaining: 'נותר לתקציב',
+    budgetUtilization: 'ניצול תקציבי',
+
     // Common
     cancel: 'ביטול',
     save: 'שמור',
@@ -213,6 +234,27 @@ export const translations = {
     webhookCardTitle: 'Automated Webhook Receiver (Supabase Edge Function)',
     webhookCardSub: 'Open Banking aggregators can stream real-time webhooks. All incoming feeds are deduplicated via source_reference_id and classified.',
 
+    // Business Mapping (Auto-Categorization)
+    mappingTitle: 'Merchant Auto-Categorization Rules',
+    mappingSub: 'When a transaction merchant matches any keyword pattern, it is automatically assigned to that category.',
+    btnAddRule: 'Add Auto-Rule +',
+    newRuleTitle: 'New Auto-Categorization Rule',
+    newRuleSub: 'Transactions containing this keyword pattern will be automatically assigned to the chosen category.',
+    fieldKeyword: 'Merchant / Business Keyword',
+    fieldAssignCategory: 'Assign to Category',
+    saveRuleBtn: 'Save Rule',
+    unknownCategory: 'Unknown Category',
+
+    // Budgets View
+    budgetsTitle: 'Category Budget Limits',
+    budgetsSub: 'Live expense tracking against assigned monthly and yearly category limits.',
+    periodMonthly: 'Monthly',
+    periodYearly: 'Yearly',
+    totalBudget: 'Total Budget',
+    totalSpent: 'Actual Spent',
+    totalRemaining: 'Remaining',
+    budgetUtilization: 'Budget Utilization',
+
     // Common
     cancel: 'Cancel',
     save: 'Save',
@@ -229,4 +271,24 @@ export type TranslationKey = keyof typeof translations['he'];
 
 export function t(key: TranslationKey, lang: Language = 'he'): string {
   return translations[lang][key] || translations['he'][key] || key;
+}
+
+export function formatCategoryName(name: string, lang: Language = 'he'): string {
+  if (lang === 'en') return name;
+  const map: Record<string, string> = {
+    'Groceries & Supermarket': 'סופרמרקט ומזון',
+    'Transportation & Fuel': 'תחבורה, דלק ונסיעות',
+    'Healthcare & Pharmacy': 'בריאות ופארם',
+    'Leisure & Entertainment': 'פנאי, בילויים ומסעדות',
+    'Housing & Rent': 'דיור ושכירות',
+    'Utilities & Bills': 'חשבונות ומיסים',
+    'Insurance & Financials': 'ביטוחים ופיננסים',
+    'Salary & Income': 'משכורות והכנסות',
+    'Salaries & Main Income': 'משכורות והכנסה עיקרית',
+    'Savings & Investments': 'חסכונות והשקעות',
+    'Education & Family': 'חינוך וילדים',
+    'Clothing & Shopping': 'ביגוד וקניות',
+    'Other / Miscellaneous': 'שונות והוצאות אחרות',
+  };
+  return map[name] || name;
 }
