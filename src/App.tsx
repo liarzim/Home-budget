@@ -10,6 +10,8 @@ import { BusinessMappingView } from './components/BusinessMappingView';
 import { SchemaViewer } from './components/SchemaViewer';
 import { ImportWizard } from './components/ImportWizard/ImportWizard';
 import { MainDashboard } from './components/Dashboard/MainDashboard';
+import { ManualEntryScreen } from './components/ManualEntry/ManualEntryScreen';
+import { FloatingActionButton } from './components/ManualEntry/FloatingActionButton';
 
 const MainScreen: React.FC = () => {
   const { user, isDemoMode, isLoading, activeTab } = useAuth();
@@ -33,12 +35,15 @@ const MainScreen: React.FC = () => {
       <main style={styles.mainContentContainer} className="animate-fade-in">
         {activeTab === 'dashboard' && <MainDashboard />}
         {activeTab === 'transactions' && <TransactionsView />}
+        {activeTab === 'manual-entry' && <ManualEntryScreen />}
         {activeTab === 'import' && <ImportWizard />}
         {activeTab === 'budgets' && <BudgetsView />}
         {activeTab === 'savings' && <SavingsView />}
         {activeTab === 'mappings' && <BusinessMappingView />}
         {activeTab === 'schema' && <SchemaViewer />}
       </main>
+      {/* Global Floating Action Button for Mobile & Web Quick Entry */}
+      <FloatingActionButton />
     </div>
   );
 };

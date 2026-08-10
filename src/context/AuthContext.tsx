@@ -31,8 +31,8 @@ interface AuthContextType {
   isLoading: boolean;
   isDemoMode: boolean;
   isSupabaseReady: boolean;
-  activeTab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import';
-  setActiveTab: (tab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import') => void;
+  activeTab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import' | 'manual-entry';
+  setActiveTab: (tab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import' | 'manual-entry') => void;
   loginWithOAuth: (provider: OAuthProvider) => Promise<{ success: boolean; error?: string }>;
   loginDemo: (userName?: string) => void;
   logout: () => Promise<void>;
@@ -57,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [savings, setSavings] = useState<Savings[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import' | 'manual-entry'>('dashboard');
 
   useEffect(() => {
     checkInitialAuth();

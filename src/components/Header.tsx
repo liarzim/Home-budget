@@ -13,6 +13,7 @@ import {
   Sliders,
   User,
   UploadCloud,
+  PlusCircle,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -46,6 +47,7 @@ export const Header: React.FC = () => {
   const navItems = [
     { id: 'dashboard', label: 'Overview', icon: Home },
     { id: 'transactions', label: 'Transactions', icon: Receipt },
+    { id: 'manual-entry', label: 'Manual Entry', icon: PlusCircle },
     { id: 'import', label: 'Import Wizard', icon: UploadCloud },
     { id: 'budgets', label: 'Budgets', icon: PieChart },
     { id: 'savings', label: 'Savings Ledger', icon: PiggyBank },
@@ -123,6 +125,16 @@ export const Header: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Quick Manual Entry Top Bar Button */}
+        <button
+          style={styles.topBarNewEntryBtn}
+          onClick={() => setActiveTab('manual-entry')}
+          title="Create a new manual transaction"
+        >
+          <PlusCircle size={15} color="#FFFFFF" />
+          <span>+ New Entry</span>
+        </button>
 
         {/* Right Section */}
         <div style={styles.rightSection}>
@@ -364,6 +376,21 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.75rem',
     fontWeight: '600',
     color: 'var(--primary)',
+  },
+  topBarNewEntryBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '7px 14px',
+    backgroundColor: 'var(--primary)',
+    color: '#FFFFFF',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    border: 'none',
+    cursor: 'pointer',
+    boxShadow: 'var(--shadow-sm)',
+    transition: 'all 0.15s ease',
   },
   rightSection: {
     display: 'flex',

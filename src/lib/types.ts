@@ -219,4 +219,48 @@ export interface SavingsYearlySummary {
   items: SavingsDistributionItem[];
 }
 
+// ==========================================
+// MANUAL ENTRY & HISTORICAL INGESTION TYPES
+// ==========================================
+
+export interface ManualEntryFormData {
+  date: string;
+  amount: string;
+  transaction_type: 'expense' | 'income' | 'savings';
+  category_id: string;
+  payee_name: string;
+  payment_method: string;
+  card_last_digits?: string;
+  notes?: string;
+  is_hidden?: boolean;
+}
+
+export interface HistoricalCategoryMonthlyRow {
+  categoryName: string;
+  categoryType: 'expense' | 'income';
+  monthlyAmounts: Record<number, number>; // month 1-12 -> amount
+}
+
+export interface HistoricalYearlySheetData {
+  year: number;
+  title: string;
+  expenseRows: HistoricalCategoryMonthlyRow[];
+  incomeRows: HistoricalCategoryMonthlyRow[];
+  savingsRows: {
+    accountName: string;
+    institution: string;
+    openingBalance: number;
+    closingBalance: number;
+  }[];
+}
+
+export interface HistoricalImportResult {
+  success: boolean;
+  year: number;
+  transactionsGenerated: number;
+  savingsGenerated: number;
+  error?: string;
+}
+
+
 
