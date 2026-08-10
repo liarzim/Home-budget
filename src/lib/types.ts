@@ -111,3 +111,67 @@ export interface UserSession {
   isAuthenticated: boolean;
   isDemoMode: boolean;
 }
+
+// ==========================================
+// DATA INGESTION & COLUMN MAPPING TYPES
+// ==========================================
+
+export interface ParsedSheet {
+  name: string;
+  headers: string[];
+  rows: Record<string, any>[];
+  rawGrid: any[][];
+  headerRowIndex: number;
+}
+
+export interface ParsedFile {
+  fileName: string;
+  fileSize: number;
+  fileType: 'xlsx' | 'xls' | 'csv';
+  sheets: ParsedSheet[];
+  activeSheetName: string;
+}
+
+export type AmountMappingMode = 'single' | 'debit_credit';
+
+export interface ColumnMapping {
+  dateColumn: string;
+  payeeColumn: string;
+  amountMode: AmountMappingMode;
+  amountColumn: string;
+  debitColumn?: string;
+  creditColumn?: string;
+  categoryColumn?: string;
+  paymentMethodColumn?: string;
+  cardDigitsColumn?: string;
+  notesColumn?: string;
+  dateFormat?: string;
+  reverseAmountSign?: boolean;
+}
+
+export interface TransformedImportRow {
+  id: string;
+  originalRowIndex: number;
+  date: string; // YYYY-MM-DD
+  payee_name: string;
+  amount: number;
+  transaction_type: TransactionType;
+  category_id: string | null;
+  auto_matched_rule?: string;
+  payment_method: string;
+  card_last_digits: string | null;
+  notes: string | null;
+  isValid: boolean;
+  validationError?: string;
+  selected: boolean;
+}
+
+export interface ImportBatchSummary {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  totalIncome: number;
+  totalExpense: number;
+  autoCategorizedCount: number;
+}
+

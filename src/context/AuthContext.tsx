@@ -31,14 +31,15 @@ interface AuthContextType {
   isLoading: boolean;
   isDemoMode: boolean;
   isSupabaseReady: boolean;
-  activeTab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema';
-  setActiveTab: (tab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema') => void;
+  activeTab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import';
+  setActiveTab: (tab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import') => void;
   loginWithOAuth: (provider: OAuthProvider) => Promise<{ success: boolean; error?: string }>;
   loginDemo: (userName?: string) => void;
   logout: () => Promise<void>;
   switchHousehold: (householdId: string) => void;
   toggleTransactionVisibility: (id: string) => void;
   addTransaction: (tx: Partial<Transaction>) => void;
+  addBatchTransactions: (txs: Transaction[]) => void;
   addHousehold: (name: string, currency?: string) => void;
   addBusinessMapping: (pattern: string, categoryId: string) => void;
 }
@@ -56,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [savings, setSavings] = useState<Savings[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import'>('dashboard');
 
   useEffect(() => {
     checkInitialAuth();
@@ -296,6 +297,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const addBatchTransactions = (newTxs: Transaction[]) => {
+    setTransactions((prev) => [...newTxs, ...prev]);
+
+    if (isSupabaseConfigured && !isDemoMode && activeHousehold) {
+      supabase
+        .from('transactions')
+        .insert(
+          newTxs.map((tx) => ({
+            household_id: activeHousehold.id,
+            date: tx.date,
+            amount: tx.amount,
+            category_id: tx.category_id,
+            transaction_type: tx.transaction_type,
+            payee_name: tx.payee_name,
+            original_description: tx.original_description,
+            payment_method: tx.payment_method,
+            card_last_digits: tx.card_last_digits,
+            is_hidden: false,
+            notes: tx.notes,
+          }))
+        )
+        .then();
+    }
+  };
+
   const addHousehold = (name: string, currency: string = 'ILS') => {
     const newHh: Household = {
       id: `hh-${Date.now()}`,
@@ -364,6 +390,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         switchHousehold,
         toggleTransactionVisibility,
         addTransaction,
+        addBatchTransactions,
         addHousehold,
         addBusinessMapping,
       }}

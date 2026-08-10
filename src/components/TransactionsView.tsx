@@ -10,6 +10,7 @@ import {
   Archive,
   RefreshCw,
   Sparkles,
+  UploadCloud,
 } from 'lucide-react';
 
 export const TransactionsView: React.FC = () => {
@@ -18,6 +19,7 @@ export const TransactionsView: React.FC = () => {
     categories,
     businessMappings,
     activeHousehold,
+    setActiveTab,
     toggleTransactionVisibility,
     addTransaction,
   } = useAuth();
@@ -163,6 +165,15 @@ export const TransactionsView: React.FC = () => {
               <EyeOff size={14} color="var(--text-secondary)" />
             )}
             <span>{showHidden ? 'Showing Hidden' : 'Show Hidden'}</span>
+          </button>
+
+          {/* Import Statement Button */}
+          <button
+            style={styles.importBtn}
+            onClick={() => setActiveTab('import')}
+          >
+            <UploadCloud size={15} color="var(--primary)" />
+            <span>Import Statement</span>
           </button>
 
           {/* Add Transaction Button */}
@@ -533,6 +544,19 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'var(--primary-light)',
     color: 'var(--primary)',
     fontWeight: '700',
+  },
+  importBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    backgroundColor: 'var(--primary-light)',
+    border: '1px solid var(--primary)',
+    color: 'var(--primary)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    transition: 'all 0.15s ease',
   },
   addTxBtn: {
     display: 'flex',

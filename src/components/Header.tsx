@@ -12,6 +12,7 @@ import {
   LogOut,
   Sliders,
   User,
+  UploadCloud,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -45,6 +46,7 @@ export const Header: React.FC = () => {
   const navItems = [
     { id: 'dashboard', label: 'Overview', icon: Home },
     { id: 'transactions', label: 'Transactions', icon: Receipt },
+    { id: 'import', label: 'Import Wizard', icon: UploadCloud },
     { id: 'budgets', label: 'Budgets', icon: PieChart },
     { id: 'savings', label: 'Savings Ledger', icon: PiggyBank },
     { id: 'mappings', label: 'Auto-Mapping', icon: Sliders },

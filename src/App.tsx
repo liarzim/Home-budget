@@ -8,6 +8,7 @@ import { BudgetsView } from './components/BudgetsView';
 import { SavingsView } from './components/SavingsView';
 import { BusinessMappingView } from './components/BusinessMappingView';
 import { SchemaViewer } from './components/SchemaViewer';
+import { ImportWizard } from './components/ImportWizard/ImportWizard';
 
 const MainScreen: React.FC = () => {
   const { user, isDemoMode, isLoading, activeTab } = useAuth();
@@ -36,6 +37,7 @@ const MainScreen: React.FC = () => {
           </>
         )}
         {activeTab === 'transactions' && <TransactionsView />}
+        {activeTab === 'import' && <ImportWizard />}
         {activeTab === 'budgets' && <BudgetsView />}
         {activeTab === 'savings' && <SavingsView />}
         {activeTab === 'mappings' && <BusinessMappingView />}
