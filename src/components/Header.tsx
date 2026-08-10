@@ -14,6 +14,7 @@ import {
   User,
   UploadCloud,
   PlusCircle,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -27,6 +28,7 @@ export const Header: React.FC = () => {
     activeTab,
     setActiveTab,
     isDemoMode,
+    isSupabaseReady,
   } = useAuth();
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -49,6 +51,7 @@ export const Header: React.FC = () => {
     { id: 'transactions', label: 'Transactions', icon: Receipt },
     { id: 'manual-entry', label: 'Manual Entry', icon: PlusCircle },
     { id: 'import', label: 'Import Wizard', icon: UploadCloud },
+    { id: 'migration', label: 'Yearly Migration', icon: FileSpreadsheet },
     { id: 'budgets', label: 'Budgets', icon: PieChart },
     { id: 'savings', label: 'Savings Ledger', icon: PiggyBank },
     { id: 'mappings', label: 'Auto-Mapping', icon: Sliders },
