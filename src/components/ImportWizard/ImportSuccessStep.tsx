@@ -1,11 +1,13 @@
 import React from 'react';
 import {
   CheckCircle2,
-  Receipt,
   PieChart,
   ArrowRight,
   RefreshCw,
   Sparkles,
+  EyeOff,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
 import { ImportBatchSummary } from '../../lib/types';
 
@@ -24,22 +26,27 @@ export const ImportSuccessStep: React.FC<ImportSuccessStepProps> = ({
   onViewBudgets,
   onImportAnother,
 }) => {
+  const activeCount = summary.validRows - summary.hiddenRowsCount;
+
   return (
     <div style={styles.container} className="animate-fade-in">
       <div style={styles.successIconCircle}>
         <CheckCircle2 size={44} color="var(--success)" />
       </div>
 
-      <h2 style={styles.title}>Import Completed Successfully!</h2>
+      <h2 style={styles.title}>Database Insertion Successful!</h2>
       <p style={styles.subtitle}>
-        <strong>{summary.validRows}</strong> transactions have been added to your household ledger and synced with your database.
+        <strong>{summary.validRows}</strong> transactions have been securely inserted into your Supabase database and ledger.
       </p>
 
-      {/* Summary KPI Cards */}
+      {/* Summary KPI Cards Grid */}
       <div style={styles.statsGrid}>
         <div style={styles.statCard}>
-          <span style={styles.statLabel}>Transactions Added</span>
+          <span style={styles.statLabel}>Inserted Records</span>
           <span style={styles.statValue}>{summary.validRows}</span>
+          <span style={styles.statSub}>
+            {activeCount} active • {summary.hiddenRowsCount} hidden
+          </span>
         </div>
 
         <div style={styles.statCard}>
@@ -50,37 +57,46 @@ export const ImportSuccessStep: React.FC<ImportSuccessStepProps> = ({
               {summary.autoCategorizedCount}
             </span>
           </div>
+          <span style={styles.statSub}>Matched business rules</span>
         </div>
 
         <div style={styles.statCard}>
-          <span style={styles.statLabel}>Total Expenses Imported</span>
-          <span style={{ ...styles.statValue, color: 'var(--text-primary)' }}>
-            {currencySymbol} {summary.totalExpense.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </span>
+          <span style={styles.statLabel}>Active Expenses</span>
+          <div style={styles.sparkleRow}>
+            <TrendingDown size={16} color="var(--danger)" />
+            <span style={{ ...styles.statValue, color: 'var(--text-primary)' }}>
+              {currencySymbol} {summary.totalExpense.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <span style={styles.statSub}>Excludes hidden entries</span>
         </div>
 
         <div style={styles.statCard}>
-          <span style={styles.statLabel}>Total Income Imported</span>
-          <span style={{ ...styles.statValue, color: 'var(--success-text)' }}>
-            {currencySymbol} {summary.totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </span>
+          <span style={styles.statLabel}>Active Income</span>
+          <div style={styles.sparkleRow}>
+            <TrendingUp size={16} color="var(--success)" />
+            <span style={{ ...styles.statValue, color: 'var(--success-text)' }}>
+              {currencySymbol} {summary.totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <span style={styles.statSub}>Added to cash flow</span>
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Action Navigation Buttons */}
       <div style={styles.actionsRow}>
         <button style={styles.secondaryBtn} onClick={onImportAnother}>
           <RefreshCw size={15} color="var(--text-secondary)" />
-          <span>Import Another File</span>
+          <span>Import Another Statement</span>
         </button>
 
         <button style={styles.secondaryBtn} onClick={onViewBudgets}>
           <PieChart size={15} color="var(--primary)" />
-          <span>Check Budget Health</span>
+          <span>Check Category Budgets</span>
         </button>
 
         <button style={styles.primaryBtn} onClick={onViewLedger}>
-          <span>Open Transactions Ledger</span>
+          <span>View Ledger</span>
           <ArrowRight size={16} color="#FFFFFF" />
         </button>
       </div>
@@ -120,7 +136,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   subtitle: {
     fontSize: '0.9375rem',
     color: 'var(--text-secondary)',
-    maxWidth: '520px',
+    maxWidth: '540px',
     lineHeight: '1.5',
     marginBottom: '32px',
   },
@@ -129,12 +145,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
     gap: '16px',
     width: '100%',
-    maxWidth: '740px',
+    maxWidth: '780px',
     marginBottom: '36px',
   },
   statCard: {
     backgroundColor: 'var(--bg-surface-subtle)',
-    padding: '16px',
+    padding: '18px 16px',
     borderRadius: 'var(--radius-md)',
     border: '1px solid var(--border-main)',
     display: 'flex',
@@ -151,6 +167,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '1.25rem',
     fontWeight: '800',
     color: 'var(--text-primary)',
+  },
+  statSub: {
+    fontSize: '0.6875rem',
+    color: 'var(--text-muted)',
+    marginTop: '4px',
   },
   sparkleRow: {
     display: 'flex',
@@ -179,7 +200,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    padding: '10px 20px',
+    padding: '10px 22px',
     backgroundColor: 'var(--primary)',
     color: '#FFFFFF',
     borderRadius: 'var(--radius-sm)',

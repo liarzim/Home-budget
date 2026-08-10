@@ -472,6 +472,7 @@ export function transformRowsWithMapping(
       payment_method: cardDigits ? 'credit_card' : 'bank_transfer',
       card_last_digits: cardDigits,
       notes,
+      is_hidden: false, // Default to active (not hidden)
       isValid,
       validationError,
       selected: isValid, // preselect valid rows

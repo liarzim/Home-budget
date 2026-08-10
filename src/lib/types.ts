@@ -161,6 +161,7 @@ export interface TransformedImportRow {
   payment_method: string;
   card_last_digits: string | null;
   notes: string | null;
+  is_hidden: boolean; // Soft delete / hide flag in preview
   isValid: boolean;
   validationError?: string;
   selected: boolean;
@@ -170,6 +171,7 @@ export interface ImportBatchSummary {
   totalRows: number;
   validRows: number;
   invalidRows: number;
+  hiddenRowsCount: number;
   totalIncome: number;
   totalExpense: number;
   autoCategorizedCount: number;
