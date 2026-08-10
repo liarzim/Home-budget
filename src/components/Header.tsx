@@ -17,8 +17,10 @@ import {
   FileSpreadsheet,
   Landmark,
   Globe,
+  Menu,
 } from 'lucide-react';
 import { t } from '../lib/i18n';
+import { SidebarDrawer } from './Navigation/SidebarDrawer';
 
 export const Header: React.FC = () => {
   const {
@@ -36,6 +38,7 @@ export const Header: React.FC = () => {
     addHousehold,
   } = useAuth();
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isAddHhModalOpen, setIsAddHhModalOpen] = useState(false);
   const [newHhName, setNewHhName] = useState('');
@@ -51,24 +54,21 @@ export const Header: React.FC = () => {
     }
   };
 
-  const navItems = [
-    { id: 'dashboard', label: t('navOverview', language), icon: Home },
-    { id: 'transactions', label: t('navTransactions', language), icon: Receipt },
-    { id: 'manual-entry', label: t('navManualEntry', language), icon: PlusCircle },
-    { id: 'import', label: t('navImport', language), icon: UploadCloud },
-    { id: 'bank-accounts', label: t('navBankSync', language), icon: Landmark },
-    { id: 'migration', label: t('navMigration', language), icon: FileSpreadsheet },
-    { id: 'budgets', label: t('navBudgets', language), icon: PieChart },
-    { id: 'savings', label: t('navSavings', language), icon: PiggyBank },
-    { id: 'mappings', label: t('navMappings', language), icon: Sliders },
-    { id: 'schema', label: t('navSchema', language), icon: Database },
-  ] as const;
-
   return (
     <header style={styles.headerContainer}>
       {/* Top Navbar Row */}
       <div style={styles.topRow}>
         <div style={styles.leftSection}>
+          {/* Hamburger Menu Trigger Button */}
+          <button
+            style={styles.hamburgerBtn}
+            onClick={() => setIsSidebarOpen(true)}
+            aria-label="Open Navigation Sidebar"
+            title={language === 'he' ? 'פתח תפריט צד' : 'Open Navigation Menu'}
+          >
+            <Menu size={20} color="var(--text-primary)" />
+          </button>
+
           <button
             style={styles.brandBadge}
             onClick={() => setActiveTab('dashboard')}
@@ -189,28 +189,11 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Navigation Tabs Bar */}
-      <div style={styles.tabsRow}>
-        {navItems.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              style={{
-                ...styles.tabButton,
-                ...(isActive ? styles.tabButtonActive : {}),
-              }}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <Icon size={15} color={isActive ? 'var(--primary)' : 'var(--text-secondary)'} />
-              <span style={{ ...styles.tabText, ...(isActive ? styles.tabTextActive : {}) }}>
-                {tab.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Side Hamburger Drawer Component */}
+      <SidebarDrawer
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+      />
 
       {/* Add Household Modal */}
       {isAddHhModalOpen && (
@@ -284,7 +267,18 @@ const styles: { [key: string]: React.CSSProperties } = {
   leftSection: {
     display: 'flex',
     alignItems: 'center',
-    gap: '20px',
+    gap: '14px',
+  },
+  hamburgerBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '7px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   brandBadge: {
     display: 'flex',
