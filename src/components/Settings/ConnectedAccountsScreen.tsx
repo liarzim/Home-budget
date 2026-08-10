@@ -16,6 +16,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { t } from '../../lib/i18n';
 import { BankAccount } from '../../lib/types';
 import {
   fetchBankAccounts,
@@ -41,6 +42,7 @@ export const ConnectedAccountsScreen: React.FC = () => {
     businessMappings,
     isDemoMode,
     addBatchTransactions,
+    language,
   } = useAuth();
 
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
@@ -87,13 +89,25 @@ export const ConnectedAccountsScreen: React.FC = () => {
         if (result.newTransactions && result.newTransactions.length > 0) {
           addBatchTransactions(result.newTransactions);
         }
-        setSyncMessage(`Synced ${result.inserted_count} new transactions from ${account.provider_name}!`);
+        setSyncMessage(
+          language === 'he'
+            ? `סונכרנו בהצלחה ${result.inserted_count} תנועות חדשות מ-${account.provider_name}!`
+            : `Synced ${result.inserted_count} new transactions from ${account.provider_name}!`
+        );
         await loadAccounts();
       } else {
-        setSyncMessage(`Sync notice: ${result.error || 'No new transactions found.'}`);
+        setSyncMessage(
+          language === 'he'
+            ? `הודעת סנכרון: ${result.error || 'לא נמצאו תנועות חדשות.'}`
+            : `Sync notice: ${result.error || 'No new transactions found.'}`
+        );
       }
     } catch (err: any) {
-      setSyncMessage(`Sync error: ${err?.message || 'Failed to sync'}`);
+      setSyncMessage(
+        language === 'he'
+          ? `שגיאת סנכרון: ${err?.message || 'הסנכרון נכשל'}`
+          : `Sync error: ${err?.message || 'Failed to sync'}`
+      );
     } finally {
       setSyncingAccountId(null);
     }
@@ -102,7 +116,10 @@ export const ConnectedAccountsScreen: React.FC = () => {
   // Handle Disconnect
   const handleDisconnect = async (accountId: string) => {
     if (!activeHousehold) return;
-    if (confirm('Are you sure you want to disconnect this financial institution?')) {
+    const confirmPrompt = language === 'he'
+      ? 'האם אתה בטוח שברצונך לנתק מוסד פיננסי זה?'
+      : 'Are you sure you want to disconnect this financial institution?';
+    if (confirm(confirmPrompt)) {
       await disconnectBankAccount(accountId, activeHousehold.id, isDemoMode);
       await loadAccounts();
     }
@@ -153,12 +170,10 @@ export const ConnectedAccountsScreen: React.FC = () => {
         <div>
           <div style={styles.badge}>
             <Zap size={12} color="var(--primary)" />
-            <span>Open Banking Infrastructure</span>
+            <span>{language === 'he' ? 'תשתית בנקאות פתוחה (Open Banking)' : 'Open Banking Infrastructure'}</span>
           </div>
-          <h1 style={styles.pageTitle}>Connected Accounts & Bank Sync</h1>
-          <p style={styles.pageSubtitle}>
-            Direct Open Banking API connections, automated credit card sync, and webhook receivers.
-          </p>
+          <h1 style={styles.pageTitle}>{t('bankSyncTitle', language)}</h1>
+          <p style={styles.pageSubtitle}>{t('bankSyncSub', language)}</p>
         </div>
 
         <button
@@ -171,7 +186,7 @@ export const ConnectedAccountsScreen: React.FC = () => {
           }}
         >
           <Plus size={16} />
-          <span>+ Connect Bank / Card</span>
+          <span>{t('btnConnectBank', language)}</span>
         </button>
       </div>
 
@@ -188,33 +203,39 @@ export const ConnectedAccountsScreen: React.FC = () => {
       <div style={styles.kpiGrid}>
         <div style={styles.kpiCard}>
           <div style={styles.kpiTop}>
-            <span style={styles.kpiLabel}>Active Connections</span>
+            <span style={styles.kpiLabel}>{t('kpiActiveConnections', language)}</span>
             <Building2 size={18} color="var(--primary)" />
           </div>
           <div style={styles.kpiValue}>{accounts.length}</div>
-          <div style={styles.kpiSub}>Bank accounts & credit cards</div>
+          <div style={styles.kpiSub}>
+            {language === 'he' ? 'חשבונות בנק וכרטיסי אשראי' : 'Bank accounts & credit cards'}
+          </div>
         </div>
 
         <div style={styles.kpiCard}>
           <div style={styles.kpiTop}>
-            <span style={styles.kpiLabel}>Checking Balance (עו״ש)</span>
-            <Landmark size={18} color="var(--success-text)" />
+            <span style={styles.kpiLabel}>{t('kpiCheckingBalance', language)}</span>
+            <Wallet size={18} color="var(--success-text)" />
           </div>
           <div style={{ ...styles.kpiValue, color: 'var(--success-text)' }}>
             {currencySymbol} {totalCheckingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
-          <div style={styles.kpiSub}>Current liquid balance</div>
+          <div style={styles.kpiSub}>
+            {language === 'he' ? 'נזילות כוללת בכל חשבונות העו"ש' : 'Combined liquid checking balance'}
+          </div>
         </div>
 
         <div style={styles.kpiCard}>
           <div style={styles.kpiTop}>
-            <span style={styles.kpiLabel}>Credit Card Balance</span>
-            <CreditCard size={18} color="#EF4444" />
+            <span style={styles.kpiLabel}>{t('kpiCreditDebt', language)}</span>
+            <CreditCard size={18} color="var(--danger)" />
           </div>
-          <div style={{ ...styles.kpiValue, color: '#EF4444' }}>
-            - {currencySymbol} {totalCreditDebt.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          <div style={{ ...styles.kpiValue, color: 'var(--danger)' }}>
+            {currencySymbol} {totalCreditDebt.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </div>
-          <div style={styles.kpiSub}>Pending unbilled charges</div>
+          <div style={styles.kpiSub}>
+            {language === 'he' ? 'חיובים עתידיים לכרטיסי אשראי' : 'Pending monthly credit charges'}
+          </div>
         </div>
       </div>
 

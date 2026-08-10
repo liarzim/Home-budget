@@ -14,6 +14,7 @@ import {
   TrendingUp,
   AlertCircle,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { MacroGroup, CategoryDrillDown, Transaction, Category } from '../../lib/types';
 import { EditTransactionModal } from './EditTransactionModal';
 
@@ -34,6 +35,8 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
   onToggleHideTransaction,
   onTransactionUpdated,
 }) => {
+  const { language } = useAuth();
+
   // State for expanded Level 1 (Macro Groups)
   const [expandedMacroIds, setExpandedMacroIds] = useState<Record<string, boolean>>({
     fixed_expenses: true,
@@ -56,6 +59,17 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
     setExpandedCategoryIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // Helper for macro group names in Hebrew
+  const formatMacroName = (group: MacroGroup) => {
+    if (language === 'he') {
+      if (group.id === 'fixed_expenses') return 'הוצאות קבועות (דיור, רכב, ביטוח)';
+      if (group.id === 'variable_expenses') return 'הוצאות משתנות (מזון, בילויים, קניות)';
+      if (group.id === 'income_salary') return 'משכורות והכנסות עיקריות';
+      if (group.id === 'income_other') return 'קצבאות, מענקים והכנסות נוספות';
+    }
+    return group.name;
+  };
+
   // Helper for macro group icons
   const getMacroIcon = (iconName: string, color: string) => {
     switch (iconName) {
@@ -76,9 +90,13 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
     <div style={styles.container}>
       <div style={styles.sectionHeader}>
         <div>
-          <h3 style={styles.sectionTitle}>Interactive Financial Drill-Down</h3>
+          <h3 style={styles.sectionTitle}>
+            {language === 'he' ? 'פילוח הכנסות והוצאות אינטראקטיבי' : 'Interactive Financial Drill-Down'}
+          </h3>
           <p style={styles.sectionSubtitle}>
-            Level 1: Macro Buckets → Level 2: Category Budgets → Level 3: Individual Transactions
+            {language === 'he'
+              ? 'רמה 1: קבוצות מקרו ◄ רמה 2: קטגוריות ותקציב ◄ רמה 3: תנועות פרטניות'
+              : 'Level 1: Macro Buckets → Level 2: Category Budgets → Level 3: Individual Transactions'}
           </p>
         </div>
       </div>
@@ -120,18 +138,22 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
 
                   <div>
                     <div style={styles.macroNameRow}>
-                      <span style={styles.macroTitle}>{group.name}</span>
-                      <span style={styles.macroHebrew}>({group.hebrewName})</span>
+                      <span style={styles.macroTitle}>{formatMacroName(group)}</span>
                     </div>
                     <div style={styles.macroSub}>
-                      {group.categories.length} Categories •{' '}
-                      {group.categories.reduce((s, c) => s + c.transactions.length, 0)} Active Transactions
+                      {language === 'he'
+                        ? `${group.categories.length} קטגוריות • ${group.categories.reduce((s, c) => s + c.transactions.length, 0)} תנועות פעילות`
+                        : `${group.categories.length} Categories • ${group.categories.reduce((s, c) => s + c.transactions.length, 0)} Active Transactions`}
                     </div>
                   </div>
                 </div>
 
                 <div style={styles.macroRight}>
-                  <div style={styles.macroAmountLabel}>Total {isExpense ? 'Spent' : 'Received'}</div>
+                  <div style={styles.macroAmountLabel}>
+                    {language === 'he'
+                      ? (isExpense ? 'סה"כ הוצאות בקבוצה' : 'סה"כ הכנסות בקבוצה')
+                      : `Total ${isExpense ? 'Spent' : 'Received'}`}
+                  </div>
                   <div
                     style={{
                       ...styles.macroAmountValue,

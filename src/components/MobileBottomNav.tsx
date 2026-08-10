@@ -7,9 +7,10 @@ import {
   PieChart,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { t } from '../lib/i18n';
 
 export const MobileBottomNav: React.FC = () => {
-  const { activeTab, setActiveTab } = useAuth();
+  const { activeTab, setActiveTab, language } = useAuth();
 
   return (
     <nav style={styles.bottomNavContainer} className="mobile-only">
@@ -31,7 +32,7 @@ export const MobileBottomNav: React.FC = () => {
             ...(activeTab === 'dashboard' ? styles.tabLabelActive : {}),
           }}
         >
-          Overview
+          {t('tabOverview', language)}
         </span>
       </button>
 
@@ -53,7 +54,7 @@ export const MobileBottomNav: React.FC = () => {
             ...(activeTab === 'transactions' ? styles.tabLabelActive : {}),
           }}
         >
-          Ledger
+          {t('tabLedger', language)}
         </span>
       </button>
 
@@ -65,7 +66,7 @@ export const MobileBottomNav: React.FC = () => {
             ...(activeTab === 'manual-entry' ? styles.centerAddButtonActive : {}),
           }}
           onClick={() => setActiveTab('manual-entry')}
-          aria-label="Add transaction"
+          aria-label={t('tabAdd', language)}
         >
           <Plus size={24} color="#FFFFFF" strokeWidth={2.5} />
         </button>
@@ -89,7 +90,7 @@ export const MobileBottomNav: React.FC = () => {
             ...(activeTab === 'import' ? styles.tabLabelActive : {}),
           }}
         >
-          Import
+          {t('tabImport', language)}
         </span>
       </button>
 
@@ -115,7 +116,7 @@ export const MobileBottomNav: React.FC = () => {
             ...(activeTab === 'budgets' || activeTab === 'savings' ? styles.tabLabelActive : {}),
           }}
         >
-          Budgets
+          {t('tabBudgets', language)}
         </span>
       </button>
     </nav>

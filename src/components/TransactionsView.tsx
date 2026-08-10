@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { t } from '../lib/i18n';
 import { TransactionType } from '../lib/types';
 import {
   Plus,
@@ -22,9 +23,11 @@ export const TransactionsView: React.FC = () => {
     setActiveTab,
     toggleTransactionVisibility,
     addTransaction,
+    language,
   } = useAuth();
 
-  const currencySymbol = activeHousehold?.currency === 'ILS' ? '₪' : activeHousehold?.currency || '$';
+  const currency = activeHousehold?.currency === 'ILS' ? '₪' : activeHousehold?.currency || '$';
+  const currencySymbol = currency;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'expense' | 'income'>('all');
@@ -104,8 +107,6 @@ export const TransactionsView: React.FC = () => {
     return true;
   });
 
-  const currency = activeHousehold?.currency === 'ILS' ? '₪' : activeHousehold?.currency || '$';
-
   return (
     <div style={styles.container}>
       {/* Top Action & Filter Toolbar */}
@@ -115,7 +116,7 @@ export const TransactionsView: React.FC = () => {
           <input
             style={styles.searchInput}
             type="text"
-            placeholder="Search transactions, payees, notes..."
+            placeholder={t('searchPlaceholder', language)}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -131,7 +132,7 @@ export const TransactionsView: React.FC = () => {
               }}
               onClick={() => setSelectedTypeFilter('all')}
             >
-              All
+              {t('filterAll', language)}
             </button>
             <button
               style={{
@@ -140,7 +141,7 @@ export const TransactionsView: React.FC = () => {
               }}
               onClick={() => setSelectedTypeFilter('expense')}
             >
-              Expenses
+              {t('filterExpenses', language)}
             </button>
             <button
               style={{
@@ -149,7 +150,7 @@ export const TransactionsView: React.FC = () => {
               }}
               onClick={() => setSelectedTypeFilter('income')}
             >
-              Income
+              {t('filterIncome', language)}
             </button>
           </div>
 
@@ -166,7 +167,11 @@ export const TransactionsView: React.FC = () => {
             ) : (
               <EyeOff size={14} color="var(--text-secondary)" />
             )}
-            <span>{showHidden ? 'Showing Hidden' : 'Show Hidden'}</span>
+            <span>
+              {showHidden
+                ? (language === 'he' ? 'מציג מוסתרות' : 'Showing Hidden')
+                : (language === 'he' ? 'הצג מוסתרות' : 'Show Hidden')}
+            </span>
           </button>
 
           {/* Import Statement Button */}
@@ -175,7 +180,7 @@ export const TransactionsView: React.FC = () => {
             onClick={() => setActiveTab('import')}
           >
             <UploadCloud size={15} color="var(--primary)" />
-            <span>Import Statement</span>
+            <span>{language === 'he' ? 'ייבוא דוחות' : 'Import Statement'}</span>
           </button>
 
           {/* Add Transaction Button */}
@@ -184,27 +189,29 @@ export const TransactionsView: React.FC = () => {
             onClick={() => setIsAddModalOpen(true)}
           >
             <Plus size={16} color="#FFFFFF" />
-            <span>Add Transaction</span>
+            <span>{language === 'he' ? '+ הוסף תנועה' : 'Add Transaction'}</span>
           </button>
         </div>
       </div>      {/* Transactions Table Card (Desktop & Mobile Responsive) */}
       <div style={styles.listCard}>
         {/* Desktop Table Header */}
         <div style={styles.tableHeaderRow} className="desktop-only">
-          <div style={{ flex: 1.2 }}>Date</div>
-          <div style={{ flex: 3 }}>Payee & Description</div>
-          <div style={{ flex: 2.2 }}>Category</div>
-          <div style={{ flex: 1.8 }}>Payment Method</div>
-          <div style={{ flex: 1.8, textAlign: 'right' }}>Amount</div>
-          <div style={{ width: '80px', textAlign: 'center' }}>Actions</div>
+          <div style={{ flex: 1.2 }}>{t('colDate', language)}</div>
+          <div style={{ flex: 3 }}>{t('colPayee', language)}</div>
+          <div style={{ flex: 2.2 }}>{t('colCategory', language)}</div>
+          <div style={{ flex: 1.8 }}>{t('colMethod', language)}</div>
+          <div style={{ flex: 1.8, textAlign: 'right' }}>{t('colAmount', language)}</div>
+          <div style={{ width: '80px', textAlign: 'center' }}>{t('colActions', language)}</div>
         </div>
 
         {filteredTransactions.length === 0 ? (
           <div style={styles.emptyState}>
             <Archive size={36} color="var(--text-muted)" />
-            <div style={styles.emptyStateTitle}>No transactions found</div>
+            <div style={styles.emptyStateTitle}>{t('noTransactionsFound', language)}</div>
             <div style={styles.emptyStateDesc}>
-              Try adjusting your search or filters, or record a new transaction.
+              {language === 'he'
+                ? 'נסה לשנות את תנאי החיפוש או הסינון, או רשום תנועה חדשה.'
+                : 'Try adjusting your search or filters, or record a new transaction.'}
             </div>
           </div>
         ) : (

@@ -13,6 +13,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { t } from '../../lib/i18n';
 import {
   fetchMonthlyDashboardData,
   fetchYearlySavingsData,
@@ -23,12 +24,18 @@ import { SavingsYearlySummary, Transaction } from '../../lib/types';
 import { DrillDownLedger } from './DrillDownLedger';
 import { SavingsVisualizer } from './SavingsVisualizer';
 
+const HEBREW_MONTHS_LIST = [
+  'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+  'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
+];
+
 export const MainDashboard: React.FC = () => {
   const {
     activeHousehold,
     categories,
     transactions: contextTransactions,
     isDemoMode,
+    language,
     toggleTransactionVisibility,
   } = useAuth();
 
@@ -104,6 +111,9 @@ export const MainDashboard: React.FC = () => {
   const formatMonthLabel = (mStr: string) => {
     try {
       const [y, m] = mStr.split('-').map(Number);
+      if (language === 'he') {
+        return `${HEBREW_MONTHS_LIST[m - 1] || m} ${y}`;
+      }
       const date = new Date(y, m - 1, 1);
       return date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
     } catch {
@@ -116,9 +126,9 @@ export const MainDashboard: React.FC = () => {
     toggleTransactionVisibility(txId);
   };
 
-  const handleTransactionUpdated = (updatedTx: Transaction) => {
+  const handleTransactionUpdated = (_updatedTx: Transaction) => {
     // Re-fetch dashboard data
-    if (activeHousehold?.id) {
+    if (activeHousehold?.id && selectedMonth) {
       fetchMonthlyDashboardData(activeHousehold.id, selectedMonth, categories, isDemoMode).then(
         (mResult) => {
           setDashboardData(mResult);
@@ -133,11 +143,17 @@ export const MainDashboard: React.FC = () => {
       <div style={styles.navBar}>
         <div style={styles.navLeft}>
           <Calendar size={18} color="var(--primary)" />
-          <span style={styles.navTitle}>Statement Period:</span>
+          <span style={styles.navTitle}>
+            {language === 'he' ? 'חודש נבחר:' : 'Statement Period:'}
+          </span>
 
           <div style={styles.monthSwitcherWrap}>
-            <button style={styles.monthNavBtn} onClick={handlePrevMonth} title="Previous Month">
-              <ChevronLeft size={16} color="var(--text-secondary)" />
+            <button
+              style={styles.monthNavBtn}
+              onClick={handlePrevMonth}
+              title={t('monthNavigatorPrev', language)}
+            >
+              <ChevronRight size={16} color="var(--text-secondary)" />
             </button>
 
             <select
@@ -152,15 +168,23 @@ export const MainDashboard: React.FC = () => {
               ))}
             </select>
 
-            <button style={styles.monthNavBtn} onClick={handleNextMonth} title="Next Month">
-              <ChevronRight size={16} color="var(--text-secondary)" />
+            <button
+              style={styles.monthNavBtn}
+              onClick={handleNextMonth}
+              title={t('monthNavigatorNext', language)}
+            >
+              <ChevronLeft size={16} color="var(--text-secondary)" />
             </button>
           </div>
         </div>
 
         <div style={styles.exclusionNoticePill}>
           <EyeOff size={13} color="var(--text-muted)" />
-          <span>Soft-deleted ('is_hidden') rows excluded</span>
+          <span>
+            {language === 'he'
+              ? 'שורות מוסתרות (is_hidden) אינן נכללות בחישובים'
+              : "Soft-deleted ('is_hidden') rows excluded"}
+          </span>
         </div>
       </div>
 
@@ -170,7 +194,7 @@ export const MainDashboard: React.FC = () => {
           {/* Total Income Card */}
           <div style={styles.kpiCard}>
             <div style={styles.kpiCardTop}>
-              <span style={styles.kpiCardLabel}>Total Monthly Income</span>
+              <span style={styles.kpiCardLabel}>{t('kpiTotalIncome', language)}</span>
               <div style={{ ...styles.kpiIconWrap, backgroundColor: 'var(--success-light)' }}>
                 <TrendingUp size={18} color="var(--success-text)" />
               </div>
@@ -179,13 +203,15 @@ export const MainDashboard: React.FC = () => {
               +{currencySymbol}{' '}
               {dashboardData.totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
-            <div style={styles.kpiCardSub}>Salary & side income sources</div>
+            <div style={styles.kpiCardSub}>
+              {language === 'he' ? 'משכורות, קצבאות והכנסות נוספות' : 'Salary & side income sources'}
+            </div>
           </div>
 
           {/* Total Expenses Card */}
           <div style={styles.kpiCard}>
             <div style={styles.kpiCardTop}>
-              <span style={styles.kpiCardLabel}>Total Monthly Expenses</span>
+              <span style={styles.kpiCardLabel}>{t('kpiTotalExpenses', language)}</span>
               <div style={{ ...styles.kpiIconWrap, backgroundColor: 'var(--danger-light)' }}>
                 <TrendingDown size={18} color="var(--danger)" />
               </div>
@@ -194,13 +220,15 @@ export const MainDashboard: React.FC = () => {
               -{currencySymbol}{' '}
               {dashboardData.totalExpense.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
-            <div style={styles.kpiCardSub}>Fixed & living expense buckets</div>
+            <div style={styles.kpiCardSub}>
+              {language === 'he' ? 'הוצאות קבועות ומשתנות' : 'Fixed & living expense buckets'}
+            </div>
           </div>
 
           {/* Net Cash Flow Card */}
           <div style={styles.kpiCard}>
             <div style={styles.kpiCardTop}>
-              <span style={styles.kpiCardLabel}>Net Cash Flow</span>
+              <span style={styles.kpiCardLabel}>{t('kpiNetSavings', language)}</span>
               <div
                 style={{
                   ...styles.kpiIconWrap,
@@ -223,14 +251,16 @@ export const MainDashboard: React.FC = () => {
               {Math.abs(dashboardData.netCashFlow).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
             <div style={styles.kpiCardSub}>
-              {dashboardData.netCashFlow >= 0 ? 'Monthly surplus available to save' : 'Monthly budget deficit'}
+              {dashboardData.netCashFlow >= 0
+                ? (language === 'he' ? 'עודף חודשי זמין לחיסכון' : 'Monthly surplus available to save')
+                : (language === 'he' ? 'גירעון תקציבי חודשי' : 'Monthly budget deficit')}
             </div>
           </div>
 
           {/* Savings Rate Card */}
           <div style={styles.kpiCard}>
             <div style={styles.kpiCardTop}>
-              <span style={styles.kpiCardLabel}>Savings Rate</span>
+              <span style={styles.kpiCardLabel}>{t('kpiSavingsRate', language)}</span>
               <div style={{ ...styles.kpiIconWrap, backgroundColor: 'var(--primary-light)' }}>
                 <PieChart size={18} color="var(--primary)" />
               </div>
@@ -238,7 +268,9 @@ export const MainDashboard: React.FC = () => {
             <div style={{ ...styles.kpiCardValue, color: 'var(--primary)' }}>
               {dashboardData.savingsRate.toFixed(1)}%
             </div>
-            <div style={styles.kpiCardSub}>Share of income retained</div>
+            <div style={styles.kpiCardSub}>
+              {language === 'he' ? 'אחוז הכנסה נטו שנחסך' : 'Percentage of net income saved'}
+            </div>
           </div>
         </div>
       )}

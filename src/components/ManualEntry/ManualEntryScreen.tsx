@@ -19,6 +19,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { t } from '../../lib/i18n';
 import { ManualEntryFormData, Category } from '../../lib/types';
 import { createManualTransaction } from '../../lib/services/manualEntryService';
 import { HistoricalDataModal } from './HistoricalDataModal';
@@ -30,6 +31,7 @@ export const ManualEntryScreen: React.FC = () => {
     setActiveTab,
     addTransaction,
     isDemoMode,
+    language,
   } = useAuth();
 
   const currencySymbol = activeHousehold?.currency === 'ILS' ? '₪' : activeHousehold?.currency || '$';
@@ -111,16 +113,20 @@ export const ManualEntryScreen: React.FC = () => {
       );
 
       if (!res.success || !res.transaction) {
-        throw new Error(res.error || 'Failed to save manual transaction');
+        throw new Error(res.error || (language === 'he' ? 'שגיאה בשמירת התנועה' : 'Failed to save manual transaction'));
       }
 
       // Add to local state
       addTransaction(res.transaction);
 
       setSuccessMsg(
-        `Transaction of ${currencySymbol}${parseFloat(formData.amount).toLocaleString('en-US', {
-          minimumFractionDigits: 2,
-        })} for "${formData.payee_name}" recorded successfully!`
+        language === 'he'
+          ? `תנועה בסך ${currencySymbol}${parseFloat(formData.amount).toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+            })} עבור "${formData.payee_name}" נרשמה בהצלחה!`
+          : `Transaction of ${currencySymbol}${parseFloat(formData.amount).toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+            })} for "${formData.payee_name}" recorded successfully!`
       );
 
       // Reset form
@@ -136,7 +142,7 @@ export const ManualEntryScreen: React.FC = () => {
         is_hidden: false,
       });
     } catch (err: any) {
-      setErrorMsg(err.message || 'An error occurred while saving the transaction');
+      setErrorMsg(err.message || (language === 'he' ? 'שגיאה בשמירת התנועה' : 'An error occurred while saving the transaction'));
     } finally {
       setIsSubmitting(false);
     }
@@ -147,9 +153,13 @@ export const ManualEntryScreen: React.FC = () => {
       {/* Header & Quick Action */}
       <div style={styles.header}>
         <div>
-          <h2 style={styles.title}>Manual Transaction Entry</h2>
+          <h2 style={styles.title}>
+            {language === 'he' ? 'הזנת תנועה ידנית מהירה' : 'Manual Transaction Entry'}
+          </h2>
           <p style={styles.subtitle}>
-            Quickly log everyday expenses, income receipts, or savings deposits into your household ledger.
+            {language === 'he'
+              ? 'רישום מיידי של הוצאה, הכנסה או הפקדה לחיסכון ישירות לספר החשבונות של משק הבית.'
+              : 'Quickly log everyday expenses, income receipts, or savings deposits into your household ledger.'}
           </p>
         </div>
 
@@ -159,7 +169,9 @@ export const ManualEntryScreen: React.FC = () => {
           onClick={() => setIsHistoricalModalOpen(true)}
         >
           <FileSpreadsheet size={15} color="var(--primary)" />
-          <span>Historical Summary Ingestion</span>
+          <span>
+            {language === 'he' ? 'שחזור קובץ שנתי (טבלה)' : 'Historical Summary Ingestion'}
+          </span>
         </button>
       </div>
 
@@ -167,7 +179,9 @@ export const ManualEntryScreen: React.FC = () => {
       <div style={styles.presetsCard}>
         <div style={styles.presetsHeader}>
           <Sparkles size={14} color="var(--primary)" />
-          <span style={styles.presetsTitle}>Quick Templates:</span>
+          <span style={styles.presetsTitle}>
+            {language === 'he' ? 'תבניות מהירות בלחיצה אחת:' : 'Quick Templates:'}
+          </span>
         </div>
         <div style={styles.presetsRow}>
           <button
@@ -183,7 +197,7 @@ export const ManualEntryScreen: React.FC = () => {
               })
             }
           >
-            🛒 Supermarket (₪450)
+            🛒 {language === 'he' ? 'סופרמרקט (₪450)' : 'Supermarket (₪450)'}
           </button>
           <button
             style={styles.presetPill}
@@ -198,7 +212,7 @@ export const ManualEntryScreen: React.FC = () => {
               })
             }
           >
-            ⛽ Fuel / Gas (₪320)
+            ⛽ {language === 'he' ? 'דלק ונסיעות (₪320)' : 'Fuel / Gas (₪320)'}
           </button>
           <button
             style={styles.presetPill}
@@ -213,7 +227,7 @@ export const ManualEntryScreen: React.FC = () => {
               })
             }
           >
-            💊 Super-Pharm (₪145)
+            💊 {language === 'he' ? 'סופר-פארם (₪145)' : 'Super-Pharm (₪145)'}
           </button>
           <button
             style={styles.presetPill}
@@ -227,7 +241,7 @@ export const ManualEntryScreen: React.FC = () => {
               })
             }
           >
-            💼 Main Salary (₪24.5k)
+            💼 {language === 'he' ? 'משכורת חודשית (₪24.5k)' : 'Main Salary (₪24.5k)'}
           </button>
           <button
             style={styles.presetPill}
@@ -241,7 +255,7 @@ export const ManualEntryScreen: React.FC = () => {
               })
             }
           >
-            🏦 Savings Deposit (₪2,500)
+            🏦 {language === 'he' ? 'הפקדה לחיסכון (₪2,500)' : 'Savings Deposit (₪2,500)'}
           </button>
         </div>
       </div>

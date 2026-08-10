@@ -16,20 +16,24 @@ import {
   PlusCircle,
   FileSpreadsheet,
   Landmark,
+  Globe,
 } from 'lucide-react';
+import { t } from '../lib/i18n';
 
 export const Header: React.FC = () => {
   const {
     user,
     households,
     activeHousehold,
-    switchHousehold,
-    addHousehold,
-    logout,
     activeTab,
     setActiveTab,
     isDemoMode,
     isSupabaseReady,
+    language,
+    setLanguage,
+    switchHousehold,
+    logout,
+    addHousehold,
   } = useAuth();
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -48,16 +52,16 @@ export const Header: React.FC = () => {
   };
 
   const navItems = [
-    { id: 'dashboard', label: 'Overview', icon: Home },
-    { id: 'transactions', label: 'Transactions', icon: Receipt },
-    { id: 'manual-entry', label: 'Manual Entry', icon: PlusCircle },
-    { id: 'import', label: 'Import Wizard', icon: UploadCloud },
-    { id: 'bank-accounts', label: 'Bank Sync', icon: Landmark },
-    { id: 'migration', label: 'Yearly Migration', icon: FileSpreadsheet },
-    { id: 'budgets', label: 'Budgets', icon: PieChart },
-    { id: 'savings', label: 'Savings Ledger', icon: PiggyBank },
-    { id: 'mappings', label: 'Auto-Mapping', icon: Sliders },
-    { id: 'schema', label: 'Supabase SQL', icon: Database },
+    { id: 'dashboard', label: t('navOverview', language), icon: Home },
+    { id: 'transactions', label: t('navTransactions', language), icon: Receipt },
+    { id: 'manual-entry', label: t('navManualEntry', language), icon: PlusCircle },
+    { id: 'import', label: t('navImport', language), icon: UploadCloud },
+    { id: 'bank-accounts', label: t('navBankSync', language), icon: Landmark },
+    { id: 'migration', label: t('navMigration', language), icon: FileSpreadsheet },
+    { id: 'budgets', label: t('navBudgets', language), icon: PieChart },
+    { id: 'savings', label: t('navSavings', language), icon: PiggyBank },
+    { id: 'mappings', label: t('navMappings', language), icon: Sliders },
+    { id: 'schema', label: t('navSchema', language), icon: Database },
   ] as const;
 
   return (
@@ -72,7 +76,9 @@ export const Header: React.FC = () => {
             <div style={styles.logoBox}>
               <PieChart size={18} color="var(--primary)" />
             </div>
-            <span style={styles.brandName}>HomeBudget</span>
+            <span style={styles.brandName}>
+              {language === 'he' ? 'ניהול תקציב' : 'HomeBudget'}
+            </span>
           </button>
 
           {/* Household Tenant Switcher */}
@@ -83,7 +89,7 @@ export const Header: React.FC = () => {
             >
               <div style={styles.tenantIndicatorDot} />
               <span style={styles.tenantName}>
-                {activeHousehold?.name || 'Select Household'}
+                {activeHousehold?.name || (language === 'he' ? 'בחר משק בית' : 'Select Household')}
               </span>
               <span style={styles.currencyPill}>{activeHousehold?.currency || 'ILS'}</span>
               <ChevronDown size={14} color="var(--text-secondary)" />
@@ -91,7 +97,9 @@ export const Header: React.FC = () => {
 
             {isDropdownOpen && (
               <div style={styles.dropdownMenu} className="animate-fade-in">
-                <div style={styles.dropdownHeader}>Switch Household (Tenant)</div>
+                <div style={styles.dropdownHeader}>
+                  {language === 'he' ? 'החלף משק בית' : 'Switch Household'}
+                </div>
                 {households.map((h) => (
                   <button
                     key={h.id}
@@ -124,7 +132,9 @@ export const Header: React.FC = () => {
                   }}
                 >
                   <Plus size={14} color="var(--primary)" />
-                  <span style={styles.addHhText}>Add New Household</span>
+                  <span style={styles.addHhText}>
+                    {language === 'he' ? '+ צור משק בית חדש' : 'Add New Household'}
+                  </span>
                 </button>
               </div>
             )}
@@ -135,18 +145,28 @@ export const Header: React.FC = () => {
         <button
           style={styles.topBarNewEntryBtn}
           onClick={() => setActiveTab('manual-entry')}
-          title="Create a new manual transaction"
+          title={t('newEntryBtn', language)}
         >
           <PlusCircle size={15} color="#FFFFFF" />
-          <span>+ New Entry</span>
+          <span>{t('newEntryBtn', language)}</span>
         </button>
 
         {/* Right Section */}
         <div style={styles.rightSection}>
+          {/* Language Switcher Toggle */}
+          <button
+            style={styles.langToggleBtn}
+            onClick={() => setLanguage(language === 'he' ? 'en' : 'he')}
+            title="Toggle Language (עברית / English)"
+          >
+            <Globe size={14} color="var(--text-secondary)" />
+            <span>{language === 'he' ? 'English' : 'עברית'}</span>
+          </button>
+
           {isDemoMode && (
             <div style={styles.demoBadge}>
               <Sparkles size={12} color="var(--warning-text)" />
-              <span>Demo Mode</span>
+              <span>{language === 'he' ? 'מצב הדגמה' : 'Demo Mode'}</span>
             </div>
           )}
 
@@ -155,11 +175,15 @@ export const Header: React.FC = () => {
               <User size={14} color="var(--primary)" />
             </div>
             <span style={styles.userName}>
-              {user?.full_name || user?.email?.split('@')[0] || 'User'}
+              {user?.full_name || user?.email?.split('@')[0] || 'משתמש'}
             </span>
           </div>
 
-          <button style={styles.logoutBtn} onClick={logout} title="Sign Out">
+          <button
+            style={styles.logoutBtn}
+            onClick={logout}
+            title={t('logout', language)}
+          >
             <LogOut size={16} color="var(--text-secondary)" />
           </button>
         </div>
@@ -400,7 +424,21 @@ const styles: { [key: string]: React.CSSProperties } = {
   rightSection: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
+    gap: '10px',
+  },
+  langToggleBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    padding: '5px 10px',
+    backgroundColor: 'var(--bg-surface)',
+    border: '1px solid var(--border-main)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: '0.75rem',
+    fontWeight: '600',
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   demoBadge: {
     display: 'flex',

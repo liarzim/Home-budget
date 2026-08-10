@@ -19,6 +19,8 @@ import {
   mockSavings,
 } from '../lib/mockData';
 
+import { Language } from '../lib/i18n';
+
 interface AuthContextType {
   user: Profile | null;
   households: Household[];
@@ -31,6 +33,9 @@ interface AuthContextType {
   isLoading: boolean;
   isDemoMode: boolean;
   isSupabaseReady: boolean;
+  language: Language;
+  setLanguage: (lang: Language) => void;
+  dir: 'rtl' | 'ltr';
   activeTab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import' | 'manual-entry' | 'migration' | 'bank-accounts';
   setActiveTab: (tab: 'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import' | 'manual-entry' | 'migration' | 'bank-accounts') => void;
   loginWithOAuth: (provider: OAuthProvider) => Promise<{ success: boolean; error?: string }>;
@@ -58,6 +63,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'budgets' | 'savings' | 'mappings' | 'schema' | 'import' | 'manual-entry' | 'migration' | 'bank-accounts'>('dashboard');
+
+  // Language State - Default to Hebrew (RTL)
+  const [language, setLanguageState] = useState<Language>(() => {
+    const saved = localStorage.getItem('app_language');
+    return (saved as Language) || 'he';
+  });
+
+  const dir: 'rtl' | 'ltr' = language === 'he' ? 'rtl' : 'ltr';
+
+  const setLanguage = (newLang: Language) => {
+    setLanguageState(newLang);
+    localStorage.setItem('app_language', newLang);
+    document.documentElement.dir = newLang === 'he' ? 'rtl' : 'ltr';
+    document.documentElement.lang = newLang;
+  };
+
+  useEffect(() => {
+    document.documentElement.dir = language === 'he' ? 'rtl' : 'ltr';
+    document.documentElement.lang = language;
+  }, [language]);
 
   useEffect(() => {
     checkInitialAuth();
@@ -382,6 +407,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         isDemoMode,
         isSupabaseReady: isSupabaseConfigured,
+        language,
+        setLanguage,
+        dir,
         activeTab,
         setActiveTab,
         loginWithOAuth,
