@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Household Budget",
+    "slug": "household-budget",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "householdbudget",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F8FAFC"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.householdbudget.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F8FAFC"
+      },
+      "package": "com.householdbudget.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": []
+  }
+}
