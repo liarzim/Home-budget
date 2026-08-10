@@ -9,6 +9,7 @@ import { SavingsView } from './components/SavingsView';
 import { BusinessMappingView } from './components/BusinessMappingView';
 import { SchemaViewer } from './components/SchemaViewer';
 import { ImportWizard } from './components/ImportWizard/ImportWizard';
+import { MainDashboard } from './components/Dashboard/MainDashboard';
 
 const MainScreen: React.FC = () => {
   const { user, isDemoMode, isLoading, activeTab } = useAuth();
@@ -30,12 +31,7 @@ const MainScreen: React.FC = () => {
     <div style={styles.appContainer}>
       <Header />
       <main style={styles.mainContentContainer} className="animate-fade-in">
-        {activeTab === 'dashboard' && (
-          <>
-            <KPICards />
-            <TransactionsView />
-          </>
-        )}
+        {activeTab === 'dashboard' && <MainDashboard />}
         {activeTab === 'transactions' && <TransactionsView />}
         {activeTab === 'import' && <ImportWizard />}
         {activeTab === 'budgets' && <BudgetsView />}

@@ -177,3 +177,46 @@ export interface ImportBatchSummary {
   autoCategorizedCount: number;
 }
 
+// ==========================================
+// DASHBOARD & DRILL-DOWN VISUALIZATION TYPES
+// ==========================================
+
+export interface CategoryDrillDown {
+  category: Category;
+  actualAmount: number;
+  budgetAmount: number;
+  transactions: Transaction[];
+  percentageOfBudget: number;
+}
+
+export interface MacroGroup {
+  id: string;
+  name: string;
+  hebrewName: string;
+  type: 'expense' | 'income';
+  icon: string;
+  totalAmount: number;
+  totalBudget: number;
+  categories: CategoryDrillDown[];
+}
+
+export interface SavingsDistributionItem {
+  type: string;
+  label: string;
+  amount: number;
+  percentage: number;
+  color: string;
+  monthlyDeposit?: number;
+}
+
+export interface SavingsYearlySummary {
+  year: number;
+  startOfYearBaseline: number;
+  currentTotal: number;
+  netGrowth: number;
+  netGrowthPercentage: number;
+  monthlyAverageDeposit: number;
+  items: SavingsDistributionItem[];
+}
+
+
