@@ -262,9 +262,10 @@ function buildMacroGroups(
       }
     }
 
-    // Build the dynamic MacroGroup array
+    // Build the dynamic MacroGroup array - Expenses only for the dashboard ledger
     const resultGroups: MacroGroup[] = [];
     macroBuckets.forEach(({ macro, drills }) => {
+      if (macro.type !== 'expense') return; // Only show expense macro groups on main dashboard breakdown
       drills.sort((a, b) => b.actualAmount - a.actualAmount);
       const totalAmount = drills.reduce((sum, c) => sum + c.actualAmount, 0);
       const totalBudget = drills.reduce((sum, c) => sum + c.budgetAmount, 0);
@@ -273,9 +274,9 @@ function buildMacroGroups(
         id: macro.id,
         name: macro.name,
         hebrewName: macro.name,
-        type: macro.type,
+        type: 'expense',
         color: macro.color,
-        icon: macro.icon || (macro.type === 'income' ? 'Briefcase' : 'ShoppingBag'),
+        icon: macro.icon || 'ShoppingBag',
         totalAmount,
         totalBudget,
         categories: drills,
@@ -288,29 +289,13 @@ function buildMacroGroups(
       resultGroups.push({
         id: 'fallback_expenses',
         name: 'Other Expenses',
-        hebrewName: 'הוצאות כלליות',
+        hebrewName: 'הוצאות כלליות נוספות',
         type: 'expense',
         icon: 'ShoppingBag',
         color: '#6366F1',
         totalAmount,
         totalBudget,
         categories: fallbackExpenseDrills,
-      });
-    }
-
-    if (fallbackIncomeDrills.length > 0) {
-      const totalAmount = fallbackIncomeDrills.reduce((sum, c) => sum + c.actualAmount, 0);
-      const totalBudget = fallbackIncomeDrills.reduce((sum, c) => sum + c.budgetAmount, 0);
-      resultGroups.push({
-        id: 'fallback_incomes',
-        name: 'Other Incomes',
-        hebrewName: 'הכנסות כלליות',
-        type: 'income',
-        icon: 'Gift',
-        color: '#10B981',
-        totalAmount,
-        totalBudget,
-        categories: fallbackIncomeDrills,
       });
     }
 
@@ -447,24 +432,6 @@ function buildMacroGroups(
       'ShoppingBag',
       '#F59E0B',
       variableDrills
-    ),
-    makeGroup(
-      'income_salary',
-      'Primary Salary & Incomes',
-      'משכורות עיקריות',
-      'income',
-      'Briefcase',
-      '#10B981',
-      salaryDrills
-    ),
-    makeGroup(
-      'income_other',
-      'Allowances, Grants & Side Yields',
-      'קצבאות, מילואים והשקעות',
-      'income',
-      'Gift',
-      '#06B6D4',
-      otherIncomeDrills
     ),
   ];
 }

@@ -476,44 +476,33 @@ BEGIN
         INSERT INTO public.household_members (household_id, user_id, role, is_default)
         VALUES (new_household_id, NEW.id, 'owner', true);
 
-        -- 4. Seed Essential Categories
+        -- 4. Seed Essential Expense Categories
         INSERT INTO public.categories (household_id, name, type, color, icon, is_system) VALUES
-            (new_household_id, 'Salary & Income', 'income', '#10B981', 'briefcase', true),
-            (new_household_id, 'Investments & Returns', 'income', '#059669', 'trending-up', true),
-            (new_household_id, 'Other Income', 'income', '#34D399', 'plus-circle', true),
-            (new_household_id, 'Housing & Rent', 'expense', '#4F46E5', 'home', true),
-            (new_household_id, 'Groceries & Supermarket', 'expense', '#F59E0B', 'shopping-cart', true),
-            (new_household_id, 'Utilities & Bills', 'expense', '#6366F1', 'zap', true),
-            (new_household_id, 'Transportation & Fuel', 'expense', '#EC4899', 'car', true),
-            (new_household_id, 'Healthcare & Pharmacy', 'expense', '#EF4444', 'heart-pulse', true),
-            (new_household_id, 'Dining & Restaurants', 'expense', '#F97316', 'utensils', true),
-            (new_household_id, 'Leisure & Entertainment', 'expense', '#8B5CF6', 'film', true),
-            (new_household_id, 'Education & Kids', 'expense', '#06B6D4', 'book-open', true),
-            (new_household_id, 'Insurance & Financials', 'expense', '#64748B', 'shield-check', true);
+            (new_household_id, 'מזון וסופרמרקט', 'expense', '#10B981', 'shopping-cart', true),
+            (new_household_id, 'דיור ושכירות', 'expense', '#4F46E5', 'home', true),
+            (new_household_id, 'תחבורה ודלק', 'expense', '#06B6D4', 'car', true),
+            (new_household_id, 'חשבונות ותקשורת', 'expense', '#6366F1', 'zap', true),
+            (new_household_id, 'מסעדות ובילויים', 'expense', '#F59E0B', 'utensils', true),
+            (new_household_id, 'בריאות ופארם', 'expense', '#EF4444', 'heart-pulse', true),
+            (new_household_id, 'קניות וביגוד', 'expense', '#EC4899', 'shopping-bag', true),
+            (new_household_id, 'ביטוחים ופיננסים', 'expense', '#64748B', 'shield-check', true),
+            (new_household_id, 'משכורת', 'income', '#10B981', 'briefcase', true);
 
-        -- 5. Seed Common Israeli / International Merchant Mappings
+        -- 5. Seed Common Israeli Merchant Mappings
         INSERT INTO public.business_mapping (household_id, pattern, category_id, priority)
-        SELECT new_household_id, 'SHUFERSAL', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Groceries & Supermarket'
+        SELECT new_household_id, 'SHUFERSAL', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'מזון וסופרמרקט'
         UNION ALL
-        SELECT new_household_id, 'SUPER-SAL', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Groceries & Supermarket'
+        SELECT new_household_id, 'SUPER-SAL', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'מזון וסופרמרקט'
         UNION ALL
-        SELECT new_household_id, 'RAMI LEVI', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Groceries & Supermarket'
+        SELECT new_household_id, 'RAMI LEVI', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'מזון וסופרמרקט'
         UNION ALL
-        SELECT new_household_id, 'YOHANANOF', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Groceries & Supermarket'
+        SELECT new_household_id, 'PAZ', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'תחבורה ודלק'
         UNION ALL
-        SELECT new_household_id, 'PAZ', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Transportation & Fuel'
+        SELECT new_household_id, 'SONOL', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'תחבורה ודלק'
         UNION ALL
-        SELECT new_household_id, 'SONOL', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Transportation & Fuel'
+        SELECT new_household_id, 'SUPER-PHARM', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'בריאות ופארם'
         UNION ALL
-        SELECT new_household_id, 'SUPER-PHARM', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Healthcare & Pharmacy'
-        UNION ALL
-        SELECT new_household_id, 'BE PHARM', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Healthcare & Pharmacy'
-        UNION ALL
-        SELECT new_household_id, 'NETFLIX', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Leisure & Entertainment'
-        UNION ALL
-        SELECT new_household_id, 'SPOTIFY', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Leisure & Entertainment'
-        UNION ALL
-        SELECT new_household_id, 'IEC', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Utilities & Bills';
+        SELECT new_household_id, 'NETFLIX', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'מסעדות ובילויים';
     END IF;
 
     RETURN NEW;

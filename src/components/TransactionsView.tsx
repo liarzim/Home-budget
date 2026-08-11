@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { t } from '../lib/i18n';
+import { t, formatCategoryName } from '../lib/i18n';
 import { TransactionType } from '../lib/types';
 import {
   Plus,
@@ -19,11 +19,13 @@ export const TransactionsView: React.FC = () => {
     transactions,
     categories,
     businessMappings,
+    cardMappings,
     activeHousehold,
     setActiveTab,
     toggleTransactionVisibility,
     addTransaction,
     language,
+    dir,
   } = useAuth();
 
   const currency = activeHousehold?.currency === 'ILS' ? '₪' : activeHousehold?.currency || '$';
@@ -382,11 +384,15 @@ export const TransactionsView: React.FC = () => {
 
       {/* Add Transaction Modal */}
       {isAddModalOpen && (
-        <div style={styles.modalOverlay}>
+        <div style={styles.modalOverlay} dir={dir}>
           <div style={styles.modalCard} className="animate-fade-in">
-            <h3 style={styles.modalTitle}>Record New Transaction</h3>
+            <h3 style={styles.modalTitle}>
+              {language === 'he' ? 'רישום תנועה חדשה' : 'Record New Transaction'}
+            </h3>
             <p style={styles.modalSubtitle}>
-              Transactions are securely stored in your tenant with auto-categorization matching.
+              {language === 'he'
+                ? 'התנועות נשמרות באופן מאובטח עם זיהוי סיווג אוטומטי לפי בית עסק.'
+                : 'Transactions are securely stored in your tenant with auto-categorization matching.'}
             </p>
 
             <form onSubmit={handleSaveTransaction}>
@@ -400,7 +406,7 @@ export const TransactionsView: React.FC = () => {
                   }}
                   onClick={() => setNewType('expense')}
                 >
-                  Expense
+                  {language === 'he' ? 'הוצאה' : 'Expense'}
                 </button>
                 <button
                   type="button"
@@ -410,17 +416,23 @@ export const TransactionsView: React.FC = () => {
                   }}
                   onClick={() => setNewType('income')}
                 >
-                  Income
+                  {language === 'he' ? 'הכנסה' : 'Income'}
                 </button>
               </div>
 
               {/* Payee with Auto-Mapping */}
               <div style={styles.formGroup}>
-                <label style={styles.inputLabel}>Payee / Merchant Name</label>
+                <label style={styles.inputLabel}>
+                  {language === 'he' ? 'שם בית עסק / מוטב' : 'Payee / Merchant Name'}
+                </label>
                 <input
                   style={styles.textInput}
                   type="text"
-                  placeholder="e.g. SHUFERSAL, PAZ, NETFLIX, Salary"
+                  placeholder={
+                    language === 'he'
+                      ? 'לדוגמה: שופרסל, פז, נטפליקס, משכורת...'
+                      : 'e.g. SHUFERSAL, PAZ, NETFLIX, Salary'
+                  }
                   value={newPayee}
                   onChange={(e) => handlePayeeChange(e.target.value)}
                   required
@@ -429,7 +441,8 @@ export const TransactionsView: React.FC = () => {
                   <div style={styles.autoDetectedPill}>
                     <Sparkles size={13} color="var(--primary)" />
                     <span>
-                      Auto-matched rule for "{detectedRule?.pattern}": <strong>{detectedCategory.name}</strong>
+                      {language === 'he' ? 'זוהה סיווג אוטומטי לפי הכלל ' : 'Auto-matched rule for '}
+                      "{detectedRule?.pattern}": <strong>{formatCategoryName(detectedCategory.name, language)}</strong>
                     </span>
                   </div>
                 )}
@@ -438,7 +451,9 @@ export const TransactionsView: React.FC = () => {
               {/* Amount & Date */}
               <div style={styles.twoColumnRow}>
                 <div style={{ ...styles.formGroup, flex: 1 }}>
-                  <label style={styles.inputLabel}>Amount ({currency})</label>
+                  <label style={styles.inputLabel}>
+                    {language === 'he' ? `סכום (${currency})` : `Amount (${currency})`}
+                  </label>
                   <input
                     style={styles.textInput}
                     type="number"
@@ -451,7 +466,9 @@ export const TransactionsView: React.FC = () => {
                 </div>
 
                 <div style={{ ...styles.formGroup, flex: 1 }}>
-                  <label style={styles.inputLabel}>Date</label>
+                  <label style={styles.inputLabel}>
+                    {language === 'he' ? 'תאריך' : 'Date'}
+                  </label>
                   <input
                     style={styles.textInput}
                     type="date"
@@ -464,7 +481,11 @@ export const TransactionsView: React.FC = () => {
 
               {/* Category Picker */}
               <div style={styles.formGroup}>
-                <label style={styles.inputLabel}>Category</label>
+                <label style={styles.inputLabel}>
+                  {language === 'he'
+                    ? newType === 'income' ? 'סוג הכנסה (קטגוריה)' : 'סוג הוצאה (קטגוריה)'
+                    : 'Category'}
+                </label>
                 <div style={styles.catPickerScroll}>
                   {categories
                     .filter((c) => c.type === newType)
@@ -478,8 +499,8 @@ export const TransactionsView: React.FC = () => {
                             ...styles.catPill,
                             ...(isSelected
                               ? {
-                                  backgroundColor: cat.color,
-                                  borderColor: cat.color,
+                                  backgroundColor: cat.color || 'var(--primary)',
+                                  borderColor: cat.color || 'var(--primary)',
                                   color: '#FFFFFF',
                                   fontWeight: '700',
                                 }
@@ -487,7 +508,7 @@ export const TransactionsView: React.FC = () => {
                           }}
                           onClick={() => setNewCategoryId(cat.id)}
                         >
-                          {cat.name}
+                          {formatCategoryName(cat.name, language)}
                         </button>
                       );
                     })}
@@ -497,22 +518,52 @@ export const TransactionsView: React.FC = () => {
               {/* Payment Method & Last 4 Digits */}
               <div style={styles.twoColumnRow}>
                 <div style={{ ...styles.formGroup, flex: 1 }}>
-                  <label style={styles.inputLabel}>Payment Method</label>
-                  <input
+                  <label style={styles.inputLabel}>
+                    {language === 'he' ? 'אמצעי תשלום / מקור' : 'Payment Method'}
+                  </label>
+                  <select
                     style={styles.textInput}
-                    type="text"
-                    placeholder="credit_card / bank / cash"
                     value={newPaymentMethod}
                     onChange={(e) => setNewPaymentMethod(e.target.value)}
-                  />
+                  >
+                    <option value="credit_card">
+                      {language === 'he' ? '💳 כרטיס אשראי' : '💳 Credit Card'}
+                    </option>
+                    {cardMappings && cardMappings.length > 0 && cardMappings.map((cm) => (
+                      <option key={cm.id} value={cm.raw_pattern || cm.display_name}>
+                        {cm.display_name} {cm.card_last_digits ? `(•••• ${cm.card_last_digits})` : ''}
+                      </option>
+                    ))}
+                    <option value="bank_transfer">
+                      {language === 'he' ? '🏦 העברה בנקאית' : '🏦 Bank Transfer'}
+                    </option>
+                    <option value="standing_order">
+                      {language === 'he' ? '🔄 הוראת קבע' : '🔄 Standing Order'}
+                    </option>
+                    <option value="cash">
+                      {language === 'he' ? '💵 מזומן' : '💵 Cash'}
+                    </option>
+                    <option value="check">
+                      {language === 'he' ? '📑 המחאה (צ\'ק)' : '📑 Check'}
+                    </option>
+                    <option value="bit">
+                      {language === 'he' ? '📱 Bit / אפליקציה' : '📱 Bit / App'}
+                    </option>
+                    <option value="other">
+                      {language === 'he' ? '🔘 אחר' : '🔘 Other'}
+                    </option>
+                  </select>
                 </div>
+
                 <div style={{ ...styles.formGroup, flex: 1 }}>
-                  <label style={styles.inputLabel}>Card Last 4 Digits</label>
+                  <label style={styles.inputLabel}>
+                    {language === 'he' ? '4 ספרות כרטיס אחרונות' : 'Card Last 4 Digits'}
+                  </label>
                   <input
                     style={styles.textInput}
                     type="text"
                     maxLength={4}
-                    placeholder="e.g. 2285"
+                    placeholder={language === 'he' ? 'לדוגמה: 2285' : 'e.g. 2285'}
                     value={newCardDigits}
                     onChange={(e) => setNewCardDigits(e.target.value)}
                   />
@@ -521,11 +572,15 @@ export const TransactionsView: React.FC = () => {
 
               {/* Notes */}
               <div style={styles.formGroup}>
-                <label style={styles.inputLabel}>Notes (Optional)</label>
+                <label style={styles.inputLabel}>
+                  {language === 'he' ? 'הערות (אופציונלי)' : 'Notes (Optional)'}
+                </label>
                 <input
                   style={styles.textInput}
                   type="text"
-                  placeholder="Additional remarks..."
+                  placeholder={
+                    language === 'he' ? 'הערות נוספות...' : 'Additional remarks...'
+                  }
                   value={newNotes}
                   onChange={(e) => setNewNotes(e.target.value)}
                 />
@@ -537,10 +592,10 @@ export const TransactionsView: React.FC = () => {
                   style={styles.cancelBtn}
                   onClick={() => setIsAddModalOpen(false)}
                 >
-                  Cancel
+                  {language === 'he' ? 'ביטול' : 'Cancel'}
                 </button>
                 <button type="submit" style={styles.submitBtn}>
-                  Save Transaction
+                  {language === 'he' ? 'שמור תנועה' : 'Save Transaction'}
                 </button>
               </div>
             </form>
