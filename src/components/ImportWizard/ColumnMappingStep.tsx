@@ -6,11 +6,16 @@ import {
   Tag,
   CreditCard,
   FileText,
-  Sparkles,
-  ArrowRight,
   Sliders,
   CheckCircle2,
   AlertCircle,
+  Hash,
+  Receipt,
+  Globe,
+  Layers,
+  ArrowRightLeft,
+  Sparkles,
+  HelpCircle,
 } from 'lucide-react';
 import { ParsedSheet, ColumnMapping, AmountMappingMode } from '../../lib/types';
 
@@ -36,7 +41,7 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
   };
 
   const isFormValid =
-    Boolean(mapping.dateColumn) &&
+    Boolean(mapping.dateColumn || mapping.billingDateColumn) &&
     Boolean(mapping.payeeColumn) &&
     (mapping.amountMode === 'single'
       ? Boolean(mapping.amountColumn)
@@ -44,100 +49,114 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
 
   return (
     <div style={styles.container} className="animate-fade-in">
+      {/* Header */}
       <div style={styles.header}>
-        <h2 style={styles.title}>2. Column Mapping Wizard</h2>
+        <div style={styles.stepBadge}>שלב 2 • מיפוי עמודות הדוח</div>
+        <h2 style={styles.title}>קישור עמודות מקובץ האקסל לשדות המערכת</h2>
         <p style={styles.subtitle}>
-          Link the columns from your statement to our system transaction fields. Auto-detected matches are pre-selected.
+          התאימו את עמודות הדוח הפיננסי (כרטיס אשראי, בנק או אפליקציית תשלומים). המערכת זיהתה ושיבצה מראש את העמודות המתאימות ביותר.
         </p>
       </div>
 
-      {/* Amount Mode Switcher */}
-      <div style={styles.modeCard}>
-        <div style={styles.modeLeft}>
-          <Sliders size={16} color="var(--primary)" />
-          <div>
-            <div style={styles.modeTitle}>Amount Structure</div>
-            <div style={styles.modeDesc}>
-              Does your statement have one column for all amounts, or separate Debit & Credit columns?
+      {/* Top Configuration Bar: Amount Mode & Bulk Card Setting */}
+      <div style={styles.topConfigGrid}>
+        {/* Card 1: Amount Structure */}
+        <div style={styles.configCard}>
+          <div style={styles.configCardHeader}>
+            <div style={styles.configIconWrap}>
+              <Sliders size={16} color="var(--primary)" />
             </div>
+            <div>
+              <div style={styles.configTitle}>מבנה סכומי החיוב (Amount Structure)</div>
+              <div style={styles.configDesc}>
+                האם בדוח יש עמודת סכום אחת, או עמודות נפרדות לחיוב וזיכוי (חובה / זכות)?
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.modeButtonGroup}>
+            <button
+              type="button"
+              style={{
+                ...styles.modeBtn,
+                ...(mapping.amountMode === 'single' ? styles.modeBtnActive : {}),
+              }}
+              onClick={() => handleFieldChange('amountMode', 'single')}
+            >
+              עמודת סכום יחידה (Single)
+            </button>
+            <button
+              type="button"
+              style={{
+                ...styles.modeBtn,
+                ...(mapping.amountMode === 'debit_credit' ? styles.modeBtnActive : {}),
+              }}
+              onClick={() => handleFieldChange('amountMode', 'debit_credit')}
+            >
+              עמודות נפרדות (חובה / זכות)
+            </button>
           </div>
         </div>
 
-        <div style={styles.modeButtonGroup}>
-          <button
-            style={{
-              ...styles.modeBtn,
-              ...(mapping.amountMode === 'single' ? styles.modeBtnActive : {}),
-            }}
-            onClick={() => handleFieldChange('amountMode', 'single')}
-          >
-            Single Amount Column
-          </button>
-          <button
-            style={{
-              ...styles.modeBtn,
-              ...(mapping.amountMode === 'debit_credit' ? styles.modeBtnActive : {}),
-            }}
-            onClick={() => handleFieldChange('amountMode', 'debit_credit')}
-          >
-            Separate Debit / Credit Columns
-          </button>
+        {/* Card 2: Bulk Card Assignment */}
+        <div style={styles.configCard}>
+          <div style={styles.configCardHeader}>
+            <div style={{ ...styles.configIconWrap, backgroundColor: 'rgba(79, 70, 229, 0.12)' }}>
+              <CreditCard size={16} color="var(--primary)" />
+            </div>
+            <div>
+              <div style={styles.configTitle}>
+                הגדרת שם כרטיס אחיד לכל הקובץ (Bulk Card Name)
+              </div>
+              <div style={styles.configDesc}>
+                אם כל השורות בקובץ שייכות לאותו כרטיס (למשל ויזה כאל 1234), הזינו כאן:
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.bulkCardInputRow}>
+            <input
+              type="text"
+              style={styles.bulkTextInput}
+              placeholder="לדוגמה: כרטיס ויזה כאל 5678, מאסטרקארד זהב..."
+              value={mapping.bulkPaymentMethod || ''}
+              onChange={(e) => handleFieldChange('bulkPaymentMethod', e.target.value)}
+            />
+            {mapping.bulkPaymentMethod && (
+              <button
+                type="button"
+                style={styles.clearBulkBtn}
+                onClick={() => handleFieldChange('bulkPaymentMethod', '')}
+              >
+                נקה
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Required Mapping Grid */}
+      {/* Section 1: Core 7 Mandatory & Essential Transaction Fields */}
       <div style={styles.sectionCard}>
         <div style={styles.sectionHeader}>
-          <span style={styles.sectionTitle}>Required Transaction Fields</span>
-          <span style={styles.requiredPill}>Mandatory</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Layers size={18} color="var(--primary)" />
+            <span style={styles.sectionTitle}>שדות התנועה המרכזיים (Core Transaction Fields)</span>
+          </div>
+          <span style={styles.requiredPill}>שדות מומלצים וחובה</span>
         </div>
 
         <div style={styles.fieldsGrid}>
-          {/* 1. Transaction Date */}
+          {/* 1. Payee / Merchant Name */}
           <div style={styles.fieldCard}>
             <div style={styles.fieldTop}>
-              <div style={styles.fieldIconBox}>
-                <Calendar size={16} color="var(--primary)" />
+              <div style={{ ...styles.fieldIconBox, backgroundColor: 'rgba(16, 185, 129, 0.12)' }}>
+                <Store size={16} color="#10B981" />
               </div>
               <div style={{ flex: 1 }}>
                 <div style={styles.fieldLabel}>
-                  Transaction Date <span style={{ color: 'var(--danger)' }}>*</span>
+                  1. שם בית עסק / ספק (Payee) <span style={{ color: 'var(--danger)' }}>*</span>
                 </div>
-                <div style={styles.fieldHelper}>Matches transaction or posting date</div>
-              </div>
-            </div>
-
-            <select
-              style={styles.fieldSelect}
-              value={mapping.dateColumn}
-              onChange={(e) => handleFieldChange('dateColumn', e.target.value)}
-            >
-              <option value="">-- Select Date Column --</option>
-              {headers.map((h) => (
-                <option key={h} value={h}>
-                  {h} (e.g. "{sampleRow[h] ?? ''}")
-                </option>
-              ))}
-            </select>
-
-            {mapping.dateColumn && (
-              <div style={styles.samplePreview}>
-                Sample value: <strong>{String(sampleRow[mapping.dateColumn] ?? '(empty)')}</strong>
-              </div>
-            )}
-          </div>
-
-          {/* 2. Payee / Merchant Name */}
-          <div style={styles.fieldCard}>
-            <div style={styles.fieldTop}>
-              <div style={{ ...styles.fieldIconBox, backgroundColor: 'var(--success-light)' }}>
-                <Store size={16} color="var(--success)" />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={styles.fieldLabel}>
-                  Payee / Merchant Name <span style={{ color: 'var(--danger)' }}>*</span>
-                </div>
-                <div style={styles.fieldHelper}>Business name used for auto-categorization</div>
+                <div style={styles.fieldHelper}>שם העסק המשמש לסיווג אוטומטי של קטגוריה</div>
               </div>
             </div>
 
@@ -146,33 +165,101 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
               value={mapping.payeeColumn}
               onChange={(e) => handleFieldChange('payeeColumn', e.target.value)}
             >
-              <option value="">-- Select Payee Column --</option>
+              <option value="">-- בחר עמודת בית עסק / ספק --</option>
               {headers.map((h) => (
                 <option key={h} value={h}>
-                  {h} (e.g. "{sampleRow[h] ?? ''}")
+                  {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
                 </option>
               ))}
             </select>
 
             {mapping.payeeColumn && (
               <div style={styles.samplePreview}>
-                Sample value: <strong>{String(sampleRow[mapping.payeeColumn] ?? '(empty)')}</strong>
+                ערך לדוגמה: <strong>{String(sampleRow[mapping.payeeColumn] ?? '(ריק)')}</strong>
               </div>
             )}
           </div>
 
-          {/* 3. Amount Column (Single Mode) */}
+          {/* 2. Transaction Date (תאריך עסקה) */}
+          <div style={styles.fieldCard}>
+            <div style={styles.fieldTop}>
+              <div style={{ ...styles.fieldIconBox, backgroundColor: 'rgba(79, 70, 229, 0.12)' }}>
+                <Calendar size={16} color="var(--primary)" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={styles.fieldLabel}>
+                  2. תאריך ביצוע העסקה (Transaction Date) <span style={{ color: 'var(--danger)' }}>*</span>
+                </div>
+                <div style={styles.fieldHelper}>מועד ביצוע הרכישה בפועל</div>
+              </div>
+            </div>
+
+            <select
+              style={styles.fieldSelect}
+              value={mapping.dateColumn}
+              onChange={(e) => handleFieldChange('dateColumn', e.target.value)}
+            >
+              <option value="">-- בחר עמודת תאריך עסקה --</option>
+              {headers.map((h) => (
+                <option key={h} value={h}>
+                  {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
+                </option>
+              ))}
+            </select>
+
+            {mapping.dateColumn && (
+              <div style={styles.samplePreview}>
+                ערך לדוגמה: <strong>{String(sampleRow[mapping.dateColumn] ?? '(ריק)')}</strong>
+              </div>
+            )}
+          </div>
+
+          {/* 3. Billing Date / Month (תאריך חיוב / מועד הצגה) */}
+          <div style={styles.fieldCard}>
+            <div style={styles.fieldTop}>
+              <div style={{ ...styles.fieldIconBox, backgroundColor: 'rgba(14, 165, 233, 0.12)' }}>
+                <Calendar size={16} color="#0EA5E9" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={styles.fieldLabel}>
+                  3. תאריך חיוב / מועד הצגת ההוצאה (Billing Date)
+                </div>
+                <div style={styles.fieldHelper}>מועד החיוב בחשבון הבנק / מחזור התקציב החודשי</div>
+              </div>
+            </div>
+
+            <select
+              style={styles.fieldSelect}
+              value={mapping.billingDateColumn || ''}
+              onChange={(e) => handleFieldChange('billingDateColumn', e.target.value)}
+            >
+              <option value="">-- זהה לתאריך העסקה / בחר עמודה --</option>
+              {headers.map((h) => (
+                <option key={h} value={h}>
+                  {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
+                </option>
+              ))}
+            </select>
+
+            {mapping.billingDateColumn && (
+              <div style={styles.samplePreview}>
+                ערך לדוגמה: <strong>{String(sampleRow[mapping.billingDateColumn] ?? '(ריק)')}</strong>
+              </div>
+            )}
+          </div>
+
+          {/* 4. Billing Amount (סכום חיוב בפועל במטבע משק הבית) */}
           {mapping.amountMode === 'single' ? (
             <div style={styles.fieldCard}>
               <div style={styles.fieldTop}>
-                <div style={{ ...styles.fieldIconBox, backgroundColor: 'var(--warning-light)' }}>
-                  <DollarSign size={16} color="var(--warning)" />
+                <div style={{ ...styles.fieldIconBox, backgroundColor: 'rgba(245, 158, 11, 0.12)' }}>
+                  <DollarSign size={16} color="#F59E0B" />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={styles.fieldLabel}>
-                    Amount Column <span style={{ color: 'var(--danger)' }}>*</span>
+                    4. סכום החיוב לתשלום בפועל (Billing Amount) <span style={{ color: 'var(--danger)' }}>*</span>
                   </div>
-                  <div style={styles.fieldHelper}>Charged amount or transaction sum</div>
+                  <div style={styles.fieldHelper}>הסכום שחויב בפועל במטבע משק הבית (למשל ₪)</div>
                 </div>
               </div>
 
@@ -181,17 +268,17 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
                 value={mapping.amountColumn}
                 onChange={(e) => handleFieldChange('amountColumn', e.target.value)}
               >
-                <option value="">-- Select Amount Column --</option>
+                <option value="">-- בחר עמודת סכום חיוב --</option>
                 {headers.map((h) => (
                   <option key={h} value={h}>
-                    {h} (e.g. "{sampleRow[h] ?? ''}")
+                    {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
                   </option>
                 ))}
               </select>
 
               {mapping.amountColumn && (
                 <div style={styles.samplePreview}>
-                  Sample value: <strong>{String(sampleRow[mapping.amountColumn] ?? '(empty)')}</strong>
+                  ערך לדוגמה: <strong>{String(sampleRow[mapping.amountColumn] ?? '(ריק)')}</strong>
                 </div>
               )}
             </div>
@@ -200,12 +287,12 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
               {/* Debit Column */}
               <div style={styles.fieldCard}>
                 <div style={styles.fieldTop}>
-                  <div style={{ ...styles.fieldIconBox, backgroundColor: 'var(--danger-light)' }}>
-                    <DollarSign size={16} color="var(--danger)" />
+                  <div style={{ ...styles.fieldIconBox, backgroundColor: 'rgba(239, 68, 68, 0.12)' }}>
+                    <DollarSign size={16} color="#EF4444" />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={styles.fieldLabel}>Debit / Expense Column (חובה / חיוב)</div>
-                    <div style={styles.fieldHelper}>Outflow / expense charge amount</div>
+                    <div style={styles.fieldLabel}>4.א. עמודת חובה / חיוב (Debit Outflow)</div>
+                    <div style={styles.fieldHelper}>סכום הוצאה / משיכה</div>
                   </div>
                 </div>
 
@@ -214,10 +301,10 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
                   value={mapping.debitColumn || ''}
                   onChange={(e) => handleFieldChange('debitColumn', e.target.value)}
                 >
-                  <option value="">-- Select Debit Column --</option>
+                  <option value="">-- בחר עמודת חובה / חיוב --</option>
                   {headers.map((h) => (
                     <option key={h} value={h}>
-                      {h} (e.g. "{sampleRow[h] ?? ''}")
+                      {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
                     </option>
                   ))}
                 </select>
@@ -226,12 +313,12 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
               {/* Credit Column */}
               <div style={styles.fieldCard}>
                 <div style={styles.fieldTop}>
-                  <div style={{ ...styles.fieldIconBox, backgroundColor: 'var(--success-light)' }}>
-                    <DollarSign size={16} color="var(--success)" />
+                  <div style={{ ...styles.fieldIconBox, backgroundColor: 'rgba(16, 185, 129, 0.12)' }}>
+                    <DollarSign size={16} color="#10B981" />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={styles.fieldLabel}>Credit / Income Column (זכות / הכנסה)</div>
-                    <div style={styles.fieldHelper}>Inflow / income credit amount</div>
+                    <div style={styles.fieldLabel}>4.ב. עמודת זכות / הכנסה (Credit Inflow)</div>
+                    <div style={styles.fieldHelper}>סכום זיכוי / הפקדה</div>
                   </div>
                 </div>
 
@@ -240,88 +327,136 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
                   value={mapping.creditColumn || ''}
                   onChange={(e) => handleFieldChange('creditColumn', e.target.value)}
                 >
-                  <option value="">-- Select Credit Column --</option>
+                  <option value="">-- בחר עמודת זכות / הכנסה --</option>
                   {headers.map((h) => (
                     <option key={h} value={h}>
-                      {h} (e.g. "{sampleRow[h] ?? ''}")
+                      {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
                     </option>
                   ))}
                 </select>
               </div>
             </>
           )}
-        </div>
-      </div>
 
-      {/* Optional Metadata Fields */}
-      <div style={styles.sectionCard}>
-        <div style={styles.sectionHeader}>
-          <span style={styles.sectionTitle}>Optional Metadata Fields</span>
-          <span style={styles.optionalPill}>Optional</span>
-        </div>
-
-        <div style={styles.fieldsGrid}>
-          {/* Card / Account 4 Digits */}
+          {/* 5. Original Transaction Amount (סכום עסקה מקורי) */}
           <div style={styles.fieldCard}>
             <div style={styles.fieldTop}>
-              <div style={styles.fieldIconBox}>
-                <CreditCard size={16} color="var(--primary)" />
+              <div style={{ ...styles.fieldIconBox, backgroundColor: 'rgba(139, 92, 246, 0.12)' }}>
+                <DollarSign size={16} color="#8B5CF6" />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={styles.fieldLabel}>Card / Account Last 4 Digits</div>
-                <div style={styles.fieldHelper}>Identifies specific credit card (e.g. 2285)</div>
+                <div style={styles.fieldLabel}>5. סכום עסקה מקורי (Original Amount)</div>
+                <div style={styles.fieldHelper}>סכום העסקה המקורי ברכישות במטבע חוץ או בחו"ל</div>
               </div>
             </div>
 
             <select
               style={styles.fieldSelect}
-              value={mapping.cardDigitsColumn || ''}
-              onChange={(e) => handleFieldChange('cardDigitsColumn', e.target.value)}
+              value={mapping.originalAmountColumn || ''}
+              onChange={(e) => handleFieldChange('originalAmountColumn', e.target.value)}
             >
-              <option value="">-- None / Auto-detect --</option>
+              <option value="">-- זהה לסכום החיוב / בחר עמודה --</option>
               {headers.map((h) => (
                 <option key={h} value={h}>
-                  {h} (e.g. "{sampleRow[h] ?? ''}")
+                  {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
                 </option>
               ))}
             </select>
+
+            {mapping.originalAmountColumn && (
+              <div style={styles.samplePreview}>
+                ערך לדוגמה: <strong>{String(sampleRow[mapping.originalAmountColumn] ?? '(ריק)')}</strong>
+              </div>
+            )}
           </div>
 
-          {/* Statement Category */}
+          {/* 6. Original Currency (מטבע מקורי) */}
           <div style={styles.fieldCard}>
             <div style={styles.fieldTop}>
-              <div style={{ ...styles.fieldIconBox, backgroundColor: 'var(--primary-light)' }}>
-                <Tag size={16} color="var(--primary)" />
+              <div style={{ ...styles.fieldIconBox, backgroundColor: 'rgba(6, 182, 212, 0.12)' }}>
+                <Globe size={16} color="#06B6D4" />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={styles.fieldLabel}>Statement Category / Industry</div>
-                <div style={styles.fieldHelper}>Original classification from credit card/bank</div>
+                <div style={styles.fieldLabel}>6. מטבע עסקה מקורי (Original Currency)</div>
+                <div style={styles.fieldHelper}>עמודת מטבע (USD, EUR, ILS...) או ברירת מחדל</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <select
+                style={{ ...styles.fieldSelect, flex: 2 }}
+                value={mapping.originalCurrencyColumn || ''}
+                onChange={(e) => handleFieldChange('originalCurrencyColumn', e.target.value)}
+              >
+                <option value="">-- עמודת מטבע מהדוח --</option>
+                {headers.map((h) => (
+                  <option key={h} value={h}>
+                    {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                style={{ ...styles.fieldSelect, flex: 1 }}
+                value={mapping.defaultOriginalCurrency || 'ILS'}
+                onChange={(e) => handleFieldChange('defaultOriginalCurrency', e.target.value)}
+                title="ברירת מחדל אם העמודה ריקה"
+              >
+                <option value="ILS">₪ ILS</option>
+                <option value="USD">$ USD</option>
+                <option value="EUR">€ EUR</option>
+                <option value="GBP">£ GBP</option>
+              </select>
+            </div>
+
+            {mapping.originalCurrencyColumn && (
+              <div style={styles.samplePreview}>
+                ערך לדוגמה: <strong>{String(sampleRow[mapping.originalCurrencyColumn] ?? '(ריק)')}</strong>
+              </div>
+            )}
+          </div>
+
+          {/* 7. Card Name / Payment Method (עמודת שם כרטיס) */}
+          <div style={styles.fieldCard}>
+            <div style={styles.fieldTop}>
+              <div style={{ ...styles.fieldIconBox, backgroundColor: 'rgba(99, 102, 241, 0.12)' }}>
+                <CreditCard size={16} color="#6366F1" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={styles.fieldLabel}>7. שם כרטיס / אמצעי תשלום (Card Name)</div>
+                <div style={styles.fieldHelper}>עמודת שם הכרטיס או סוג התשלום בדוח</div>
               </div>
             </div>
 
             <select
               style={styles.fieldSelect}
-              value={mapping.categoryColumn || ''}
-              onChange={(e) => handleFieldChange('categoryColumn', e.target.value)}
+              value={mapping.paymentMethodColumn || ''}
+              onChange={(e) => handleFieldChange('paymentMethodColumn', e.target.value)}
             >
-              <option value="">-- None / Use Auto-Rules --</option>
+              <option value="">-- ללא עמודה / השתמש בהגדרה גורפת --</option>
               {headers.map((h) => (
                 <option key={h} value={h}>
-                  {h} (e.g. "{sampleRow[h] ?? ''}")
+                  {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
                 </option>
               ))}
             </select>
+
+            {mapping.paymentMethodColumn && (
+              <div style={styles.samplePreview}>
+                ערך לדוגמה: <strong>{String(sampleRow[mapping.paymentMethodColumn] ?? '(ריק)')}</strong>
+              </div>
+            )}
           </div>
 
-          {/* Notes / Description */}
+          {/* 8. Remarks & Notes (הערות ופירוט נוסף) */}
           <div style={styles.fieldCard}>
             <div style={styles.fieldTop}>
-              <div style={{ ...styles.fieldIconBox, backgroundColor: 'var(--bg-surface-subtle)' }}>
-                <FileText size={16} color="var(--text-secondary)" />
+              <div style={{ ...styles.fieldIconBox, backgroundColor: 'rgba(100, 116, 139, 0.12)' }}>
+                <FileText size={16} color="#64748B" />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={styles.fieldLabel}>Notes / Extra Memo</div>
-                <div style={styles.fieldHelper}>Additional description or memo text</div>
+                <div style={styles.fieldLabel}>8. הערות ופירוט נוסף (Remarks / Notes)</div>
+                <div style={styles.fieldHelper}>הערות, מידע נוסף או פירוט מהדוח</div>
               </div>
             </div>
 
@@ -330,10 +465,107 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
               value={mapping.notesColumn || ''}
               onChange={(e) => handleFieldChange('notesColumn', e.target.value)}
             >
-              <option value="">-- None --</option>
+              <option value="">-- ללא עמודת הערות --</option>
               {headers.map((h) => (
                 <option key={h} value={h}>
-                  {h} (e.g. "{sampleRow[h] ?? ''}")
+                  {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
+                </option>
+              ))}
+            </select>
+
+            {mapping.notesColumn && (
+              <div style={styles.samplePreview}>
+                ערך לדוגמה: <strong>{String(sampleRow[mapping.notesColumn] ?? '(ריק)')}</strong>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Section 2: Optional Metadata Fields */}
+      <div style={styles.sectionCard}>
+        <div style={styles.sectionHeader}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Tag size={18} color="var(--text-secondary)" />
+            <span style={styles.sectionTitle}>שדות מטא-דאטה נוספים (Optional Metadata)</span>
+          </div>
+          <span style={styles.optionalPill}>אופציונלי</span>
+        </div>
+
+        <div style={styles.fieldsGrid}>
+          {/* Card Last 4 Digits */}
+          <div style={styles.fieldCard}>
+            <div style={styles.fieldTop}>
+              <div style={styles.fieldIconBox}>
+                <Hash size={16} color="var(--primary)" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={styles.fieldLabel}>4 ספרות אחרונות של הכרטיס (Last 4 Digits)</div>
+                <div style={styles.fieldHelper}>למשל 7520, 2285</div>
+              </div>
+            </div>
+
+            <select
+              style={styles.fieldSelect}
+              value={mapping.cardDigitsColumn || ''}
+              onChange={(e) => handleFieldChange('cardDigitsColumn', e.target.value)}
+            >
+              <option value="">-- זיהוי אוטומטי / ללא עמודה --</option>
+              {headers.map((h) => (
+                <option key={h} value={h}>
+                  {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Reference / Voucher Number */}
+          <div style={styles.fieldCard}>
+            <div style={styles.fieldTop}>
+              <div style={styles.fieldIconBox}>
+                <Receipt size={16} color="var(--primary)" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={styles.fieldLabel}>מספר שובר / אסמכתא (Voucher / Ref)</div>
+                <div style={styles.fieldHelper}>מספר שובר עסקה או אסמכתא בנקאית</div>
+              </div>
+            </div>
+
+            <select
+              style={styles.fieldSelect}
+              value={mapping.referenceColumn || ''}
+              onChange={(e) => handleFieldChange('referenceColumn', e.target.value)}
+            >
+              <option value="">-- ללא עמודת שובר --</option>
+              {headers.map((h) => (
+                <option key={h} value={h}>
+                  {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Statement Category / Industry */}
+          <div style={styles.fieldCard}>
+            <div style={styles.fieldTop}>
+              <div style={styles.fieldIconBox}>
+                <Tag size={16} color="var(--primary)" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={styles.fieldLabel}>ענף / קטגוריה מקורית בדוח (Industry / Category)</div>
+                <div style={styles.fieldHelper}>סיווג הענף של חברת האשראי (למשל: סופרמרקטים, דלק)</div>
+              </div>
+            </div>
+
+            <select
+              style={styles.fieldSelect}
+              value={mapping.categoryColumn || ''}
+              onChange={(e) => handleFieldChange('categoryColumn', e.target.value)}
+            >
+              <option value="">-- ללא עמודה / השתמש בחוקי סיווג --</option>
+              {headers.map((h) => (
+                <option key={h} value={h}>
+                  {h} {sampleRow[h] !== undefined ? `(לדוגמה: "${sampleRow[h]}")` : ''}
                 </option>
               ))}
             </select>
@@ -341,12 +573,20 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
         </div>
       </div>
 
-      {!isFormValid && (
-        <div style={styles.warningBanner}>
-          <AlertCircle size={16} color="var(--warning-text)" />
-          <span>Please map at least Date, Payee, and Amount to proceed to the preview step.</span>
-        </div>
-      )}
+      {/* Validation Status Indicator */}
+      <div style={styles.statusFooter}>
+        {isFormValid ? (
+          <div style={styles.successStatus}>
+            <CheckCircle2 size={18} color="#10B981" />
+            <span>כל שדות החובה מופו בהצלחה! ניתן להמשיך לשלב התצוגה המקדימה.</span>
+          </div>
+        ) : (
+          <div style={styles.warningStatus}>
+            <AlertCircle size={18} color="#F59E0B" />
+            <span>אנא ודאו ששדות החובה (בית עסק, תאריך עסקה, וסכום) מופו כראוי.</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -360,118 +600,172 @@ const styles: { [key: string]: React.CSSProperties } = {
   header: {
     marginBottom: '4px',
   },
+  stepBadge: {
+    display: 'inline-block',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: 'var(--primary)',
+    backgroundColor: 'var(--primary-light)',
+    padding: '3px 10px',
+    borderRadius: '12px',
+    marginBottom: '8px',
+  },
   title: {
     fontSize: '1.25rem',
     fontWeight: '800',
     color: 'var(--text-primary)',
-    letterSpacing: '-0.02em',
+    margin: '0 0 4px 0',
   },
   subtitle: {
-    fontSize: '0.875rem',
+    fontSize: '0.8125rem',
     color: 'var(--text-secondary)',
-    marginTop: '4px',
-    lineHeight: '1.5',
+    margin: 0,
+    lineHeight: 1.4,
   },
-  modeCard: {
+  topConfigGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+    gap: '14px',
+  },
+  configCard: {
     backgroundColor: 'var(--bg-surface)',
-    borderRadius: 'var(--radius-lg)',
     border: '1px solid var(--border-main)',
-    padding: '16px 20px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: '12px',
+    borderRadius: 'var(--radius-md)',
+    padding: '16px',
     boxShadow: 'var(--shadow-sm)',
-  },
-  modeLeft: {
     display: 'flex',
-    alignItems: 'center',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    gap: '12px',
+  },
+  configCardHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
     gap: '10px',
   },
-  modeTitle: {
+  configIconWrap: {
+    width: '32px',
+    height: '32px',
+    borderRadius: '8px',
+    backgroundColor: 'var(--primary-light)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  configTitle: {
     fontSize: '0.875rem',
     fontWeight: '700',
     color: 'var(--text-primary)',
   },
-  modeDesc: {
+  configDesc: {
     fontSize: '0.75rem',
     color: 'var(--text-secondary)',
+    marginTop: '2px',
   },
   modeButtonGroup: {
     display: 'flex',
     backgroundColor: 'var(--bg-surface-subtle)',
+    padding: '4px',
     borderRadius: 'var(--radius-sm)',
-    padding: '3px',
     border: '1px solid var(--border-main)',
+    gap: '4px',
   },
   modeBtn: {
-    padding: '7px 14px',
-    borderRadius: 'var(--radius-sm)',
+    flex: 1,
+    padding: '8px 12px',
     fontSize: '0.75rem',
-    fontWeight: '500',
+    fontWeight: '700',
+    borderRadius: '6px',
+    border: 'none',
+    backgroundColor: 'transparent',
     color: 'var(--text-secondary)',
+    cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
   modeBtnActive: {
-    backgroundColor: 'var(--bg-surface)',
+    backgroundColor: 'var(--primary)',
+    color: '#FFFFFF',
     boxShadow: 'var(--shadow-sm)',
-    color: 'var(--primary)',
+  },
+  bulkCardInputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  bulkTextInput: {
+    flex: 1,
+    padding: '8px 12px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border-main)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    color: 'var(--text-primary)',
+    fontSize: '0.8125rem',
+    outline: 'none',
+    fontFamily: 'inherit',
+  },
+  clearBulkBtn: {
+    padding: '8px 12px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border-main)',
+    backgroundColor: 'var(--bg-surface)',
+    color: 'var(--danger)',
+    fontSize: '0.75rem',
     fontWeight: '700',
+    cursor: 'pointer',
   },
   sectionCard: {
     backgroundColor: 'var(--bg-surface)',
-    borderRadius: 'var(--radius-lg)',
     border: '1px solid var(--border-main)',
-    padding: '24px',
+    borderRadius: 'var(--radius-lg)',
+    padding: '18px 20px',
     boxShadow: 'var(--shadow-sm)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '18px',
   },
   sectionHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingBottom: '12px',
-    borderBottom: '1px solid var(--border-subtle)',
+    marginBottom: '16px',
+    borderBottom: '1px solid var(--border-main)',
+    paddingBottom: '10px',
   },
   sectionTitle: {
     fontSize: '0.9375rem',
-    fontWeight: '700',
+    fontWeight: '800',
     color: 'var(--text-primary)',
   },
   requiredPill: {
-    padding: '2px 8px',
-    backgroundColor: 'var(--primary-light)',
-    color: 'var(--primary)',
     fontSize: '0.6875rem',
-    fontWeight: '700',
-    borderRadius: '4px',
-    textTransform: 'uppercase',
+    fontWeight: '800',
+    color: 'var(--primary)',
+    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+    padding: '2px 8px',
+    borderRadius: '12px',
+    border: '1px solid rgba(79, 70, 229, 0.2)',
   },
   optionalPill: {
-    padding: '2px 8px',
-    backgroundColor: 'var(--bg-surface-subtle)',
-    color: 'var(--text-muted)',
     fontSize: '0.6875rem',
     fontWeight: '700',
-    borderRadius: '4px',
-    textTransform: 'uppercase',
+    color: 'var(--text-muted)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    padding: '2px 8px',
+    borderRadius: '12px',
+    border: '1px solid var(--border-main)',
   },
   fieldsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-    gap: '16px',
+    gap: '14px',
   },
   fieldCard: {
     backgroundColor: 'var(--bg-surface-subtle)',
-    borderRadius: 'var(--radius-md)',
     border: '1px solid var(--border-main)',
-    padding: '16px',
+    borderRadius: 'var(--radius-md)',
+    padding: '14px',
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
+    transition: 'border-color 0.15s ease',
   },
   fieldTop: {
     display: 'flex',
@@ -479,10 +773,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '10px',
   },
   fieldIconBox: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '8px',
-    backgroundColor: 'var(--primary-light)',
+    width: '30px',
+    height: '30px',
+    borderRadius: '6px',
+    backgroundColor: 'var(--bg-surface)',
+    border: '1px solid var(--border-main)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -496,17 +791,21 @@ const styles: { [key: string]: React.CSSProperties } = {
   fieldHelper: {
     fontSize: '0.6875rem',
     color: 'var(--text-muted)',
-    marginTop: '1px',
+    marginTop: '2px',
+    lineHeight: 1.3,
   },
   fieldSelect: {
     width: '100%',
-    backgroundColor: 'var(--bg-surface)',
-    border: '1px solid var(--border-strong)',
-    borderRadius: 'var(--radius-sm)',
     padding: '8px 10px',
-    fontSize: '0.8125rem',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border-main)',
+    backgroundColor: 'var(--bg-surface)',
     color: 'var(--text-primary)',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    outline: 'none',
     cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   samplePreview: {
     fontSize: '0.6875rem',
@@ -514,18 +813,36 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'var(--bg-surface)',
     padding: '4px 8px',
     borderRadius: '4px',
-    border: '1px solid var(--border-subtle)',
+    border: '1px solid var(--border-main)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
-  warningBanner: {
+  statusFooter: {
+    marginTop: '4px',
+  },
+  successStatus: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    padding: '12px 16px',
-    backgroundColor: 'var(--warning-light)',
-    borderRadius: 'var(--radius-md)',
-    border: '1px solid #FDE68A',
-    color: 'var(--warning-text)',
+    padding: '10px 14px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    color: '#065F46',
     fontSize: '0.8125rem',
-    fontWeight: '500',
+    fontWeight: '600',
+    border: '1px solid rgba(16, 185, 129, 0.3)',
+  },
+  warningStatus: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '10px 14px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    color: '#92400E',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    border: '1px solid rgba(245, 158, 11, 0.3)',
   },
 };

@@ -109,18 +109,23 @@ export interface BankAccount {
 export interface Transaction {
   id: string;
   household_id: string;
-  date: string; // YYYY-MM-DD
-  amount: number;
+  date: string; // YYYY-MM-DD - Transaction Date (תאריך עסקה)
+  billing_date?: string | null; // YYYY-MM-DD - Billing Date (תאריך חיוב / הצגה)
+  amount: number; // Billing Amount in household currency (סכום חיוב)
+  original_amount?: number | null; // Original Transaction Amount (סכום מקורי)
+  original_currency?: string | null; // Original Currency (מטבע מקור)
   category_id: string | null;
   transaction_type: TransactionType;
   payee_name: string;
   original_description?: string | null;
-  payment_method?: string;
+  payment_method?: string; // Card Name or Payment Type
   card_last_digits?: string | null;
   is_hidden: boolean; // Soft delete / filter flag
   source_reference_id?: string | null; // Deduplication ref for Open Banking webhooks
+  reference_number?: string | null; // Voucher / Reference number (מספר שובר / אסמכתא)
+  statement_category?: string | null; // Industry / classification from statement (ענף)
   bank_account_id?: string | null;
-  notes?: string | null;
+  notes?: string | null; // Remarks / Notes (הערות)
   created_by?: string | null;
   created_at: string;
   updated_at: string;
@@ -186,32 +191,53 @@ export interface ParsedFile {
 export type AmountMappingMode = 'single' | 'debit_credit';
 
 export interface ColumnMapping {
-  dateColumn: string;
+  // 1. Dates (2 sets)
+  dateColumn: string; // Transaction Date (תאריך עסקה)
+  billingDateColumn?: string; // Billing Date / Expense Month (תאריך חיוב / הצגה)
+  dateFormat?: string;
+
+  // 2. Payee / Merchant
   payeeColumn: string;
+
+  // 3. Amounts (2 sets)
   amountMode: AmountMappingMode;
-  amountColumn: string;
+  amountColumn: string; // Billing / Actual Amount in household currency (סכום חיוב / בפועל)
   debitColumn?: string;
   creditColumn?: string;
-  categoryColumn?: string;
-  paymentMethodColumn?: string;
-  cardDigitsColumn?: string;
-  notesColumn?: string;
-  dateFormat?: string;
   reverseAmountSign?: boolean;
+
+  originalAmountColumn?: string; // Original Transaction Amount (סכום עסקה מקורי)
+  originalCurrencyColumn?: string; // Original Currency column (מטבע מקורי)
+  defaultOriginalCurrency?: string; // Fallback currency (e.g. ILS, USD, EUR)
+
+  // 4. Card / Payment Method & Bulk Setting
+  paymentMethodColumn?: string; // Card Name / Payment Method column from Excel
+  bulkPaymentMethod?: string; // Bulk override card name for all rows in batch
+  cardDigitsColumn?: string; // Last 4 digits column
+
+  // 5. Remarks & Metadata
+  notesColumn?: string; // Remarks / Notes (הערות / פרטים נוספים)
+  categoryColumn?: string; // Statement category / industry (ענף)
+  referenceColumn?: string; // Reference / Voucher number (אסמכתא / שובר)
 }
 
 export interface TransformedImportRow {
   id: string;
   originalRowIndex: number;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD - Transaction Date
+  billing_date?: string | null; // YYYY-MM-DD - Billing Date
   payee_name: string;
-  amount: number;
+  amount: number; // Actual Billing Amount in household currency
+  original_amount?: number | null; // Original transaction sum
+  original_currency?: string | null; // Original currency (USD, EUR, ILS...)
   transaction_type: TransactionType;
   category_id: string | null;
   auto_matched_rule?: string;
   payment_method: string;
   card_last_digits: string | null;
   notes: string | null;
+  reference_number?: string | null;
+  statement_category?: string | null;
   is_hidden: boolean; // Soft delete / hide flag in preview
   isValid: boolean;
   validationError?: string;

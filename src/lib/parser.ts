@@ -218,55 +218,96 @@ function detectHeaderRowIndex(rawGrid: any[][]): number {
 export function suggestInitialMapping(headers: string[]): ColumnMapping {
   const mapping: ColumnMapping = {
     dateColumn: '',
+    billingDateColumn: '',
     payeeColumn: '',
     amountMode: 'single',
     amountColumn: '',
     debitColumn: '',
     creditColumn: '',
-    categoryColumn: '',
+    originalAmountColumn: '',
+    originalCurrencyColumn: '',
+    defaultOriginalCurrency: 'ILS',
     paymentMethodColumn: '',
+    bulkPaymentMethod: '',
     cardDigitsColumn: '',
+    categoryColumn: '',
     notesColumn: '',
+    referenceColumn: '',
     dateFormat: 'auto',
     reverseAmountSign: false,
   };
 
   const normalize = (s: string) => s.toLowerCase().replace(/[\s_\-:"'()]/g, '');
 
-  const datePatterns = ['תאריךעסקה', 'תאריךחיוב', 'תאריךרכישה', 'תאריך', 'date', 'txdate', 'transdate', 'posted', 'time'];
+  // Patterns for auto-detection
+  const txDatePatterns = ['תאריךעסקה', 'תאריךביצוע', 'תאריךרכישה', 'מועדביצוע', 'מועדעסקה', 'transactiondate', 'txdate', 'transdate', 'purchasedate'];
+  const billingDatePatterns = ['תאריךחיוב', 'חודשחיוב', 'מועדחיוב', 'תאריךערך', 'billingdate', 'postdate', 'postingdate', 'chargedate', 'valuedate', 'statementdate'];
+  const generalDatePatterns = ['תאריך', 'date', 'posted', 'time'];
+
   const payeePatterns = ['שםביתעסק', 'שםביתיעסק', 'שםהספק', 'שםביתהעסק', 'תיאורעסקה', 'תיאור', 'ביתעסק', 'פירוט', 'payee', 'merchant', 'description', 'vendor', 'name', 'details'];
-  const amountPatterns = ['סכוםחיוב', 'סכוםעסקה', 'סכוםמקורי', 'סכום', 'סה"כ', 'amount', 'total', 'charge', 'price', 'sum'];
+  
+  const billingAmountPatterns = ['סכוםחיוב', 'סכוםלתשלום', 'סכוםחיובבפועל', 'סכוםבפועל', 'חיוב', 'billingamount', 'billedamount', 'chargeamount', 'amountcharged'];
+  const originalAmountPatterns = ['סכוםעסקה', 'סכוםמקורי', 'סכוםבמטבעמקור', 'סכוםמקור', 'סכוםברוטו', 'originalamount', 'txamount', 'transamount', 'foreignamount'];
+  const generalAmountPatterns = ['סכום', 'סה"כ', 'amount', 'total', 'charge', 'price', 'sum'];
+  
+  const currencyPatterns = ['מטבע', 'מטבעמקור', 'מטבעעסקה', 'סוגמטבע', 'currency', 'curr', 'origcurrency', 'txcurrency'];
+  
+  const cardNamePatterns = ['שםכרטיס', 'כרטיס', 'כרטיסאשראי', 'סוגכרטיס', 'אמצעיתשלום', 'שםחשבון', 'חשבון', 'cardname', 'card', 'paymentmethod', 'cardtype', 'accountname'];
+  const cardDigitsPatterns = ['4ספרות', 'ארבעספרות', 'ספרותכרטיס', 'מספרכרטיס', 'ספרות', 'last4', 'carddigits', 'cardlast4'];
+  
+  const notesPatterns = ['הערות', 'פרטיםנוספים', 'מידענוסף', 'פירוטנוסף', 'הערה', 'notes', 'memo', 'comment', 'remarks', 'extra'];
+  const referencePatterns = ['שובר', 'מספרשובר', 'אסמכתא', 'מספראסמכתא', 'מזההעסקה', 'voucher', 'ref', 'reference', 'referencenumber'];
+  const categoryPatterns = ['ענף', 'ענףפעילות', 'קטגוריה', 'סיווג', 'תחום', 'category', 'industry', 'type', 'group'];
+
   const debitPatterns = ['חובה', 'סכוםחובה', 'סכוםחיוב', 'debit', 'expense', 'withdrawal', 'outflow'];
   const creditPatterns = ['זכות', 'סכוםזכות', 'זיכוי', 'הכנסה', 'credit', 'income', 'deposit', 'inflow'];
-  const categoryPatterns = ['קטגוריה', 'סיווג', 'ענף', 'category', 'type', 'group'];
-  const cardPatterns = ['4ספרות', 'ארבעספרות', 'כרטיס', 'מספרכרטיס', 'ספרות', 'card', 'last4', 'account', 'carddigits'];
-  const notesPatterns = ['הערות', 'פרטיםנוספים', 'מידענוסף', 'notes', 'memo', 'comment', 'extra'];
 
   // Helper to find first matching header
-  const findMatch = (patterns: string[]) => {
+  const findMatch = (patterns: string[], excludedHeaders: string[] = []) => {
     return headers.find((h) => {
+      if (excludedHeaders.includes(h)) return false;
       const norm = normalize(h);
       return patterns.some((p) => norm.includes(p));
     }) || '';
   };
 
-  mapping.dateColumn = findMatch(datePatterns);
-  mapping.payeeColumn = findMatch(payeePatterns);
-  mapping.amountColumn = findMatch(amountPatterns);
-  mapping.categoryColumn = findMatch(categoryPatterns);
-  mapping.cardDigitsColumn = findMatch(cardPatterns);
-  mapping.notesColumn = findMatch(notesPatterns);
+  // 1. Dates
+  mapping.dateColumn = findMatch(txDatePatterns);
+  mapping.billingDateColumn = findMatch(billingDatePatterns);
+  if (!mapping.dateColumn) {
+    mapping.dateColumn = findMatch(generalDatePatterns, [mapping.billingDateColumn]);
+  }
 
+  // 2. Payee
+  mapping.payeeColumn = findMatch(payeePatterns);
+
+  // 3. Amounts & Currency
+  mapping.amountColumn = findMatch(billingAmountPatterns);
+  mapping.originalAmountColumn = findMatch(originalAmountPatterns);
+  if (!mapping.amountColumn) {
+    mapping.amountColumn = findMatch(generalAmountPatterns, [mapping.originalAmountColumn]);
+  }
+  mapping.originalCurrencyColumn = findMatch(currencyPatterns);
+
+  // 4. Card & Account
+  mapping.paymentMethodColumn = findMatch(cardNamePatterns);
+  mapping.cardDigitsColumn = findMatch(cardDigitsPatterns);
+
+  // 5. Remarks & Metadata
+  mapping.notesColumn = findMatch(notesPatterns);
+  mapping.referenceColumn = findMatch(referencePatterns);
+  mapping.categoryColumn = findMatch(categoryPatterns);
+
+  // Debit/Credit columns check
   const debitMatch = findMatch(debitPatterns);
   const creditMatch = findMatch(creditPatterns);
 
-  // If separate debit and credit columns exist and no single amount column was found
   if (debitMatch && creditMatch && (!mapping.amountColumn || debitMatch !== mapping.amountColumn)) {
     mapping.debitColumn = debitMatch;
     mapping.creditColumn = creditMatch;
   }
 
-  // Fallback default selections if not matched
+  // Fallbacks if nothing matched
   if (!mapping.dateColumn && headers.length > 0) mapping.dateColumn = headers[0];
   if (!mapping.payeeColumn && headers.length > 1) mapping.payeeColumn = headers[1];
   if (!mapping.amountColumn && headers.length > 2) mapping.amountColumn = headers[2];
@@ -319,7 +360,14 @@ export function parseDateValue(raw: any): string | null {
     return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
 
-  // 5. Native Date.parse fallback
+  // 5. Match MM/YYYY or YYYY-MM (e.g. billing month format "08/2026" or "2026-08")
+  const ymMatch = str.match(/^(\d{1,2})[-/.](\d{4})/);
+  if (ymMatch) {
+    const [, m, y] = ymMatch;
+    return `${y}-${m.padStart(2, '0')}-01`;
+  }
+
+  // 6. Native Date.parse fallback
   const parsed = new Date(str);
   if (!isNaN(parsed.getTime())) {
     return parsed.toISOString().split('T')[0];
@@ -358,7 +406,20 @@ export function parseAmountValue(raw: any): number | null {
 }
 
 /**
- * Transforms raw file rows into normalized TransformedImportRows using the mapping
+ * Detects currency symbol / code from string
+ */
+export function extractCurrency(raw: any, fallback: string = 'ILS'): string {
+  if (!raw) return fallback;
+  const str = String(raw).trim().toUpperCase();
+  if (str.includes('$') || str.includes('USD') || str.includes('דולר')) return 'USD';
+  if (str.includes('€') || str.includes('EUR') || str.includes('אירו') || str.includes('יורו')) return 'EUR';
+  if (str.includes('£') || str.includes('GBP') || str.includes('ליש"ט')) return 'GBP';
+  if (str.includes('₪') || str.includes('ILS') || str.includes('NIS') || str.includes('ש"ח') || str.includes('שקל')) return 'ILS';
+  return fallback;
+}
+
+/**
+ * Transforms raw file rows into normalized TransformedImportRows using the comprehensive mapping
  */
 export function transformRowsWithMapping(
   rows: Record<string, any>[],
@@ -367,11 +428,22 @@ export function transformRowsWithMapping(
   categories: Category[]
 ): TransformedImportRow[] {
   return rows.map((row, index) => {
-    const rawDate = mapping.dateColumn ? row[mapping.dateColumn] : null;
+    // 1. Dates (Transaction Date & Billing Date)
+    const rawTxDate = mapping.dateColumn ? row[mapping.dateColumn] : null;
+    const rawBillingDate = mapping.billingDateColumn ? row[mapping.billingDateColumn] : null;
+    
+    const parsedTxDate = parseDateValue(rawTxDate);
+    const parsedBillingDate = rawBillingDate ? parseDateValue(rawBillingDate) : null;
+    
+    // Effective primary date
+    const finalTxDate = parsedTxDate || parsedBillingDate || new Date().toISOString().split('T')[0];
+    const finalBillingDate = parsedBillingDate || parsedTxDate || null;
+
+    // 2. Payee / Merchant Name
     const rawPayee = mapping.payeeColumn ? row[mapping.payeeColumn] : '';
-    const parsedDate = parseDateValue(rawDate);
     const payeeName = String(rawPayee ?? '').trim() || 'Unknown Payee';
 
+    // 3. Billing Amount (in household currency)
     let amount = 0;
     let transactionType: TransactionType = 'expense';
     let isValid = true;
@@ -406,23 +478,37 @@ export function transformRowsWithMapping(
         }
 
         if (finalAmount < 0) {
-          // Negative is expense in standard banking or income if reversed
           amount = Math.abs(finalAmount);
           transactionType = 'expense';
         } else {
-          // In credit card statements, positive amounts are usually expenses!
           amount = finalAmount;
           transactionType = 'expense';
         }
       }
     }
 
-    if (!parsedDate) {
+    // 4. Original Transaction Amount & Currency
+    let originalAmount: number | null = null;
+    let originalCurrency: string | null = null;
+
+    if (mapping.originalAmountColumn && row[mapping.originalAmountColumn]) {
+      originalAmount = parseAmountValue(row[mapping.originalAmountColumn]);
+    }
+
+    if (mapping.originalCurrencyColumn && row[mapping.originalCurrencyColumn]) {
+      originalCurrency = extractCurrency(row[mapping.originalCurrencyColumn], mapping.defaultOriginalCurrency || 'ILS');
+    } else if (mapping.originalAmountColumn && row[mapping.originalAmountColumn]) {
+      originalCurrency = extractCurrency(row[mapping.originalAmountColumn], mapping.defaultOriginalCurrency || 'ILS');
+    } else {
+      originalCurrency = mapping.defaultOriginalCurrency || 'ILS';
+    }
+
+    if (!parsedTxDate && !parsedBillingDate) {
       isValid = false;
       validationError = validationError ? `${validationError}, Invalid date` : 'Invalid date format';
     }
 
-    // Auto-categorization using Business Mapping rules
+    // 5. Auto-categorization using Business Mapping rules & Category column
     let categoryId: string | null = null;
     let autoMatchedRule: string | undefined;
 
@@ -445,6 +531,14 @@ export function transformRowsWithMapping(
       }
     }
 
+    // 6. Card / Payment Method (Bulk override or Column)
+    let paymentMethod = 'credit_card';
+    if (mapping.bulkPaymentMethod && mapping.bulkPaymentMethod.trim()) {
+      paymentMethod = mapping.bulkPaymentMethod.trim();
+    } else if (mapping.paymentMethodColumn && row[mapping.paymentMethodColumn]) {
+      paymentMethod = String(row[mapping.paymentMethodColumn]).trim() || 'credit_card';
+    }
+
     // Card Digits
     let cardDigits: string | null = null;
     if (mapping.cardDigitsColumn && row[mapping.cardDigitsColumn]) {
@@ -454,24 +548,43 @@ export function transformRowsWithMapping(
       }
     }
 
-    // Notes
+    // 7. Remarks & Reference Numbers
     let notes: string | null = null;
+    let referenceNumber: string | null = null;
+    let statementCategory: string | null = null;
+
     if (mapping.notesColumn && row[mapping.notesColumn]) {
       notes = String(row[mapping.notesColumn]).trim() || null;
+    }
+
+    if (mapping.referenceColumn && row[mapping.referenceColumn]) {
+      referenceNumber = String(row[mapping.referenceColumn]).trim() || null;
+      if (referenceNumber) {
+        notes = notes ? `${notes} (שובר: ${referenceNumber})` : `שובר: ${referenceNumber}`;
+      }
+    }
+
+    if (mapping.categoryColumn && row[mapping.categoryColumn]) {
+      statementCategory = String(row[mapping.categoryColumn]).trim() || null;
     }
 
     return {
       id: `imp-${index + 1}-${Date.now()}`,
       originalRowIndex: index + 1,
-      date: parsedDate || new Date().toISOString().split('T')[0],
+      date: finalTxDate,
+      billing_date: finalBillingDate,
       payee_name: payeeName,
       amount,
+      original_amount: originalAmount ?? amount,
+      original_currency: originalCurrency || 'ILS',
       transaction_type: transactionType,
       category_id: categoryId,
       auto_matched_rule: autoMatchedRule,
-      payment_method: cardDigits ? 'credit_card' : 'bank_transfer',
+      payment_method: paymentMethod,
       card_last_digits: cardDigits,
       notes,
+      reference_number: referenceNumber,
+      statement_category: statementCategory,
       is_hidden: false, // Default to active (not hidden)
       isValid,
       validationError,

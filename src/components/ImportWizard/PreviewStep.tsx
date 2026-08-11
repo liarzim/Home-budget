@@ -45,6 +45,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [savingRuleForPayee, setSavingRuleForPayee] = useState<string | null>(null);
   const [bulkCategory, setBulkCategory] = useState<string>('');
+  const [bulkCardName, setBulkCardName] = useState<string>('');
 
   // Row Toggles
   const handleToggleRow = (rowId: string) => {
@@ -127,6 +128,15 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
     );
     onRowsUpdated(updated);
     setBulkCategory('');
+  };
+
+  const handleBulkAssignCardName = (cardName: string) => {
+    if (!cardName.trim()) return;
+    const updated = rows.map((r) =>
+      r.selected ? { ...r, payment_method: cardName.trim() } : r
+    );
+    onRowsUpdated(updated);
+    setBulkCardName('');
   };
 
   // Filtering
@@ -345,6 +355,28 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
                 </option>
               ))}
             </select>
+
+            {/* Bulk Card Name Updater */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="text"
+                style={styles.bulkTextInput}
+                placeholder="החל שם כרטיס לנבחרים..."
+                value={bulkCardName}
+                onChange={(e) => setBulkCardName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleBulkAssignCardName(bulkCardName);
+                }}
+              />
+              <button
+                type="button"
+                style={styles.bulkBtn}
+                disabled={!bulkCardName.trim()}
+                onClick={() => handleBulkAssignCardName(bulkCardName)}
+              >
+                עדכן כרטיס
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -364,12 +396,12 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
               onChange={(e) => handleToggleAll(e.target.checked)}
             />
           </div>
-          <div style={{ flex: 1.2 }}>Date</div>
-          <div style={{ flex: 3 }}>Payee / Merchant</div>
-          <div style={{ flex: 2.8 }}>Category Classification</div>
-          <div style={{ flex: 1.4 }}>Method / Card</div>
-          <div style={{ flex: 1.6, textAlign: 'right' }}>Amount</div>
-          <div style={{ width: '80px', textAlign: 'center' }}>Hide / Soft Delete</div>
+          <div style={{ flex: 1.3 }}>תאריך עסקה / חיוב</div>
+          <div style={{ flex: 3 }}>בית עסק והערות</div>
+          <div style={{ flex: 2.8 }}>סיווג קטגוריה וחוקים</div>
+          <div style={{ flex: 1.4 }}>שם כרטיס / אמצעי</div>
+          <div style={{ flex: 1.6, textAlign: 'right' }}>סכום חיוב / מקור</div>
+          <div style={{ width: '80px', textAlign: 'center' }}>הסתרה</div>
         </div>
 
         {/* Rows */}
@@ -406,15 +438,20 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
                       />
                     </div>
 
-                    {/* Date */}
-                    <div style={{ flex: 1.2 }}>
+                    {/* Date (Transaction Date + Billing Date) */}
+                    <div style={{ flex: 1.3 }}>
                       <div style={styles.dateText}>{formatDate(row.date)}</div>
+                      {row.billing_date && row.billing_date !== row.date && (
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          📅 חיוב: {formatDate(row.billing_date)}
+                        </div>
+                      )}
                       {row.is_hidden && (
                         <span style={styles.hiddenTag}>Hidden (Soft-Delete)</span>
                       )}
                     </div>
 
-                    {/* Payee */}
+                    {/* Payee & Remarks */}
                     <div style={{ flex: 3 }}>
                       <div style={styles.payeeText}>{row.payee_name}</div>
                       {row.notes && <div style={styles.notesText}>{row.notes}</div>}
@@ -470,11 +507,12 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
                     <div style={{ flex: 1.4, display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <CreditCard size={13} color="var(--text-muted)" />
                       <span style={styles.methodText}>
-                        {row.card_last_digits ? `*${row.card_last_digits}` : row.payment_method}
+                        {row.payment_method || (row.card_last_digits ? `*${row.card_last_digits}` : 'credit_card')}
+                        {row.card_last_digits && !row.payment_method?.includes(row.card_last_digits) ? ` (*${row.card_last_digits})` : ''}
                       </span>
                     </div>
 
-                    {/* Amount */}
+                    {/* Amount & Foreign Original Currency */}
                     <div
                       style={{
                         flex: 1.6,
@@ -484,8 +522,15 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
                         color: isExpense ? 'var(--text-primary)' : 'var(--success-text)',
                       }}
                     >
-                      {isExpense ? '-' : '+'} {currencySymbol}{' '}
-                      {row.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      <div>
+                        {isExpense ? '-' : '+'} {currencySymbol}{' '}
+                        {row.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </div>
+                      {row.original_amount !== undefined && row.original_amount !== null && (row.original_amount !== row.amount || (row.original_currency && row.original_currency !== currencySymbol && row.original_currency !== 'ILS')) && (
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: '500' }}>
+                          מקור: {row.original_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} {row.original_currency || ''}
+                        </div>
+                      )}
                     </div>
 
                     {/* Row Hiding Mechanism */}
