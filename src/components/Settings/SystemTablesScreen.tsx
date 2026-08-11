@@ -25,6 +25,7 @@ import {
   ArrowUpDown,
   Filter,
   RotateCcw,
+  ChevronDown,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
@@ -810,67 +811,80 @@ CREATE POLICY "Users can delete payment mappings in their households"
         </label>
       </div>
 
-      {/* 5 System Sub-Tabs */}
-      <div style={styles.tabNav}>
-        <button
-          style={{
-            ...styles.subTabBtn,
-            ...(activeSubTab === 'macros' ? styles.subTabBtnActive : {}),
-          }}
-          onClick={() => handleSwitchTab('macros')}
-        >
-          <Layers size={16} />
-          <span>1. {t('tabMacroCategories', language)}</span>
-          <span style={styles.countBadge}>{macroCategories.length}</span>
-        </button>
-
-        <button
-          style={{
-            ...styles.subTabBtn,
-            ...(activeSubTab === 'expenses' ? styles.subTabBtnActive : {}),
-          }}
-          onClick={() => handleSwitchTab('expenses')}
-        >
-          <FolderTree size={16} />
-          <span>2. {t('tabExpenseCategories', language)}</span>
-          <span style={styles.countBadge}>{expenseCategories.length}</span>
-        </button>
-
-        <button
-          style={{
-            ...styles.subTabBtn,
-            ...(activeSubTab === 'incomes' ? styles.subTabBtnActive : {}),
-          }}
-          onClick={() => handleSwitchTab('incomes')}
-        >
-          <Tag size={16} />
-          <span>3. {t('tabIncomeCategories', language)}</span>
-          <span style={styles.countBadge}>{incomeCategories.length}</span>
-        </button>
-
-        <button
-          style={{
-            ...styles.subTabBtn,
-            ...(activeSubTab === 'merchants' ? styles.subTabBtnActive : {}),
-          }}
-          onClick={() => handleSwitchTab('merchants')}
-        >
-          <ArrowRightLeft size={16} />
-          <span>4. {t('tabMerchantMappings', language)}</span>
-          <span style={styles.countBadge}>{businessMappings.length}</span>
-        </button>
-
-        <button
-          style={{
-            ...styles.subTabBtn,
-            ...(activeSubTab === 'cards' ? styles.subTabBtnActive : {}),
-          }}
-          onClick={() => handleSwitchTab('cards')}
-        >
-          <CreditCard size={16} />
-          <span>5. {t('tabCardMappings', language)}</span>
-          <span style={styles.countBadge}>{cardMappings.length}</span>
-        </button>
+      {/* System Table Dropdown Selector */}
+      <div style={styles.tableSelectorCard}>
+        <div style={styles.tableSelectorHeader}>
+          <div style={styles.tableSelectorIconWrap}>
+            {activeSubTab === 'macros' ? (
+              <Layers size={22} color="var(--primary)" />
+            ) : activeSubTab === 'expenses' ? (
+              <FolderTree size={22} color="var(--primary)" />
+            ) : activeSubTab === 'incomes' ? (
+              <Tag size={22} color="var(--primary)" />
+            ) : activeSubTab === 'merchants' ? (
+              <ArrowRightLeft size={22} color="var(--primary)" />
+            ) : (
+              <CreditCard size={22} color="var(--primary)" />
+            )}
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={styles.tableSelectorLabel}>
+              {language === 'he' ? 'בחר טבלת מערכת לעריכה וניהול:' : 'Select System Table to Manage:'}
+            </label>
+            <div style={styles.selectDropdownWrap}>
+              <select
+                style={styles.tableSelectDropdown}
+                value={activeSubTab}
+                onChange={(e) => handleSwitchTab(e.target.value as SystemTab)}
+              >
+                <option value="macros">
+                  {language === 'he'
+                    ? `1. קבוצות על (הוצאות קבועות / משתנות) — [${macroCategories.length} פריטים]`
+                    : `1. Macro Groups (Fixed / Variable) — [${macroCategories.length} items]`}
+                </option>
+                <option value="expenses">
+                  {language === 'he'
+                    ? `2. סוגי הוצאות וקטגוריות — [${expenseCategories.length} פריטים]`
+                    : `2. Expense Categories — [${expenseCategories.length} items]`}
+                </option>
+                <option value="incomes">
+                  {language === 'he'
+                    ? `3. סוגי הכנסות — [${incomeCategories.length} פריטים]`
+                    : `3. Income Categories — [${incomeCategories.length} items]`}
+                </option>
+                <option value="merchants">
+                  {language === 'he'
+                    ? `4. טבלת המרה מבית עסק לסוג הוצאה (כללי סיווג) — [${businessMappings.length} כללים]`
+                    : `4. Merchant to Category Auto-Mapping — [${businessMappings.length} rules]`}
+                </option>
+                <option value="cards">
+                  {language === 'he'
+                    ? `5. טבלת כרטיסי אשראי ומקורות תשלום — [${cardMappings.length} כרטיסים]`
+                    : `5. Credit Cards & Payment Sources — [${cardMappings.length} cards]`}
+                </option>
+              </select>
+              <div style={styles.selectChevron}>
+                <ChevronDown size={18} color="var(--primary)" />
+              </div>
+            </div>
+          </div>
+          <div style={styles.tableActiveBadge}>
+            <span style={styles.activeBadgeCount}>
+              {activeSubTab === 'macros'
+                ? macroCategories.length
+                : activeSubTab === 'expenses'
+                ? expenseCategories.length
+                : activeSubTab === 'incomes'
+                ? incomeCategories.length
+                : activeSubTab === 'merchants'
+                ? businessMappings.length
+                : cardMappings.length}
+            </span>
+            <span style={styles.activeBadgeLabel}>
+              {language === 'he' ? 'רשומות בטבלה' : 'records'}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Excel / CSV File Upload Dropzone Bar */}
@@ -1852,40 +1866,92 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: 'var(--radius-sm)',
     border: '1px solid var(--border-main)',
   },
-  tabNav: {
-    display: 'flex',
-    gap: '10px',
-    borderBottom: '1px solid var(--border-main)',
-    paddingBottom: '12px',
-    overflowX: 'auto',
-  },
-  subTabBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '10px 18px',
-    borderRadius: 'var(--radius-md)',
+  tableSelectorCard: {
     backgroundColor: 'var(--bg-surface)',
+    borderRadius: 'var(--radius-lg)',
     border: '1px solid var(--border-main)',
-    color: 'var(--text-secondary)',
-    fontSize: '0.875rem',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-    whiteSpace: 'nowrap',
-  },
-  subTabBtnActive: {
-    backgroundColor: 'var(--primary)',
-    borderColor: 'var(--primary)',
-    color: '#FFFFFF',
+    padding: '16px 20px',
     boxShadow: 'var(--shadow-sm)',
   },
-  countBadge: {
-    padding: '2px 8px',
+  tableSelectorHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    flexWrap: 'wrap',
+  },
+  tableSelectorIconWrap: {
+    width: '46px',
+    height: '46px',
     borderRadius: '12px',
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  tableSelectorLabel: {
+    display: 'block',
     fontSize: '0.75rem',
     fontWeight: '700',
+    color: 'var(--text-secondary)',
+    marginBottom: '6px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
+  selectDropdownWrap: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: '580px',
+  },
+  tableSelectDropdown: {
+    width: '100%',
+    padding: '10px 16px',
+    paddingLeft: '38px',
+    fontSize: '0.9375rem',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '2px solid var(--primary)',
+    borderRadius: 'var(--radius-md)',
+    cursor: 'pointer',
+    outline: 'none',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    fontFamily: 'inherit',
+    boxShadow: 'var(--shadow-sm)',
+    transition: 'all 0.2s ease',
+  },
+  selectChevron: {
+    position: 'absolute',
+    left: '12px',
+    pointerEvents: 'none',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  tableActiveBadge: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    borderRadius: 'var(--radius-md)',
+    padding: '8px 18px',
+    flexShrink: 0,
+  },
+  activeBadgeCount: {
+    fontSize: '1.25rem',
+    fontWeight: '900',
+    color: 'var(--primary)',
+    lineHeight: 1.1,
+  },
+  activeBadgeLabel: {
+    fontSize: '0.6875rem',
+    fontWeight: '600',
+    color: 'var(--text-muted)',
+    marginTop: '2px',
   },
   uploadSection: {
     backgroundColor: 'var(--bg-surface)',
