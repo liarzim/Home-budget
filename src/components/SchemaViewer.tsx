@@ -1,5 +1,87 @@
 import React, { useState } from 'react';
-import { Database, Copy, Check, ShieldCheck, Key, Terminal } from 'lucide-react';
+import { Database, Copy, Check, ShieldCheck, Key, Terminal, ExternalLink, Sparkles } from 'lucide-react';
+
+const MIGRATION_SQL = `-- ==============================================================================
+-- Migration: Macro Categories (קבוצות על) & Payment Method Aliases
+-- Date: 2026-08-11
+-- ==============================================================================
+
+-- 1. Create Macro_Categories Table
+CREATE TABLE IF NOT EXISTS public.macro_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'expense' CHECK (type IN ('expense', 'income')),
+    color TEXT NOT NULL DEFAULT '#4F46E5',
+    icon TEXT NOT NULL DEFAULT 'ShoppingBag',
+    display_order INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_macro_categories_household ON public.macro_categories(household_id);
+CREATE INDEX IF NOT EXISTS idx_macro_categories_type ON public.macro_categories(type);
+
+ALTER TABLE public.macro_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view macro categories in their households"
+    ON public.macro_categories FOR SELECT
+    USING (public.is_household_member(household_id));
+
+CREATE POLICY "Users can insert macro categories in their households"
+    ON public.macro_categories FOR INSERT
+    WITH CHECK (public.is_household_member(household_id));
+
+CREATE POLICY "Users can update macro categories in their households"
+    ON public.macro_categories FOR UPDATE
+    USING (public.is_household_member(household_id))
+    WITH CHECK (public.is_household_member(household_id));
+
+CREATE POLICY "Users can delete macro categories in their households"
+    ON public.macro_categories FOR DELETE
+    USING (public.is_household_member(household_id));
+
+-- 2. Link categories table with macro_category_id
+ALTER TABLE public.categories
+    ADD COLUMN IF NOT EXISTS macro_category_id UUID REFERENCES public.macro_categories(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_categories_macro_cat ON public.categories(macro_category_id);
+
+-- 3. Create Payment_Method_Mappings Table (שמות כרטיסים ומקורות הוצאה להצגה)
+CREATE TABLE IF NOT EXISTS public.payment_method_mappings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    raw_pattern TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    card_last_digits TEXT,
+    payment_type TEXT NOT NULL DEFAULT 'credit_card' CHECK (payment_type IN ('credit_card', 'bank_transfer', 'cash', 'standing_order', 'check', 'other')),
+    color TEXT DEFAULT '#4F46E5',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_mappings_household ON public.payment_method_mappings(household_id);
+CREATE INDEX IF NOT EXISTS idx_payment_mappings_pattern ON public.payment_method_mappings(raw_pattern);
+
+ALTER TABLE public.payment_method_mappings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view payment mappings in their households"
+    ON public.payment_method_mappings FOR SELECT
+    USING (public.is_household_member(household_id));
+
+CREATE POLICY "Users can insert payment mappings in their households"
+    ON public.payment_method_mappings FOR INSERT
+    WITH CHECK (public.is_household_member(household_id));
+
+CREATE POLICY "Users can update payment mappings in their households"
+    ON public.payment_method_mappings FOR UPDATE
+    USING (public.is_household_member(household_id))
+    WITH CHECK (public.is_household_member(household_id));
+
+CREATE POLICY "Users can delete payment mappings in their households"
+    ON public.payment_method_mappings FOR DELETE
+    USING (public.is_household_member(household_id));`;
 
 const FULL_SQL_SCRIPT = `-- ============================================================================
 -- MULTI-TENANT HOUSEHOLD BUDGET MANAGEMENT SYSTEM - DATABASE SCHEMA & RLS
@@ -43,7 +125,21 @@ CREATE TABLE IF NOT EXISTS public.household_members (
 );
 ALTER TABLE public.household_members ENABLE ROW LEVEL SECURITY;
 
--- 4. CATEGORIES (Expense and Income)
+-- 4. MACRO_CATEGORIES (Top-Level Budget Groups)
+CREATE TABLE IF NOT EXISTS public.macro_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'expense' CHECK (type IN ('expense', 'income')),
+    color TEXT NOT NULL DEFAULT '#4F46E5',
+    icon TEXT NOT NULL DEFAULT 'ShoppingBag',
+    display_order INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+ALTER TABLE public.macro_categories ENABLE ROW LEVEL SECURITY;
+
+-- 5. CATEGORIES (Expense and Income Categories)
 CREATE TABLE IF NOT EXISTS public.categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
@@ -51,6 +147,7 @@ CREATE TABLE IF NOT EXISTS public.categories (
     type TEXT NOT NULL CHECK (type IN ('expense', 'income')),
     color TEXT DEFAULT '#4F46E5',
     icon TEXT DEFAULT 'tag',
+    macro_category_id UUID REFERENCES public.macro_categories(id) ON DELETE SET NULL,
     parent_id UUID REFERENCES public.categories(id) ON DELETE CASCADE,
     is_system BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
@@ -59,7 +156,22 @@ CREATE TABLE IF NOT EXISTS public.categories (
 );
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 
--- 5. BUSINESS_MAPPING (Auto-Categorization Rules)
+-- 6. PAYMENT_METHOD_MAPPINGS (Credit Cards & Aliases)
+CREATE TABLE IF NOT EXISTS public.payment_method_mappings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    raw_pattern TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    card_last_digits TEXT,
+    payment_type TEXT NOT NULL DEFAULT 'credit_card' CHECK (payment_type IN ('credit_card', 'bank_transfer', 'cash', 'standing_order', 'check', 'other')),
+    color TEXT DEFAULT '#4F46E5',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+ALTER TABLE public.payment_method_mappings ENABLE ROW LEVEL SECURITY;
+
+-- 7. BUSINESS_MAPPING (Auto-Categorization Rules)
 CREATE TABLE IF NOT EXISTS public.business_mapping (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
@@ -72,7 +184,7 @@ CREATE TABLE IF NOT EXISTS public.business_mapping (
 );
 ALTER TABLE public.business_mapping ENABLE ROW LEVEL SECURITY;
 
--- 6. TRANSACTIONS (With is_hidden soft delete flag)
+-- 8. TRANSACTIONS (With is_hidden soft delete flag)
 CREATE TABLE IF NOT EXISTS public.transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
@@ -84,15 +196,16 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     original_description TEXT,
     payment_method TEXT DEFAULT 'credit_card',
     card_last_digits TEXT,
-    is_hidden BOOLEAN NOT NULL DEFAULT false, -- Soft delete flag
+    is_hidden BOOLEAN NOT NULL DEFAULT false,
     notes TEXT,
+    source_reference_id TEXT,
     created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
--- 7. BUDGETS (Strict Monthly and Yearly Limits per category)
+-- 9. BUDGETS
 CREATE TABLE IF NOT EXISTS public.budgets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
@@ -111,7 +224,7 @@ CREATE TABLE IF NOT EXISTS public.budgets (
 );
 ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
 
--- 8. SAVINGS (Opening and Closing balances per calendar year)
+-- 10. SAVINGS
 CREATE TABLE IF NOT EXISTS public.savings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
@@ -128,91 +241,25 @@ CREATE TABLE IF NOT EXISTS public.savings (
 );
 ALTER TABLE public.savings ENABLE ROW LEVEL SECURITY;
 
--- SECURITY DEFINER HELPER FUNCTIONS
-CREATE OR REPLACE FUNCTION public.get_user_households(user_uuid UUID)
-RETURNS TABLE (household_id UUID)
+-- Helper RLS function
+CREATE OR REPLACE FUNCTION public.is_household_member(hh_id UUID)
+RETURNS BOOLEAN
 LANGUAGE sql SECURITY DEFINER SET search_path = public STABLE AS $$
-    SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = user_uuid;
-$$;
-
--- RLS POLICIES (Strict Tenant Isolation)
-DROP POLICY IF EXISTS "Tenant isolation for transactions (SELECT)" ON public.transactions;
-CREATE POLICY "Tenant isolation for transactions (SELECT)"
-    ON public.transactions FOR SELECT
-    USING (household_id IN (SELECT get_user_households(auth.uid())));
-
-DROP POLICY IF EXISTS "Tenant isolation for transactions (INSERT)" ON public.transactions;
-CREATE POLICY "Tenant isolation for transactions (INSERT)"
-    ON public.transactions FOR INSERT
-    WITH CHECK (household_id IN (SELECT get_user_households(auth.uid())));
-
-DROP POLICY IF EXISTS "Tenant isolation for transactions (UPDATE)" ON public.transactions;
-CREATE POLICY "Tenant isolation for transactions (UPDATE)"
-    ON public.transactions FOR UPDATE
-    USING (household_id IN (SELECT get_user_households(auth.uid())));
-
-DROP POLICY IF EXISTS "Tenant isolation for transactions (DELETE)" ON public.transactions;
-CREATE POLICY "Tenant isolation for transactions (DELETE)"
-    ON public.transactions FOR DELETE
-    USING (household_id IN (SELECT get_user_households(auth.uid())));
-
--- AUTOMATED SIGNUP TRIGGER
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE
-    new_household_id UUID;
-    user_name TEXT;
-BEGIN
-    user_name := COALESCE(
-        NEW.raw_user_meta_data->>'full_name',
-        NEW.raw_user_meta_data->>'name',
-        split_part(NEW.email, '@', 1)
+    SELECT EXISTS (
+        SELECT 1 FROM public.household_members
+        WHERE household_id = hh_id AND user_id = auth.uid()
     );
-
-    INSERT INTO public.profiles (id, email, full_name, avatar_url)
-    VALUES (NEW.id, NEW.email, user_name, NEW.raw_user_meta_data->>'avatar_url');
-
-    INSERT INTO public.households (name, currency, created_by)
-    VALUES (user_name || '''s Household', 'ILS', NEW.id)
-    RETURNING id INTO new_household_id;
-
-    INSERT INTO public.household_members (household_id, user_id, role, is_default)
-    VALUES (new_household_id, NEW.id, 'owner', true);
-
-    INSERT INTO public.categories (household_id, name, type, color, icon, is_system) VALUES
-        (new_household_id, 'Salary & Income', 'income', '#10B981', 'briefcase', true),
-        (new_household_id, 'Housing & Rent', 'expense', '#4F46E5', 'home', true),
-        (new_household_id, 'Groceries & Supermarket', 'expense', '#F59E0B', 'shopping-cart', true),
-        (new_household_id, 'Utilities & Bills', 'expense', '#6366F1', 'zap', true),
-        (new_household_id, 'Transportation & Fuel', 'expense', '#EC4899', 'car', true),
-        (new_household_id, 'Healthcare & Pharmacy', 'expense', '#EF4444', 'heart-pulse', true),
-        (new_household_id, 'Dining & Restaurants', 'expense', '#F97316', 'utensils', true),
-        (new_household_id, 'Leisure & Entertainment', 'expense', '#8B5CF6', 'film', true);
-
-    INSERT INTO public.business_mapping (household_id, pattern, category_id, priority)
-    SELECT new_household_id, 'SHUFERSAL', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Groceries & Supermarket'
-    UNION ALL
-    SELECT new_household_id, 'PAZ', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Transportation & Fuel'
-    UNION ALL
-    SELECT new_household_id, 'SUPER-PHARM', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Healthcare & Pharmacy'
-    UNION ALL
-    SELECT new_household_id, 'NETFLIX', id, 10 FROM public.categories WHERE household_id = new_household_id AND name = 'Leisure & Entertainment';
-
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();`;
+$$;`;
 
 export const SchemaViewer: React.FC = () => {
   const [copied, setCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<'migration' | 'full'>('migration');
+
+  const activeScript = viewMode === 'migration' ? MIGRATION_SQL : FULL_SQL_SCRIPT;
 
   const handleCopy = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(FULL_SQL_SCRIPT);
+      navigator.clipboard.writeText(activeScript);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -222,15 +269,52 @@ export const SchemaViewer: React.FC = () => {
     <div style={styles.container}>
       <div style={styles.headerRow}>
         <div>
-          <h2 style={styles.title}>Database Schema & RLS Policies</h2>
+          <h2 style={styles.title}>Database Schema & Supabase Migrations</h2>
           <p style={styles.subtitle}>
-            File located at <code>supabase/schema.sql</code>. Ready to paste directly into Supabase SQL Editor.
+            Ready to paste directly into Supabase SQL Editor.
           </p>
         </div>
 
-        <button style={styles.copyBtn} onClick={handleCopy}>
-          {copied ? <Check size={16} color="#FFFFFF" /> : <Copy size={16} color="#FFFFFF" />}
-          <span>{copied ? 'Copied SQL!' : 'Copy SQL Script'}</span>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <a
+            href="https://supabase.com/dashboard/project/hhrpcjkdkghnnqtqqqlo/sql/new"
+            target="_blank"
+            rel="noreferrer"
+            style={styles.openDashboardBtn}
+          >
+            <ExternalLink size={15} />
+            <span>Open Supabase SQL Editor</span>
+          </a>
+
+          <button style={styles.copyBtn} onClick={handleCopy}>
+            {copied ? <Check size={16} color="#FFFFFF" /> : <Copy size={16} color="#FFFFFF" />}
+            <span>{copied ? 'Copied SQL!' : 'Copy Active SQL Script'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* SQL Tab Selector */}
+      <div style={styles.tabNav}>
+        <button
+          style={{
+            ...styles.tabBtn,
+            ...(viewMode === 'migration' ? styles.tabBtnActive : {}),
+          }}
+          onClick={() => setViewMode('migration')}
+        >
+          <Sparkles size={15} />
+          <span>Latest Migration (2026-08-11 Macro Categories & Mappings)</span>
+        </button>
+
+        <button
+          style={{
+            ...styles.tabBtn,
+            ...(viewMode === 'full' ? styles.tabBtnActive : {}),
+          }}
+          onClick={() => setViewMode('full')}
+        >
+          <Database size={15} />
+          <span>Full Schema SQL (All 10 Tables)</span>
         </button>
       </div>
 
@@ -242,8 +326,7 @@ export const SchemaViewer: React.FC = () => {
           </div>
           <h3 style={styles.archCardTitle}>Strict Tenant Isolation</h3>
           <p style={styles.archCardDesc}>
-            Row Level Security (RLS) is enabled on all tables. Queries filter via{' '}
-            <code>get_user_households(auth.uid())</code>, guaranteeing zero data leakage across different families or tenants.
+            Row Level Security (RLS) is enabled on all tables including <code>macro_categories</code> and <code>payment_method_mappings</code>.
           </p>
         </div>
 
@@ -251,9 +334,9 @@ export const SchemaViewer: React.FC = () => {
           <div style={{ ...styles.archIconBox, backgroundColor: 'var(--primary-light)' }}>
             <Terminal size={18} color="var(--primary)" />
           </div>
-          <h3 style={styles.archCardTitle}>Automated Signup Onboarding</h3>
+          <h3 style={styles.archCardTitle}>Macro Categories Grouping</h3>
           <p style={styles.archCardDesc}>
-            A PostgreSQL trigger (<code>handle_new_user</code>) automatically creates a Profile, a default Household, assigns Owner role, and seeds Israeli/International categories and merchant auto-rules upon Google/Apple/GitHub OAuth sign-in.
+            Dynamic grouping into Fixed, Variable, and Seasonal categories with UUID foreign key relations.
           </p>
         </div>
 
@@ -261,11 +344,11 @@ export const SchemaViewer: React.FC = () => {
           <div style={{ ...styles.archIconBox, backgroundColor: 'var(--warning-light)' }}>
             <Key size={18} color="var(--warning)" />
           </div>
-          <h3 style={styles.archCardTitle}>Deploy to Supabase</h3>
+          <h3 style={styles.archCardTitle}>Run in Supabase</h3>
           <p style={styles.archCardDesc}>
-            1. Open Supabase Dashboard → SQL Editor → New Query<br />
-            2. Paste this script & click Run<br />
-            3. Copy your Project URL & Anon Key into <code>.env</code>
+            1. Click "Open Supabase SQL Editor" above<br />
+            2. Click "Copy Active SQL Script" and paste into the editor<br />
+            3. Click "RUN" to apply the migration
           </p>
         </div>
       </div>
@@ -275,13 +358,14 @@ export const SchemaViewer: React.FC = () => {
         <div style={styles.codeHeader}>
           <div style={styles.codeLangPill}>
             <Database size={14} color="var(--primary)" />
-            <span>PostgreSQL (Supabase Schema & RLS)</span>
+            <span>PostgreSQL (Supabase SQL)</span>
           </div>
-          <span style={styles.codeFilePath}>supabase/schema.sql</span>
+          <span style={styles.codeFilePath}>
+            {viewMode === 'migration' ? 'supabase/migrations/20260811_macro_categories.sql' : 'supabase/schema.sql'}
+          </span>
         </div>
-
         <pre style={styles.codeBlock}>
-          <code>{FULL_SQL_SCRIPT}</code>
+          <code>{activeScript}</code>
         </pre>
       </div>
     </div>
@@ -292,47 +376,87 @@ const styles: { [key: string]: React.CSSProperties } = {
   container: {
     display: 'flex',
     flexDirection: 'column',
+    gap: '24px',
   },
   headerRow: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: '12px',
-    marginBottom: '20px',
     flexWrap: 'wrap',
+    gap: '16px',
   },
   title: {
-    fontSize: '1.25rem',
+    fontSize: '1.5rem',
     fontWeight: '800',
     color: 'var(--text-primary)',
     letterSpacing: '-0.02em',
   },
   subtitle: {
-    fontSize: '0.8125rem',
+    fontSize: '0.875rem',
     color: 'var(--text-secondary)',
-    marginTop: '2px',
+    marginTop: '4px',
+  },
+  openDashboardBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '9px 16px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--bg-surface)',
+    border: '1px solid var(--border-main)',
+    color: 'var(--text-primary)',
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    textDecoration: 'none',
+    cursor: 'pointer',
   },
   copyBtn: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
     padding: '9px 18px',
+    borderRadius: 'var(--radius-sm)',
     backgroundColor: 'var(--primary)',
     color: '#FFFFFF',
-    borderRadius: 'var(--radius-sm)',
     fontSize: '0.8125rem',
-    fontWeight: '600',
+    fontWeight: '700',
+    border: 'none',
+    cursor: 'pointer',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  tabNav: {
+    display: 'flex',
+    gap: '10px',
+    borderBottom: '1px solid var(--border-main)',
+    paddingBottom: '12px',
+  },
+  tabBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '8px 16px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--bg-surface)',
+    border: '1px solid var(--border-main)',
+    color: 'var(--text-secondary)',
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+  },
+  tabBtnActive: {
+    backgroundColor: 'var(--primary)',
+    borderColor: 'var(--primary)',
+    color: '#FFFFFF',
   },
   architectureGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
     gap: '16px',
-    marginBottom: '24px',
   },
   archCard: {
     backgroundColor: 'var(--bg-surface)',
-    borderRadius: 'var(--radius-lg)',
     border: '1px solid var(--border-main)',
+    borderRadius: 'var(--radius-lg)',
     padding: '20px',
     boxShadow: 'var(--shadow-sm)',
   },
@@ -357,41 +481,42 @@ const styles: { [key: string]: React.CSSProperties } = {
     lineHeight: '1.5',
   },
   codeCard: {
-    backgroundColor: '#0F172A',
+    backgroundColor: 'var(--bg-surface)',
+    border: '1px solid var(--border-main)',
     borderRadius: 'var(--radius-lg)',
     overflow: 'hidden',
-    boxShadow: 'var(--shadow-lg)',
+    boxShadow: 'var(--shadow-sm)',
   },
   codeHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '12px 20px',
-    backgroundColor: '#1E293B',
-    borderBottom: '1px solid #334155',
+    padding: '12px 18px',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    borderBottom: '1px solid var(--border-main)',
   },
   codeLangPill: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    color: '#E2E8F0',
-    fontSize: '0.8125rem',
-    fontWeight: '600',
+    gap: '6px',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
   },
   codeFilePath: {
-    fontSize: '0.75rem',
-    color: '#94A3B8',
     fontFamily: 'var(--font-mono)',
+    fontSize: '0.75rem',
+    color: 'var(--text-muted)',
   },
   codeBlock: {
-    padding: '20px',
     margin: 0,
+    padding: '20px',
+    backgroundColor: '#0F172A',
     color: '#E2E8F0',
-    fontSize: '0.8125rem',
     fontFamily: 'var(--font-mono)',
+    fontSize: '0.8125rem',
     lineHeight: '1.6',
     overflowX: 'auto',
-    maxHeight: '480px',
-    overflowY: 'auto',
+    maxHeight: '600px',
   },
 };

@@ -25,6 +25,18 @@ import {
 
 import { Language } from '../lib/i18n';
 
+// UUID generator helper ensuring 100% valid UUID format for PostgreSQL UUID columns
+export const generateUUID = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 interface AuthContextType {
   user: Profile | null;
   households: Household[];
@@ -92,6 +104,7 @@ interface AuthContextType {
   updateCardMapping: (id: string, rawPattern: string, displayName: string, lastDigits?: string, color?: string) => void;
   deleteCardMapping: (id: string) => void;
   batchAddCardMappings: (mappings: Partial<CardMapping>[]) => void;
+  seedDefaultHouseholdData: (targetHouseholdId?: string) => Promise<void>;
   showHiddenNotice: boolean;
   setShowHiddenNotice: (val: boolean) => void;
 }
@@ -120,83 +133,107 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const setShowHiddenNotice = (val: boolean) => {
     setShowHiddenNoticeState(val);
-    localStorage.setItem('show_hidden_notice', String(val));
+    localStorage.setItem('show_hidden_notice', val ? 'true' : 'false');
   };
 
-  // Language State - Default to Hebrew (RTL)
+  // Language & Direction state
   const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem('app_language');
-    return (saved as Language) || 'he';
+    const saved = localStorage.getItem('preferred_language');
+    return (saved === 'en' || saved === 'he') ? saved : 'he';
   });
 
   const dir: 'rtl' | 'ltr' = language === 'he' ? 'rtl' : 'ltr';
 
-  const setLanguage = (newLang: Language) => {
-    setLanguageState(newLang);
-    localStorage.setItem('app_language', newLang);
-    document.documentElement.dir = newLang === 'he' ? 'rtl' : 'ltr';
-    document.documentElement.lang = newLang;
+  const setLanguage = (lang: Language) => {
+    setLanguageState(lang);
+    localStorage.setItem('preferred_language', lang);
+    document.documentElement.dir = lang === 'he' ? 'rtl' : 'ltr';
+    document.documentElement.lang = lang;
   };
 
   useEffect(() => {
-    document.documentElement.dir = language === 'he' ? 'rtl' : 'ltr';
+    document.documentElement.dir = dir;
     document.documentElement.lang = language;
-  }, [language]);
+  }, [language, dir]);
 
+  // Initial Auth Check
   useEffect(() => {
-    checkInitialAuth();
-  }, []);
-
-  async function checkInitialAuth() {
-    setIsLoading(true);
-    try {
-      if (isSupabaseConfigured) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          await loadSupabaseUserData(session.user.id, session.user.email || '');
-          setIsLoading(false);
+    async function initAuth() {
+      try {
+        if (!isSupabaseConfigured) {
+          // If keys are not configured, auto-load mock demo data
+          loginDemo();
           return;
         }
 
-        // Listen to auth state changes
-        supabase.auth.onAuthStateChange(async (_event, session) => {
-          if (session?.user) {
-            await loadSupabaseUserData(session.user.id, session.user.email || '');
-          } else if (!isDemoMode) {
-            setUser(null);
-            setHouseholds([]);
-            setActiveHousehold(null);
-          }
-        });
+        // Check active session from Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && session.user) {
+          await loadSupabaseUserData(session.user.id, session.user.email);
+        } else {
+          // Default to demo mode if not authenticated
+          loginDemo();
+        }
+      } catch (err) {
+        console.error('Auth initialization error:', err);
+        loginDemo();
+      } finally {
+        setIsLoading(false);
       }
-    } catch (e) {
-      console.error('Error checking auth:', e);
-    } finally {
-      setIsLoading(false);
     }
-  }
 
-  async function loadSupabaseUserData(userId: string, email: string) {
+    initAuth();
+
+    // Listen for auth state changes (OAuth Redirects, Logins, Logouts)
+    if (isSupabaseConfigured) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          setIsLoading(true);
+          await loadSupabaseUserData(session.user.id, session.user.email);
+          setIsLoading(false);
+        } else if (event === 'SIGNED_OUT') {
+          logout();
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, []);
+
+  async function loadSupabaseUserData(userId: string, email?: string) {
     try {
-      // 1. Fetch Profile
-      const { data: profile } = await supabase
+      setIsDemoMode(false);
+      // Fetch or Create Profile
+      let { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
 
-      setUser(
-        profile || {
-          id: userId,
-          email,
-          full_name: email.split('@')[0],
-          avatar_url: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-      );
+      if (!profile && email) {
+        const { data: newProf } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            email: email,
+            full_name: email.split('@')[0],
+          })
+          .select()
+          .single();
+        profile = newProf;
+      }
 
-      // 2. Fetch User Households (via RLS)
+      setUser(profile || {
+        id: userId,
+        email: email || '',
+        full_name: email?.split('@')[0] || 'User',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      // Fetch User's Households
       const { data: userHouseholds } = await supabase
         .from('households')
         .select('*, household_members(role, is_default)');
@@ -223,13 +260,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   async function loadHouseholdDetails(householdId: string) {
     try {
-      // Fetch Macro Categories
-      const { data: mcs } = await supabase
-        .from('macro_categories')
-        .select('*')
-        .eq('household_id', householdId)
-        .order('display_order', { ascending: true });
-      if (mcs) setMacroCategories(mcs);
+      // Fetch Macro Categories (handle table not found gracefully)
+      try {
+        const { data: mcs, error: mcErr } = await supabase
+          .from('macro_categories')
+          .select('*')
+          .eq('household_id', householdId)
+          .order('display_order', { ascending: true });
+        if (!mcErr && mcs) {
+          setMacroCategories(mcs);
+        }
+      } catch (e) {
+        console.warn('macro_categories table not queryable yet');
+      }
 
       // Fetch Categories
       const { data: cats } = await supabase
@@ -246,11 +289,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (bms) setBusinessMappings(bms);
 
       // Fetch Payment Method Mappings
-      const { data: pms } = await supabase
-        .from('payment_method_mappings')
-        .select('*')
-        .eq('household_id', householdId);
-      if (pms) setCardMappings(pms);
+      try {
+        const { data: pms, error: pmErr } = await supabase
+          .from('payment_method_mappings')
+          .select('*')
+          .eq('household_id', householdId);
+        if (!pmErr && pms) {
+          setCardMappings(pms);
+        }
+      } catch (e) {
+        console.warn('payment_method_mappings table not queryable yet');
+      }
 
       // Fetch Transactions
       const { data: txs } = await supabase
@@ -361,34 +410,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const addTransaction = (newTxData: Partial<Transaction>) => {
+  const addTransaction = (tx: Partial<Transaction>) => {
     if (!activeHousehold) return;
-
-    // Check auto-categorization mapping rules if category_id not provided
-    let detectedCategoryId = newTxData.category_id || null;
-    if (!detectedCategoryId && newTxData.payee_name) {
-      const cleanPayee = newTxData.payee_name.toUpperCase();
-      const matchedRule = businessMappings.find((rule) =>
-        cleanPayee.includes(rule.pattern.toUpperCase())
-      );
-      if (matchedRule) {
-        detectedCategoryId = matchedRule.category_id;
-      }
-    }
-
     const newTx: Transaction = {
-      id: `tx-${Date.now()}`,
+      id: tx.id || generateUUID(),
       household_id: activeHousehold.id,
-      date: newTxData.date || new Date().toISOString().split('T')[0],
-      amount: newTxData.amount || 0,
-      category_id: detectedCategoryId,
-      transaction_type: newTxData.transaction_type || 'expense',
-      payee_name: newTxData.payee_name || 'Merchant',
-      original_description: newTxData.original_description || null,
-      payment_method: newTxData.payment_method || 'credit_card',
-      card_last_digits: newTxData.card_last_digits || null,
-      is_hidden: false,
-      notes: newTxData.notes || (detectedCategoryId ? 'Auto-categorized by rule' : null),
+      date: tx.date || new Date().toISOString().split('T')[0],
+      amount: tx.amount || 0,
+      category_id: tx.category_id || null,
+      transaction_type: tx.transaction_type || 'expense',
+      payee_name: tx.payee_name || 'Manual Entry',
+      original_description: tx.original_description,
+      payment_method: tx.payment_method || 'credit_card',
+      card_last_digits: tx.card_last_digits,
+      is_hidden: tx.is_hidden ?? false,
+      notes: tx.notes,
       created_by: user?.id || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -397,18 +433,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTransactions((prev) => [newTx, ...prev]);
 
     if (isSupabaseConfigured && !isDemoMode) {
-      supabase.from('transactions').insert(newTx).then();
+      supabase
+        .from('transactions')
+        .insert({
+          id: newTx.id,
+          household_id: activeHousehold.id,
+          date: newTx.date,
+          amount: newTx.amount,
+          category_id: newTx.category_id,
+          transaction_type: newTx.transaction_type,
+          payee_name: newTx.payee_name,
+          original_description: newTx.original_description,
+          payment_method: newTx.payment_method,
+          card_last_digits: newTx.card_last_digits,
+          is_hidden: newTx.is_hidden,
+          notes: newTx.notes,
+        })
+        .then();
     }
   };
 
-  const addBatchTransactions = (newTxs: Transaction[]) => {
-    setTransactions((prev) => [...newTxs, ...prev]);
+  const addBatchTransactions = (txs: Transaction[]) => {
+    if (!activeHousehold) return;
+    const mappedTxs = txs.map((tx) => ({
+      ...tx,
+      id: tx.id && tx.id.length > 20 ? tx.id : generateUUID(),
+      household_id: activeHousehold.id,
+      is_hidden: tx.is_hidden ?? false,
+    }));
 
-    if (isSupabaseConfigured && !isDemoMode && activeHousehold) {
+    setTransactions((prev) => [...mappedTxs, ...prev]);
+
+    if (isSupabaseConfigured && !isDemoMode) {
       supabase
         .from('transactions')
         .insert(
-          newTxs.map((tx) => ({
+          mappedTxs.map((tx) => ({
+            id: tx.id,
             household_id: activeHousehold.id,
             date: tx.date,
             amount: tx.amount,
@@ -428,7 +489,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addHousehold = (name: string, currency: string = 'ILS') => {
     const newHh: Household = {
-      id: `hh-${Date.now()}`,
+      id: generateUUID(),
       name,
       currency,
       created_by: user?.id || null,
@@ -442,7 +503,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isSupabaseConfigured && !isDemoMode) {
       supabase
         .from('households')
-        .insert({ name, currency })
+        .insert({ id: newHh.id, name, currency })
         .select()
         .single()
         .then(({ data }) => {
@@ -463,7 +524,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     if (!activeHousehold) return;
     const newMacro: MacroCategory = {
-      id: `mc-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: generateUUID(),
       household_id: activeHousehold.id,
       name: name.trim(),
       type,
@@ -533,7 +594,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const batchAddMacroCategories = (macros: Partial<MacroCategory>[]) => {
     if (!activeHousehold) return;
     const newMacros: MacroCategory[] = macros.map((m, i) => ({
-      id: `mc-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+      id: m.id || generateUUID(),
       household_id: activeHousehold.id,
       name: (m.name || '').trim(),
       type: m.type || 'expense',
@@ -561,7 +622,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     if (!activeHousehold) return;
     const newCat: Category = {
-      id: `cat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: generateUUID(),
       household_id: activeHousehold.id,
       name: name.trim(),
       type,
@@ -627,7 +688,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const batchAddCategories = (cats: Partial<Category>[]) => {
     if (!activeHousehold) return;
     const newCats: Category[] = cats.map((c, i) => ({
-      id: `cat-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+      id: c.id || generateUUID(),
       household_id: activeHousehold.id,
       name: (c.name || '').trim(),
       type: c.type || 'expense',
@@ -650,7 +711,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addBusinessMapping = (pattern: string, categoryId: string) => {
     if (!activeHousehold) return;
     const newMapping: BusinessMapping = {
-      id: `bm-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: generateUUID(),
       household_id: activeHousehold.id,
       pattern: pattern.toUpperCase(),
       category_id: categoryId,
@@ -704,7 +765,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const batchAddBusinessMappings = (mappings: { pattern: string; category_id: string }[]) => {
     if (!activeHousehold) return;
     const newMappings: BusinessMapping[] = mappings.map((m, i) => ({
-      id: `bm-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+      id: generateUUID(),
       household_id: activeHousehold.id,
       pattern: m.pattern.toUpperCase().trim(),
       category_id: m.category_id,
@@ -730,7 +791,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     if (!activeHousehold) return;
     const newCardMapping: CardMapping = {
-      id: `cm-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: generateUUID(),
       household_id: activeHousehold.id,
       raw_pattern: rawPattern.trim(),
       display_name: displayName.trim(),
@@ -796,10 +857,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const batchAddCardMappings = (mappings: Partial<CardMapping>[]) => {
     if (!activeHousehold) return;
     const newItems: CardMapping[] = mappings.map((m, i) => ({
-      id: `cm-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+      id: m.id || generateUUID(),
       household_id: activeHousehold.id,
       raw_pattern: (m.raw_pattern || '').trim(),
-      display_name: (m.display_name || '').trim(),
+      display_name: (m.display_name || m.raw_pattern || '').trim(),
       card_last_digits: m.card_last_digits || null,
       payment_type: m.payment_type || 'credit_card',
       color: m.color || '#4F46E5',
@@ -811,6 +872,125 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured && !isDemoMode) {
       supabase.from('payment_method_mappings').insert(newItems).then();
+    }
+  };
+
+  // Seed default Israeli household classification system tables
+  const seedDefaultHouseholdData = async (targetHouseholdId?: string) => {
+    const hhId = targetHouseholdId || activeHousehold?.id;
+    if (!hhId) return;
+
+    // 1. Create standard Macro Categories with valid UUIDs
+    const mcFixedId = generateUUID();
+    const mcVarId = generateUUID();
+    const mcSeasonId = generateUUID();
+    const mcSalaryId = generateUUID();
+    const mcExtraId = generateUUID();
+
+    const newMacros: MacroCategory[] = [
+      {
+        id: mcFixedId,
+        household_id: hhId,
+        name: 'הוצאות קבועות (דיור, רכב, ביטוח)',
+        type: 'expense',
+        color: '#4F46E5',
+        icon: 'Lock',
+        display_order: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: mcVarId,
+        household_id: hhId,
+        name: 'הוצאות משתנות (מזון, בילויים, קניות)',
+        type: 'expense',
+        color: '#F59E0B',
+        icon: 'ShoppingBag',
+        display_order: 2,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: mcSeasonId,
+        household_id: hhId,
+        name: 'הוצאות עונתיות, נופש ושנתיות',
+        type: 'expense',
+        color: '#EC4899',
+        icon: 'Calendar',
+        display_order: 3,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: mcSalaryId,
+        household_id: hhId,
+        name: 'משכורות והכנסות עיקריות',
+        type: 'income',
+        color: '#10B981',
+        icon: 'Briefcase',
+        display_order: 4,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: mcExtraId,
+        household_id: hhId,
+        name: 'קצבאות, מענקים והכנסות נוספות',
+        type: 'income',
+        color: '#06B6D4',
+        icon: 'Gift',
+        display_order: 5,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ];
+
+    // 2. Create standard Categories linked to Macro Categories
+    const catSuper = { id: generateUUID(), household_id: hhId, name: 'Groceries & Supermarket', type: 'expense' as const, color: '#10B981', icon: 'shopping-cart', macro_category_id: mcVarId, is_system: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const catHousing = { id: generateUUID(), household_id: hhId, name: 'Housing & Rent', type: 'expense' as const, color: '#4F46E5', icon: 'home', macro_category_id: mcFixedId, is_system: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const catTrans = { id: generateUUID(), household_id: hhId, name: 'Transportation & Fuel', type: 'expense' as const, color: '#F59E0B', icon: 'car', macro_category_id: mcFixedId, is_system: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const catHealth = { id: generateUUID(), household_id: hhId, name: 'Healthcare & Pharmacy', type: 'expense' as const, color: '#EC4899', icon: 'activity', macro_category_id: mcFixedId, is_system: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const catDining = { id: generateUUID(), household_id: hhId, name: 'Restaurants & Cafes', type: 'expense' as const, color: '#F97316', icon: 'utensils', macro_category_id: mcVarId, is_system: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const catVacation = { id: generateUUID(), household_id: hhId, name: 'Vacation & Flights', type: 'expense' as const, color: '#8B5CF6', icon: 'plane', macro_category_id: mcSeasonId, is_system: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const catShopping = { id: generateUUID(), household_id: hhId, name: 'Shopping & Electronics', type: 'expense' as const, color: '#06B6D4', icon: 'gift', macro_category_id: mcVarId, is_system: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const catSalary = { id: generateUUID(), household_id: hhId, name: 'Salary & Primary Income', type: 'income' as const, color: '#10B981', icon: 'briefcase', macro_category_id: mcSalaryId, is_system: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    const catBenefits = { id: generateUUID(), household_id: hhId, name: 'Child Allowance & Grants', type: 'income' as const, color: '#3B82F6', icon: 'dollar-sign', macro_category_id: mcExtraId, is_system: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+
+    const newCats: Category[] = [catSuper, catHousing, catTrans, catHealth, catDining, catVacation, catShopping, catSalary, catBenefits];
+
+    // 3. Create Business Mappings
+    const newBms: BusinessMapping[] = [
+      { id: generateUUID(), household_id: hhId, pattern: 'SHUFERSAL', category_id: catSuper.id, priority: 10, is_regex: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: generateUUID(), household_id: hhId, pattern: 'PAZ', category_id: catTrans.id, priority: 10, is_regex: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: generateUUID(), household_id: hhId, pattern: 'SUPER-PHARM', category_id: catHealth.id, priority: 10, is_regex: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: generateUUID(), household_id: hhId, pattern: 'WOLT', category_id: catDining.id, priority: 10, is_regex: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: generateUUID(), household_id: hhId, pattern: 'AM:PM', category_id: catSuper.id, priority: 10, is_regex: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: generateUUID(), household_id: hhId, pattern: 'VICTORY', category_id: catSuper.id, priority: 10, is_regex: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: generateUUID(), household_id: hhId, pattern: 'TEN', category_id: catTrans.id, priority: 10, is_regex: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: generateUUID(), household_id: hhId, pattern: 'SONOL', category_id: catTrans.id, priority: 10, is_regex: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    ];
+
+    // 4. Create Card Mappings
+    const newCards: CardMapping[] = [
+      { id: generateUUID(), household_id: hhId, raw_pattern: 'כרטיס כאל ויזה 1234', display_name: 'ויזה כאל זהב (אישי)', card_last_digits: '1234', payment_type: 'credit_card', color: '#4F46E5', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: generateUUID(), household_id: hhId, raw_pattern: 'ישראכרט 9876', display_name: 'מאסטרקארד משותף', card_last_digits: '9876', payment_type: 'credit_card', color: '#10B981', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { id: generateUUID(), household_id: hhId, raw_pattern: 'עו"ש לאומי', display_name: 'עו״ש בנק לאומי', card_last_digits: null, payment_type: 'bank_transfer', color: '#06B6D4', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    ];
+
+    setMacroCategories((prev) => [...prev, ...newMacros]);
+    setCategories((prev) => [...prev, ...newCats]);
+    setBusinessMappings((prev) => [...prev, ...newBms]);
+    setCardMappings((prev) => [...prev, ...newCards]);
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      try {
+        await supabase.from('macro_categories').insert(newMacros);
+        await supabase.from('categories').insert(newCats);
+        await supabase.from('business_mapping').insert(newBms);
+        await supabase.from('payment_method_mappings').insert(newCards);
+      } catch (err) {
+        console.error('Error seeding to Supabase:', err);
+      }
     }
   };
 
@@ -859,6 +1039,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateCardMapping,
         deleteCardMapping,
         batchAddCardMappings,
+        seedDefaultHouseholdData,
         showHiddenNotice,
         setShowHiddenNotice,
       }}

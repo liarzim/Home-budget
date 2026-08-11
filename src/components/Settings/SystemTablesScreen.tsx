@@ -50,6 +50,7 @@ export const SystemTablesScreen: React.FC = () => {
     updateCardMapping,
     deleteCardMapping,
     batchAddCardMappings,
+    seedDefaultHouseholdData,
     showHiddenNotice,
     setShowHiddenNotice,
     language,
@@ -58,6 +59,10 @@ export const SystemTablesScreen: React.FC = () => {
 
   const [activeSubTab, setActiveSubTab] = useState<SystemTab>('macros');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [seedSuccess, setSeedSuccess] = useState(false);
+  const [showSqlGuide, setShowSqlGuide] = useState(false);
+  const [sqlCopied, setSqlCopied] = useState(false);
 
   // Modals for CRUD
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -404,7 +409,123 @@ export const SystemTablesScreen: React.FC = () => {
           <h1 style={styles.pageTitle}>{t('systemTablesTitle', language)}</h1>
           <p style={styles.pageSub}>{t('systemTablesSub', language)}</p>
         </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            style={styles.guideBtn}
+            onClick={() => setShowSqlGuide(!showSqlGuide)}
+          >
+            <Sparkles size={16} color="var(--primary)" />
+            <span>
+              {language === 'he'
+                ? 'סקריפט SQL ל-Supabase DB'
+                : 'Supabase SQL Script'}
+            </span>
+          </button>
+
+          <button
+            style={styles.seedBtn}
+            disabled={isSeeding}
+            onClick={async () => {
+              setIsSeeding(true);
+              await seedDefaultHouseholdData();
+              setIsSeeding(false);
+              setSeedSuccess(true);
+              setTimeout(() => setSeedSuccess(false), 4000);
+            }}
+          >
+            <Sparkles size={16} />
+            <span>
+              {isSeeding
+                ? language === 'he'
+                  ? 'טוען נתונים...'
+                  : 'Seeding...'
+                : seedSuccess
+                ? language === 'he'
+                  ? '✓ נתונים נטענו בהצלחה!'
+                  : '✓ Seeded Successfully!'
+                : language === 'he'
+                ? '✨ אתחל קבוצות על וסיווגים מומלצים'
+                : '✨ Seed Default Categories'}
+            </span>
+          </button>
+        </div>
       </div>
+
+      {/* Supabase SQL Migration Guide Banner */}
+      {showSqlGuide && (
+        <div style={styles.sqlGuideCard} className="animate-fade-in">
+          <div style={styles.sqlGuideHeader}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Sparkles size={18} color="var(--primary)" />
+              <strong style={{ color: 'var(--text-primary)', fontSize: '0.9375rem' }}>
+                {language === 'he'
+                  ? 'יצירת טבלאות קבוצות על והמרות ב-Supabase PostgreSQL'
+                  : 'Create Macro Categories & Payment Tables in Supabase'}
+              </strong>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                style={styles.copySqlBtn}
+                onClick={() => {
+                  const sql = `-- יצירת טבלאות קבוצות על והמרות ב-Supabase
+CREATE TABLE IF NOT EXISTS public.macro_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'expense' CHECK (type IN ('expense', 'income')),
+    color TEXT NOT NULL DEFAULT '#4F46E5',
+    icon TEXT NOT NULL DEFAULT 'ShoppingBag',
+    display_order INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.macro_categories ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users view macro_categories" ON public.macro_categories FOR ALL USING (public.is_household_member(household_id));
+
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS macro_category_id UUID REFERENCES public.macro_categories(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS public.payment_method_mappings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    raw_pattern TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    card_last_digits TEXT,
+    payment_type TEXT NOT NULL DEFAULT 'credit_card',
+    color TEXT DEFAULT '#4F46E5',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.payment_method_mappings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users view payment_method_mappings" ON public.payment_method_mappings FOR ALL USING (public.is_household_member(household_id));`;
+                  navigator.clipboard.writeText(sql);
+                  setSqlCopied(true);
+                  setTimeout(() => setSqlCopied(false), 2500);
+                }}
+              >
+                {sqlCopied ? '✓ הועתק ללוח!' : '📋 העתק סקריפט SQL'}
+              </button>
+
+              <a
+                href="https://supabase.com/dashboard/project/hhrpcjkdkghnnqtqqqlo/sql/new"
+                target="_blank"
+                rel="noreferrer"
+                style={styles.openSupabaseBtn}
+              >
+                🔗 פתח Supabase SQL Editor
+              </a>
+            </div>
+          </div>
+          <p style={styles.sqlGuideText}>
+            {language === 'he'
+              ? 'אם הטבלאות עדיין לא נוצרו ב-Supabase Database, לחץ על "העתק סקריפט SQL", פתח את ה-SQL Editor ב-Supabase והדבק להרצה מיידית (או השתמש בכפתור האתחול למעלה).'
+              : 'If these tables are not yet created in your Supabase DB, copy this SQL and run it in the Supabase SQL Editor.'}
+          </p>
+        </div>
+      )}
 
       {/* General Display Preferences Card */}
       <div style={styles.preferencesCard}>
@@ -1818,5 +1939,76 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '700',
     border: 'none',
     cursor: 'pointer',
+  },
+  guideBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    color: 'var(--text-primary)',
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+  },
+  seedBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 16px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--primary)',
+    color: '#FFFFFF',
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    border: 'none',
+    cursor: 'pointer',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  sqlGuideCard: {
+    backgroundColor: 'var(--bg-surface)',
+    border: '1px solid var(--primary)',
+    borderRadius: 'var(--radius-lg)',
+    padding: '16px 20px',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  sqlGuideHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '10px',
+    marginBottom: '8px',
+  },
+  copySqlBtn: {
+    padding: '6px 12px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--primary-light)',
+    border: '1px solid var(--primary)',
+    color: 'var(--primary)',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+  },
+  openSupabaseBtn: {
+    padding: '6px 12px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    color: 'var(--text-primary)',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    textDecoration: 'none',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+  },
+  sqlGuideText: {
+    fontSize: '0.8125rem',
+    color: 'var(--text-secondary)',
+    lineHeight: '1.5',
+    margin: 0,
   },
 };
