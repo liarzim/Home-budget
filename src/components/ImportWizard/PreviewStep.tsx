@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -41,11 +42,50 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
   onRowsUpdated,
   onNewMappingCreated,
 }) => {
+  const { cardMappings, transactions } = useAuth();
   const [filterMode, setFilterMode] = useState<'all' | 'active' | 'hidden' | 'unassigned' | 'auto'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [savingRuleForPayee, setSavingRuleForPayee] = useState<string | null>(null);
   const [bulkCategory, setBulkCategory] = useState<string>('');
   const [bulkCardName, setBulkCardName] = useState<string>('');
+
+  // Deduplicated list of distinct credit cards from the credit card table & transactions
+  const distinctCards = useMemo(() => {
+    const cardMap = new Map<string, { displayName: string; lastDigits?: string; color?: string }>();
+
+    if (cardMappings && cardMappings.length > 0) {
+      cardMappings.forEach((cm) => {
+        const name = (cm.display_name || cm.raw_pattern || '').trim();
+        if (name) {
+          const key = name.toLowerCase();
+          if (!cardMap.has(key)) {
+            cardMap.set(key, {
+              displayName: name,
+              lastDigits: cm.card_last_digits || undefined,
+              color: cm.color,
+            });
+          }
+        }
+      });
+    }
+
+    if (transactions && transactions.length > 0) {
+      transactions.forEach((tx) => {
+        const name = (tx.payment_method || '').trim();
+        if (name && name !== 'credit_card' && name !== 'bank_transfer' && name !== 'cash') {
+          const key = name.toLowerCase();
+          if (!cardMap.has(key)) {
+            cardMap.set(key, {
+              displayName: name,
+              lastDigits: tx.card_last_digits || undefined,
+            });
+          }
+        }
+      });
+    }
+
+    return Array.from(cardMap.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }, [cardMappings, transactions]);
 
   // Row Toggles
   const handleToggleRow = (rowId: string) => {
@@ -356,26 +396,26 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
               ))}
             </select>
 
-            {/* Bulk Card Name Updater */}
+            {/* Bulk Card Name Updater with Dropdown */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input
-                type="text"
-                style={styles.bulkTextInput}
-                placeholder="החל שם כרטיס לנבחרים..."
+              <select
+                style={styles.bulkCategorySelect}
                 value={bulkCardName}
-                onChange={(e) => setBulkCardName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleBulkAssignCardName(bulkCardName);
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setBulkCardName(val);
+                  if (val) {
+                    handleBulkAssignCardName(val);
+                  }
                 }}
-              />
-              <button
-                type="button"
-                style={styles.bulkBtn}
-                disabled={!bulkCardName.trim()}
-                onClick={() => handleBulkAssignCardName(bulkCardName)}
               >
-                עדכן כרטיס
-              </button>
+                <option value="">-- בחר כרטיס להחלה על הנבחרים --</option>
+                {distinctCards.map((c) => (
+                  <option key={c.displayName} value={c.displayName}>
+                    💳 {c.displayName} {c.lastDigits ? `(ספרות: ${c.lastDigits})` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         )}

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import {
   Calendar,
   Store,
@@ -16,6 +17,7 @@ import {
   ArrowRightLeft,
   Sparkles,
   HelpCircle,
+  Edit2,
 } from 'lucide-react';
 import { ParsedSheet, ColumnMapping, AmountMappingMode } from '../../lib/types';
 
@@ -30,8 +32,54 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
   mapping,
   onMappingChanged,
 }) => {
+  const { cardMappings, transactions } = useAuth();
+  const [isCustomCard, setIsCustomCard] = useState(false);
   const headers = sheet.headers;
   const sampleRow = sheet.rows[0] || {};
+
+  // Deduplicated list of distinct credit cards from the credit card table & transactions
+  const distinctCards = useMemo(() => {
+    const cardMap = new Map<string, { displayName: string; lastDigits?: string; color?: string }>();
+
+    // 1. From Card Mappings table (System Tables / Credit Cards table)
+    if (cardMappings && cardMappings.length > 0) {
+      cardMappings.forEach((cm) => {
+        const name = (cm.display_name || cm.raw_pattern || '').trim();
+        if (name) {
+          const key = name.toLowerCase();
+          if (!cardMap.has(key)) {
+            cardMap.set(key, {
+              displayName: name,
+              lastDigits: cm.card_last_digits || undefined,
+              color: cm.color,
+            });
+          }
+        }
+      });
+    }
+
+    // 2. From existing transactions table
+    if (transactions && transactions.length > 0) {
+      transactions.forEach((tx) => {
+        const name = (tx.payment_method || '').trim();
+        if (name && name !== 'credit_card' && name !== 'bank_transfer' && name !== 'cash') {
+          const key = name.toLowerCase();
+          if (!cardMap.has(key)) {
+            cardMap.set(key, {
+              displayName: name,
+              lastDigits: tx.card_last_digits || undefined,
+            });
+          }
+        }
+      });
+    }
+
+    return Array.from(cardMap.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }, [cardMappings, transactions]);
+
+  const isMatchingExistingCard = distinctCards.some(
+    (c) => c.displayName.toLowerCase() === (mapping.bulkPaymentMethod || '').toLowerCase().trim()
+  );
 
   const handleFieldChange = (field: keyof ColumnMapping, value: any) => {
     onMappingChanged({
@@ -98,7 +146,7 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
           </div>
         </div>
 
-        {/* Card 2: Bulk Card Assignment */}
+        {/* Card 2: Bulk Card Assignment from Credit Card Table */}
         <div style={styles.configCard}>
           <div style={styles.configCardHeader}>
             <div style={{ ...styles.configIconWrap, backgroundColor: 'rgba(79, 70, 229, 0.12)' }}>
@@ -109,27 +157,69 @@ export const ColumnMappingStep: React.FC<ColumnMappingStepProps> = ({
                 הגדרת שם כרטיס אחיד לכל הקובץ (Bulk Card Name)
               </div>
               <div style={styles.configDesc}>
-                אם כל השורות בקובץ שייכות לאותו כרטיס (למשל ויזה כאל 1234), הזינו כאן:
+                בחרו כרטיס מטבלת כרטיסי האשראי או הזינו שם חדש שיחול על כל התנועות בקובץ:
               </div>
             </div>
           </div>
 
-          <div style={styles.bulkCardInputRow}>
-            <input
-              type="text"
-              style={styles.bulkTextInput}
-              placeholder="לדוגמה: כרטיס ויזה כאל 5678, מאסטרקארד זהב..."
-              value={mapping.bulkPaymentMethod || ''}
-              onChange={(e) => handleFieldChange('bulkPaymentMethod', e.target.value)}
-            />
-            {mapping.bulkPaymentMethod && (
-              <button
-                type="button"
-                style={styles.clearBulkBtn}
-                onClick={() => handleFieldChange('bulkPaymentMethod', '')}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={styles.bulkCardInputRow}>
+              {/* Dropdown from Credit Card Table */}
+              <select
+                style={{ ...styles.fieldSelect, flex: 1 }}
+                value={
+                  isCustomCard || (!isMatchingExistingCard && mapping.bulkPaymentMethod)
+                    ? '__custom__'
+                    : mapping.bulkPaymentMethod || ''
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '__custom__') {
+                    setIsCustomCard(true);
+                  } else {
+                    setIsCustomCard(false);
+                    handleFieldChange('bulkPaymentMethod', val);
+                  }
+                }}
               >
-                נקה
-              </button>
+                <option value="">-- ללא הגדרה גורפת (שימוש בעמודה מהקובץ) --</option>
+                <optgroup label="כרטיסים מטבלת כרטיסי האשראי (Credit Cards)">
+                  {distinctCards.map((c) => (
+                    <option key={c.displayName} value={c.displayName}>
+                      💳 {c.displayName} {c.lastDigits ? `(ספרות: ${c.lastDigits})` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+                <option value="__custom__">✏️ + הזן שם כרטיס מותאם אישית (Custom Card Name)...</option>
+              </select>
+
+              {mapping.bulkPaymentMethod && (
+                <button
+                  type="button"
+                  style={styles.clearBulkBtn}
+                  onClick={() => {
+                    handleFieldChange('bulkPaymentMethod', '');
+                    setIsCustomCard(false);
+                  }}
+                  title="נקה הגדרה גורפת"
+                >
+                  נקה
+                </button>
+              )}
+            </div>
+
+            {/* Custom Text Input if user chose to type manually */}
+            {(isCustomCard || (!isMatchingExistingCard && mapping.bulkPaymentMethod)) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} className="animate-fade-in">
+                <input
+                  type="text"
+                  style={styles.bulkTextInput}
+                  placeholder="הזן שם כרטיס חדש (למשל: ויזה כאל זהב 5678)..."
+                  value={mapping.bulkPaymentMethod || ''}
+                  onChange={(e) => handleFieldChange('bulkPaymentMethod', e.target.value)}
+                  autoFocus
+                />
+              </div>
             )}
           </div>
         </div>
