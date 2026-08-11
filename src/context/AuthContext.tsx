@@ -85,6 +85,8 @@ interface AuthContextType {
   updateCardMapping: (id: string, rawPattern: string, displayName: string, lastDigits?: string, color?: string) => void;
   deleteCardMapping: (id: string) => void;
   batchAddCardMappings: (mappings: Partial<CardMapping>[]) => void;
+  showHiddenNotice: boolean;
+  setShowHiddenNotice: (val: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -102,6 +104,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<AuthContextType['activeTab']>('dashboard');
+
+  // Show is_hidden exclusion notice banner in dashboard (default: false)
+  const [showHiddenNotice, setShowHiddenNoticeState] = useState<boolean>(() => {
+    return localStorage.getItem('show_hidden_notice') === 'true';
+  });
+
+  const setShowHiddenNotice = (val: boolean) => {
+    setShowHiddenNoticeState(val);
+    localStorage.setItem('show_hidden_notice', String(val));
+  };
 
   // Language State - Default to Hebrew (RTL)
   const [language, setLanguageState] = useState<Language>(() => {
@@ -703,6 +715,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateCardMapping,
         deleteCardMapping,
         batchAddCardMappings,
+        showHiddenNotice,
+        setShowHiddenNotice,
       }}
     >
       {children}

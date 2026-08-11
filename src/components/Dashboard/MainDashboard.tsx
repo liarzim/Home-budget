@@ -37,6 +37,7 @@ export const MainDashboard: React.FC = () => {
     isDemoMode,
     language,
     toggleTransactionVisibility,
+    showHiddenNotice,
   } = useAuth();
 
   const [availableMonths, setAvailableMonths] = useState<string[]>(['2026-08', '2026-07']);
@@ -178,14 +179,16 @@ export const MainDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div style={styles.exclusionNoticePill}>
-          <EyeOff size={13} color="var(--text-muted)" />
-          <span>
-            {language === 'he'
-              ? 'שורות מוסתרות (is_hidden) אינן נכללות בחישובים'
-              : "Soft-deleted ('is_hidden') rows excluded"}
-          </span>
-        </div>
+        {showHiddenNotice && (
+          <div style={styles.exclusionNoticePill}>
+            <EyeOff size={13} color="var(--text-muted)" />
+            <span>
+              {language === 'he'
+                ? 'שורות מוסתרות (is_hidden) אינן נכללות בחישובים'
+                : "Soft-deleted ('is_hidden') rows excluded"}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Primary KPI Summary Cards */}

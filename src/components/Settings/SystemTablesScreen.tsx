@@ -18,6 +18,7 @@ import {
   Sparkles,
   ArrowRight,
   ArrowLeft,
+  EyeOff,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
@@ -43,6 +44,8 @@ export const SystemTablesScreen: React.FC = () => {
     updateCardMapping,
     deleteCardMapping,
     batchAddCardMappings,
+    showHiddenNotice,
+    setShowHiddenNotice,
     language,
     dir,
   } = useAuth();
@@ -317,6 +320,40 @@ export const SystemTablesScreen: React.FC = () => {
           <h1 style={styles.pageTitle}>{t('systemTablesTitle', language)}</h1>
           <p style={styles.pageSub}>{t('systemTablesSub', language)}</p>
         </div>
+      </div>
+
+      {/* General Display Preferences Card */}
+      <div style={styles.preferencesCard}>
+        <div style={styles.prefLeft}>
+          <div style={styles.prefIconWrap}>
+            <EyeOff size={18} color="var(--primary)" />
+          </div>
+          <div>
+            <div style={styles.prefTitle}>
+              {language === 'he'
+                ? 'הצגת התראת תנועות מוסתרות בלוח הבקרה'
+                : 'Display soft-deleted notice banner in Dashboard'}
+            </div>
+            <div style={styles.prefDesc}>
+              {language === 'he'
+                ? 'הצג את הפס "שורות מוסתרות (is_hidden) אינן נכללות בחישובים" בראש לוח הבקרה'
+                : "Show the 'is_hidden rows excluded' badge in the top navigation of the main dashboard"}
+            </div>
+          </div>
+        </div>
+        <label style={styles.switchLabel}>
+          <input
+            type="checkbox"
+            checked={showHiddenNotice}
+            onChange={(e) => setShowHiddenNotice(e.target.checked)}
+            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: '0.8125rem', fontWeight: '700', color: showHiddenNotice ? 'var(--primary)' : 'var(--text-muted)' }}>
+            {showHiddenNotice
+              ? (language === 'he' ? 'מוצג בלוח הבקרה' : 'Visible')
+              : (language === 'he' ? 'מוסתר (ברירת מחדל)' : 'Hidden (Default)')}
+          </span>
+        </label>
       </div>
 
       {/* 4 System Sub-Tabs */}
@@ -1361,5 +1398,51 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '700',
     border: 'none',
     cursor: 'pointer',
+  },
+  preferencesCard: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'var(--bg-surface)',
+    padding: '16px 20px',
+    borderRadius: 'var(--radius-lg)',
+    border: '1px solid var(--border-main)',
+    boxShadow: 'var(--shadow-sm)',
+    flexWrap: 'wrap',
+    gap: '16px',
+  },
+  prefLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+  },
+  prefIconWrap: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '8px',
+    backgroundColor: 'var(--primary-light)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  prefTitle: {
+    fontSize: '0.875rem',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
+  },
+  prefDesc: {
+    fontSize: '0.75rem',
+    color: 'var(--text-secondary)',
+    marginTop: '2px',
+  },
+  switchLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    cursor: 'pointer',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    padding: '8px 14px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border-main)',
   },
 };
