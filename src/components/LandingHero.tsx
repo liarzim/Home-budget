@@ -98,16 +98,6 @@ export const LandingHero: React.FC = () => {
               <Lock size={16} color="var(--text-primary)" />
               <span style={styles.oauthButtonText}>Continue with Apple</span>
             </button>
-
-            {/* GitHub */}
-            <button
-              style={styles.oauthButton}
-              onClick={() => handleOAuth('github')}
-              disabled={isLoading}
-            >
-              <Layers size={16} color="var(--text-primary)" />
-              <span style={styles.oauthButtonText}>Continue with GitHub</span>
-            </button>
           </div>
 
           <div style={styles.dividerRow}>
