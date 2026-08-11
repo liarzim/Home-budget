@@ -31,6 +31,9 @@ export const Header: React.FC = () => {
     setActiveTab,
     isDemoMode,
     isSupabaseReady,
+    isSuperUser,
+    currentRole,
+    canManageUsers,
     language,
     setLanguage,
     switchHousehold,
@@ -174,9 +177,26 @@ export const Header: React.FC = () => {
             <div style={styles.avatarCircle}>
               <User size={14} color="var(--primary)" />
             </div>
-            <span style={styles.userName}>
-              {user?.full_name || user?.email?.split('@')[0] || 'משתמש'}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+              <span style={styles.userName}>
+                {user?.full_name || user?.email?.split('@')[0] || 'משתמש'}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.625rem',
+                  fontWeight: '700',
+                  color: isSuperUser ? '#7C3AED' : currentRole === 'admin' ? 'var(--primary)' : 'var(--text-muted)',
+                }}
+              >
+                {isSuperUser
+                  ? '👑 Super User'
+                  : currentRole === 'admin'
+                  ? '🛡️ Admin'
+                  : currentRole === 'viewer'
+                  ? '👁️ Viewer'
+                  : '✏️ User'}
+              </span>
+            </div>
           </div>
 
           <button

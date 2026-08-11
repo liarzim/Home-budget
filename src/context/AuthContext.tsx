@@ -10,10 +10,14 @@ import {
   Transaction,
   Budget,
   Savings,
+  HouseholdMember,
+  MemberRole,
+  SUPER_USER_EMAILS,
 } from '../lib/types';
 import {
   mockProfile,
   mockHouseholds,
+  mockHouseholdMembers,
   mockCategories,
   mockMacroCategories,
   mockBusinessMappings,
@@ -41,6 +45,16 @@ interface AuthContextType {
   user: Profile | null;
   households: Household[];
   activeHousehold: Household | null;
+  householdMembers: HouseholdMember[];
+  isSuperUser: boolean;
+  currentRole: 'super_admin' | 'owner' | 'admin' | 'user' | 'viewer';
+  canManageUsers: boolean;
+  canEditRecords: boolean;
+  canDeleteRecords: boolean;
+  canImportFiles: boolean;
+  canManageSystemTables: boolean;
+  isReadOnly: boolean;
+  allSystemHouseholds: Household[];
   macroCategories: MacroCategory[];
   categories: Category[];
   businessMappings: BusinessMapping[];
@@ -65,7 +79,8 @@ interface AuthContextType {
     | 'manual-entry'
     | 'migration'
     | 'bank-accounts'
-    | 'system-tables';
+    | 'system-tables'
+    | 'users';
   setActiveTab: (
     tab:
       | 'dashboard'
@@ -79,6 +94,7 @@ interface AuthContextType {
       | 'migration'
       | 'bank-accounts'
       | 'system-tables'
+      | 'users'
   ) => void;
   loginWithOAuth: (provider: OAuthProvider) => Promise<{ success: boolean; error?: string }>;
   loginDemo: (userName?: string) => void;
@@ -87,7 +103,12 @@ interface AuthContextType {
   toggleTransactionVisibility: (id: string) => void;
   addTransaction: (tx: Partial<Transaction>) => void;
   addBatchTransactions: (txs: Transaction[]) => void;
-  addHousehold: (name: string, currency?: string) => void;
+  addHousehold: (name: string, currency?: string) => Promise<Household | null>;
+  createHouseholdAsSuperUser: (name: string, currency?: string) => Promise<Household | null>;
+  fetchHouseholdMembers: (householdId: string) => Promise<HouseholdMember[]>;
+  addHouseholdMember: (householdId: string, email: string, role: MemberRole, fullName?: string) => Promise<{ success: boolean; error?: string }>;
+  updateMemberRole: (memberId: string, newRole: MemberRole) => Promise<{ success: boolean; error?: string }>;
+  removeHouseholdMember: (memberId: string) => Promise<{ success: boolean; error?: string }>;
   addMacroCategory: (name: string, type: 'expense' | 'income', color?: string, icon?: string, displayOrder?: number) => void;
   updateMacroCategory: (id: string, name: string, color?: string, icon?: string, displayOrder?: number) => void;
   deleteMacroCategory: (id: string) => void;
@@ -114,7 +135,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<Profile | null>(null);
   const [households, setHouseholds] = useState<Household[]>([]);
+  const [allSystemHouseholds, setAllSystemHouseholds] = useState<Household[]>([]);
   const [activeHousehold, setActiveHousehold] = useState<Household | null>(null);
+  const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
   const [macroCategories, setMacroCategories] = useState<MacroCategory[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [businessMappings, setBusinessMappings] = useState<BusinessMapping[]>([]);
@@ -125,6 +148,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<AuthContextType['activeTab']>('dashboard');
+
+  // Role & Permissions calculation
+  const isSuperUser = Boolean(
+    user?.email && SUPER_USER_EMAILS.some((e) => e.toLowerCase() === user.email.toLowerCase())
+  );
+
+  const currentRole: 'super_admin' | 'owner' | 'admin' | 'user' | 'viewer' = isSuperUser
+    ? 'super_admin'
+    : activeHousehold?.role === 'owner' || activeHousehold?.created_by === user?.id
+    ? 'admin'
+    : (activeHousehold?.role as any) === 'admin'
+    ? 'admin'
+    : (activeHousehold?.role as any) === 'viewer'
+    ? 'viewer'
+    : 'user';
+
+  const canManageUsers = isSuperUser || currentRole === 'admin' || currentRole === 'super_admin';
+  const canEditRecords = isSuperUser || currentRole === 'admin' || currentRole === 'user' || currentRole === 'super_admin';
+  const canDeleteRecords = isSuperUser || currentRole === 'admin' || currentRole === 'super_admin';
+  const canImportFiles = isSuperUser || currentRole === 'admin' || currentRole === 'super_admin';
+  const canManageSystemTables = isSuperUser || currentRole === 'admin' || currentRole === 'super_admin';
+  const isReadOnly = currentRole === 'viewer';
 
   // Show is_hidden exclusion notice banner in dashboard (default: false)
   const [showHiddenNotice, setShowHiddenNoticeState] = useState<boolean>(() => {
@@ -233,25 +278,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updated_at: new Date().toISOString(),
       });
 
-      // Fetch User's Households
-      const { data: userHouseholds } = await supabase
-        .from('households')
-        .select('*, household_members(role, is_default)');
+      const isUserSuper = Boolean(
+        email && SUPER_USER_EMAILS.some((e) => e.toLowerCase() === email.toLowerCase())
+      );
 
-      if (userHouseholds && userHouseholds.length > 0) {
-        const formattedHouseholds: Household[] = userHouseholds.map((h: any) => ({
-          id: h.id,
-          name: h.name,
-          currency: h.currency,
-          created_by: h.created_by,
-          created_at: h.created_at,
-          updated_at: h.updated_at,
-          role: h.household_members?.[0]?.role || 'member',
-        }));
-        setHouseholds(formattedHouseholds);
-        const defaultHh = formattedHouseholds[0];
-        setActiveHousehold(defaultHh);
-        await loadHouseholdDetails(defaultHh.id);
+      if (isUserSuper) {
+        // Super User: Fetch ALL households in the entire database
+        const { data: allHhs } = await supabase.from('households').select('*').order('created_at', { ascending: false });
+        if (allHhs && allHhs.length > 0) {
+          const formattedAll: Household[] = allHhs.map((h: any) => ({
+            id: h.id,
+            name: h.name,
+            currency: h.currency,
+            created_by: h.created_by,
+            created_at: h.created_at,
+            updated_at: h.updated_at,
+            role: 'super_admin',
+          }));
+          setHouseholds(formattedAll);
+          setAllSystemHouseholds(formattedAll);
+          const defaultHh = formattedAll[0];
+          setActiveHousehold(defaultHh);
+          await loadHouseholdDetails(defaultHh.id);
+        }
+      } else {
+        // Regular user: Fetch member households
+        const { data: userHouseholds } = await supabase
+          .from('households')
+          .select('*, household_members(role, is_default)');
+
+        if (userHouseholds && userHouseholds.length > 0) {
+          const formattedHouseholds: Household[] = userHouseholds.map((h: any) => ({
+            id: h.id,
+            name: h.name,
+            currency: h.currency,
+            created_by: h.created_by,
+            created_at: h.created_at,
+            updated_at: h.updated_at,
+            role: h.household_members?.[0]?.role || 'user',
+          }));
+          setHouseholds(formattedHouseholds);
+          const defaultHh = formattedHouseholds[0];
+          setActiveHousehold(defaultHh);
+          await loadHouseholdDetails(defaultHh.id);
+        }
       }
     } catch (err) {
       console.error('Failed to load user data from Supabase:', err);
@@ -350,9 +420,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginDemo = (userName: string = 'Micha') => {
     setIsDemoMode(true);
-    setUser({ ...mockProfile, full_name: userName });
+    setUser({ ...mockProfile, full_name: userName, email: 'michael.liarzi@gmail.com' });
     setHouseholds(mockHouseholds);
+    setAllSystemHouseholds(mockHouseholds);
     setActiveHousehold(mockHouseholds[0]);
+    setHouseholdMembers(mockHouseholdMembers);
     setMacroCategories(mockMacroCategories);
     setCategories(mockCategories);
     setBusinessMappings(mockBusinessMappings);
@@ -370,7 +442,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUser(null);
     setHouseholds([]);
+    setAllSystemHouseholds([]);
     setActiveHousehold(null);
+    setHouseholdMembers([]);
     setMacroCategories([]);
     setCategories([]);
     setBusinessMappings([]);
@@ -487,31 +561,194 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const addHousehold = (name: string, currency: string = 'ILS') => {
+  const addHousehold = async (name: string, currency: string = 'ILS'): Promise<Household | null> => {
     const newHh: Household = {
       id: generateUUID(),
-      name,
+      name: name.trim(),
       currency,
       created_by: user?.id || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       role: 'owner',
+      members_count: 1,
     };
     setHouseholds((prev) => [...prev, newHh]);
+    setAllSystemHouseholds((prev) => [...prev, newHh]);
     setActiveHousehold(newHh);
 
     if (isSupabaseConfigured && !isDemoMode) {
-      supabase
-        .from('households')
-        .insert({ id: newHh.id, name, currency })
-        .select()
-        .single()
-        .then(({ data }) => {
-          if (data) {
-            loadSupabaseUserData(user!.id, user!.email);
-          }
-        });
+      try {
+        const { data, error } = await supabase
+          .from('households')
+          .insert({ id: newHh.id, name: newHh.name, currency })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        if (user?.id) {
+          await supabase.from('household_members').insert({
+            household_id: newHh.id,
+            user_id: user.id,
+            role: 'owner',
+            is_default: false,
+          });
+        }
+        if (data) {
+          await loadSupabaseUserData(user!.id, user!.email);
+        }
+      } catch (err) {
+        console.error('Failed to create household in Supabase:', err);
+      }
     }
+    return newHh;
+  };
+
+  const createHouseholdAsSuperUser = async (name: string, currency: string = 'ILS'): Promise<Household | null> => {
+    return addHousehold(name, currency);
+  };
+
+  // Household Member Management
+  const fetchHouseholdMembers = async (householdId: string): Promise<HouseholdMember[]> => {
+    if (!isSupabaseConfigured || isDemoMode) {
+      const filtered = mockHouseholdMembers.filter((m) => m.household_id === householdId || m.household_id === 'hh-main');
+      setHouseholdMembers(filtered);
+      return filtered;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('household_members')
+        .select('*, profiles(id, email, full_name, avatar_url)')
+        .eq('household_id', householdId);
+
+      if (error) {
+        console.warn('Error fetching household members:', error);
+        return [];
+      }
+      const formatted: HouseholdMember[] = (data || []).map((m: any) => ({
+        id: m.id,
+        household_id: m.household_id,
+        user_id: m.user_id,
+        role: m.role || 'user',
+        is_default: m.is_default || false,
+        joined_at: m.joined_at || m.created_at || new Date().toISOString(),
+        email: m.profiles?.email || m.email || '',
+        full_name: m.profiles?.full_name || m.full_name || m.profiles?.email?.split('@')[0] || 'User',
+      }));
+      setHouseholdMembers(formatted);
+      return formatted;
+    } catch (err) {
+      console.error('Failed to fetch household members:', err);
+      return [];
+    }
+  };
+
+  const addHouseholdMember = async (
+    householdId: string,
+    email: string,
+    role: MemberRole,
+    fullName?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) return { success: false, error: 'Email is required' };
+
+    const newMember: HouseholdMember = {
+      id: generateUUID(),
+      household_id: householdId,
+      user_id: generateUUID(),
+      role: role === 'super_admin' ? 'admin' : role,
+      is_default: false,
+      joined_at: new Date().toISOString(),
+      email: trimmedEmail,
+      full_name: fullName?.trim() || trimmedEmail.split('@')[0],
+    };
+
+    setHouseholdMembers((prev) => [...prev, newMember]);
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      try {
+        // Check if profile exists with this email
+        let targetUserId: string | null = null;
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', trimmedEmail)
+          .maybeSingle();
+
+        if (existingProfile) {
+          targetUserId = existingProfile.id;
+        } else {
+          // Insert placeholder profile
+          const placeholderId = generateUUID();
+          const { data: createdProf, error: profErr } = await supabase
+            .from('profiles')
+            .insert({
+              id: placeholderId,
+              email: trimmedEmail,
+              full_name: fullName?.trim() || trimmedEmail.split('@')[0],
+            })
+            .select()
+            .maybeSingle();
+          if (!profErr && createdProf) {
+            targetUserId = createdProf.id;
+          }
+        }
+
+        if (targetUserId) {
+          const { error: insertErr } = await supabase.from('household_members').insert({
+            household_id: householdId,
+            user_id: targetUserId,
+            role: role === 'super_admin' ? 'admin' : role,
+          });
+          if (insertErr) throw insertErr;
+        }
+      } catch (err: any) {
+        console.error('Error adding household member in Supabase:', err);
+        return { success: false, error: err.message || 'Database error' };
+      }
+    }
+    return { success: true };
+  };
+
+  const updateMemberRole = async (
+    memberId: string,
+    newRole: MemberRole
+  ): Promise<{ success: boolean; error?: string }> => {
+    setHouseholdMembers((prev) =>
+      prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m))
+    );
+    if (isSupabaseConfigured && !isDemoMode) {
+      try {
+        const { error } = await supabase
+          .from('household_members')
+          .update({ role: newRole })
+          .eq('id', memberId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Error updating member role in Supabase:', err);
+        return { success: false, error: err.message };
+      }
+    }
+    return { success: true };
+  };
+
+  const removeHouseholdMember = async (
+    memberId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    setHouseholdMembers((prev) => prev.filter((m) => m.id !== memberId));
+    if (isSupabaseConfigured && !isDemoMode) {
+      try {
+        const { error } = await supabase
+          .from('household_members')
+          .delete()
+          .eq('id', memberId);
+        if (error) throw error;
+      } catch (err: any) {
+        console.error('Error removing member from Supabase:', err);
+        return { success: false, error: err.message };
+      }
+    }
+    return { success: true };
   };
 
   // Macro Category Management
@@ -1000,6 +1237,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         households,
         activeHousehold,
+        householdMembers,
+        isSuperUser,
+        currentRole,
+        canManageUsers,
+        canEditRecords,
+        canDeleteRecords,
+        canImportFiles,
+        canManageSystemTables,
+        isReadOnly,
+        allSystemHouseholds,
         macroCategories,
         categories,
         businessMappings,
@@ -1023,6 +1270,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addTransaction,
         addBatchTransactions,
         addHousehold,
+        createHouseholdAsSuperUser,
+        fetchHouseholdMembers,
+        addHouseholdMember,
+        updateMemberRole,
+        removeHouseholdMember,
         addMacroCategory,
         updateMacroCategory,
         deleteMacroCategory,

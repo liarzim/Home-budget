@@ -42,7 +42,7 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
   onToggleHideTransaction,
   onTransactionUpdated,
 }) => {
-  const { language, showHiddenNotice } = useAuth();
+  const { language, showHiddenNotice, canEditRecords, canDeleteRecords } = useAuth();
 
   // Filter state: All, Incomes only, or Expenses only
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
@@ -357,17 +357,19 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
 
                                     {/* Action Buttons: Edit & Hide */}
                                     <div style={styles.txActions}>
-                                      <button
-                                        style={styles.actionBtn}
-                                        title={language === 'he' ? 'ערוך פרטי תנועה' : 'Edit transaction details'}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setEditingTransaction(tx);
-                                        }}
-                                      >
-                                        <Edit3 size={13} color="var(--primary)" />
-                                      </button>
-                                      {showHiddenNotice && (
+                                      {canEditRecords && (
+                                        <button
+                                          style={styles.actionBtn}
+                                          title={language === 'he' ? 'ערוך פרטי תנועה' : 'Edit transaction details'}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingTransaction(tx);
+                                          }}
+                                        >
+                                          <Edit3 size={13} color="var(--primary)" />
+                                        </button>
+                                      )}
+                                      {showHiddenNotice && canDeleteRecords && (
                                         <button
                                           style={{ ...styles.actionBtn, ...styles.actionBtnDanger }}
                                           title={

@@ -15,6 +15,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { HistoricalMigrationScreen } from './components/Admin/HistoricalMigrationScreen';
 import { ConnectedAccountsScreen } from './components/Settings/ConnectedAccountsScreen';
 import { SystemTablesScreen } from './components/Settings/SystemTablesScreen';
+import { HouseholdUsersScreen } from './components/Users/HouseholdUsersScreen';
 
 const MainScreen: React.FC = () => {
   const { user, isDemoMode, isLoading, activeTab } = useAuth();
@@ -40,6 +41,7 @@ const MainScreen: React.FC = () => {
         {activeTab === 'transactions' && <TransactionsView />}
         {activeTab === 'manual-entry' && <ManualEntryScreen />}
         {activeTab === 'import' && <ImportWizard />}
+        {activeTab === 'users' && <HouseholdUsersScreen />}
         {(activeTab === 'system-tables' || activeTab === 'mappings') && <SystemTablesScreen />}
         {activeTab === 'bank-accounts' && <ConnectedAccountsScreen />}
         {activeTab === 'migration' && <HistoricalMigrationScreen />}

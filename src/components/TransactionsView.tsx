@@ -28,6 +28,10 @@ export const TransactionsView: React.FC = () => {
     toggleTransactionVisibility,
     addTransaction,
     showHiddenNotice,
+    canDeleteRecords,
+    canImportFiles,
+    canEditRecords,
+    isReadOnly,
     language,
     dir,
   } = useAuth();
@@ -200,8 +204,8 @@ export const TransactionsView: React.FC = () => {
             </button>
           </div>
 
-          {/* Soft-delete Visibility Toggle (Only shown if enabled in settings) */}
-          {showHiddenNotice && (
+          {/* Soft-delete Visibility Toggle (Only shown if enabled in settings AND user has delete permission) */}
+          {showHiddenNotice && canDeleteRecords && (
             <button
               style={{
                 ...styles.hiddenToggleBtn,
@@ -222,23 +226,27 @@ export const TransactionsView: React.FC = () => {
             </button>
           )}
 
-          {/* Import Statement Button */}
-          <button
-            style={styles.importBtn}
-            onClick={() => setActiveTab('import')}
-          >
-            <UploadCloud size={15} color="var(--primary)" />
-            <span>{language === 'he' ? 'ייבוא דוחות' : 'Import Statement'}</span>
-          </button>
+          {/* Import Statement Button (Admin/Super User only) */}
+          {canImportFiles && (
+            <button
+              style={styles.importBtn}
+              onClick={() => setActiveTab('import')}
+            >
+              <UploadCloud size={15} color="var(--primary)" />
+              <span>{language === 'he' ? 'ייבוא דוחות' : 'Import Statement'}</span>
+            </button>
+          )}
 
-          {/* Add Transaction Button */}
-          <button
-            style={styles.addTxBtn}
-            onClick={() => setIsAddModalOpen(true)}
-          >
-            <Plus size={16} color="#FFFFFF" />
-            <span>{language === 'he' ? '+ הוסף תנועה' : 'Add Transaction'}</span>
-          </button>
+          {/* Add Transaction Button (Admin & User) */}
+          {canEditRecords && (
+            <button
+              style={styles.addTxBtn}
+              onClick={() => setIsAddModalOpen(true)}
+            >
+              <Plus size={16} color="#FFFFFF" />
+              <span>{language === 'he' ? '+ הוסף תנועה' : 'Add Transaction'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -251,7 +259,7 @@ export const TransactionsView: React.FC = () => {
           <div style={{ flex: 2.2 }}>{t('colCategory', language)}</div>
           <div style={{ flex: 1.8 }}>{t('colMethod', language)}</div>
           <div style={{ flex: 1.8, textAlign: 'right' }}>{t('colAmount', language)}</div>
-          {showHiddenNotice && (
+          {showHiddenNotice && canDeleteRecords && (
             <div style={{ width: '80px', textAlign: 'center' }}>{t('colActions', language)}</div>
           )}
         </div>
@@ -338,8 +346,8 @@ export const TransactionsView: React.FC = () => {
                     {Number(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </div>
 
-                  {/* Actions (Only shown if showHiddenNotice is enabled in settings) */}
-                  {showHiddenNotice && (
+                  {/* Actions (Only shown if showHiddenNotice is enabled in settings AND user has delete permission) */}
+                  {showHiddenNotice && canDeleteRecords && (
                     <div style={{ width: '80px', display: 'flex', justifyContent: 'center' }}>
                       <button
                         style={{
@@ -408,12 +416,12 @@ export const TransactionsView: React.FC = () => {
                           *{tx.card_last_digits}
                         </span>
                       )}
-                      {showHiddenNotice && tx.is_hidden && (
+                      {showHiddenNotice && canDeleteRecords && tx.is_hidden && (
                         <span style={styles.hiddenBadge}>Soft-Deleted</span>
                       )}
                     </div>
 
-                    {showHiddenNotice && (
+                    {showHiddenNotice && canDeleteRecords && (
                       <button
                         style={{
                           ...styles.hideBtn,

@@ -1,7 +1,9 @@
 export type TransactionType = 'expense' | 'income' | 'transfer';
 export type CategoryType = 'expense' | 'income';
 export type BudgetPeriod = 'monthly' | 'yearly';
-export type MemberRole = 'owner' | 'admin' | 'member' | 'viewer';
+export type MemberRole = 'super_admin' | 'owner' | 'admin' | 'user' | 'member' | 'viewer';
+
+export const SUPER_USER_EMAILS = ['michael.liarzi@gmail.com'];
 
 export interface Profile {
   id: string;
@@ -20,6 +22,7 @@ export interface Household {
   created_at: string;
   updated_at: string;
   role?: MemberRole;
+  members_count?: number;
 }
 
 export interface HouseholdMember {
@@ -30,6 +33,8 @@ export interface HouseholdMember {
   is_default: boolean;
   joined_at: string;
   profile?: Profile;
+  email?: string;
+  full_name?: string;
 }
 
 export interface MacroCategory {

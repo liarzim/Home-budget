@@ -16,6 +16,7 @@ import {
   Globe,
   LogOut,
   User,
+  Users,
   ChevronDown,
   Sparkles,
   ShieldCheck,
@@ -37,6 +38,11 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
     activeTab,
     setActiveTab,
     isDemoMode,
+    isSuperUser,
+    canImportFiles,
+    canEditRecords,
+    canManageUsers,
+    canManageSystemTables,
     language,
     setLanguage,
     switchHousehold,
@@ -69,23 +75,39 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
     };
   }, [isOpen]);
 
+  const mainItems = [
+    { id: 'dashboard', label: t('navOverview', language), icon: Home, badge: null },
+    { id: 'transactions', label: t('navTransactions', language), icon: Receipt, badge: null },
+    ...(canEditRecords
+      ? [{ id: 'manual-entry', label: t('navManualEntry', language), icon: PlusCircle, badge: language === 'he' ? 'חדש' : 'New' }]
+      : []),
+    ...(canImportFiles
+      ? [{ id: 'import', label: t('navImport', language), icon: UploadCloud, badge: null }]
+      : []),
+    {
+      id: 'users',
+      label: language === 'he' ? 'משתמשים והרשאות' : 'Users & Roles',
+      icon: Users,
+      badge: isSuperUser ? 'Super' : null,
+    },
+  ];
+
+  const systemItems = [
+    ...(canManageSystemTables
+      ? [{ id: 'system-tables', label: t('navSystemTables', language), icon: TableProperties, badge: language === 'he' ? '5 טבלאות' : '5 Tables' }]
+      : []),
+    { id: 'bank-accounts', label: t('navBankSync', language), icon: Landmark, badge: 'Open Banking' },
+    { id: 'migration', label: t('navMigration', language), icon: FileSpreadsheet, badge: language === 'he' ? 'שנתי' : 'Yearly' },
+  ];
+
   const navGroups = [
     {
       groupTitle: language === 'he' ? 'פעולות ראשיות' : 'Main Menu',
-      items: [
-        { id: 'dashboard', label: t('navOverview', language), icon: Home, badge: null },
-        { id: 'transactions', label: t('navTransactions', language), icon: Receipt, badge: null },
-        { id: 'manual-entry', label: t('navManualEntry', language), icon: PlusCircle, badge: language === 'he' ? 'חדש' : 'New' },
-        { id: 'import', label: t('navImport', language), icon: UploadCloud, badge: null },
-      ],
+      items: mainItems,
     },
     {
       groupTitle: language === 'he' ? 'בנקאות והגדרות מערכת' : 'Banking & System Tables',
-      items: [
-        { id: 'system-tables', label: t('navSystemTables', language), icon: TableProperties, badge: language === 'he' ? '5 טבלאות' : '5 Tables' },
-        { id: 'bank-accounts', label: t('navBankSync', language), icon: Landmark, badge: 'Open Banking' },
-        { id: 'migration', label: t('navMigration', language), icon: FileSpreadsheet, badge: language === 'he' ? 'שנתי' : 'Yearly' },
-      ],
+      items: systemItems,
     },
     {
       groupTitle: language === 'he' ? 'תכנון וחיסכון' : 'Planning & Wealth',
@@ -95,7 +117,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
         { id: 'schema', label: t('navSchema', language), icon: Database, badge: 'SQL' },
       ],
     },
-  ] as const;
+  ];
 
   const handleSelectTab = (tabId: any) => {
     setActiveTab(tabId);

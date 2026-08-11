@@ -1,9 +1,9 @@
-import { Household, Profile, Category, BusinessMapping, Transaction, Budget, Savings, CardMapping, MacroCategory } from './types';
+import { Household, Profile, Category, BusinessMapping, Transaction, Budget, Savings, CardMapping, MacroCategory, HouseholdMember } from './types';
 
 export const mockProfile: Profile = {
   id: 'usr-101',
-  email: 'micha@example.com',
-  full_name: 'Micha',
+  email: 'michael.liarzi@gmail.com',
+  full_name: 'Michael Liarzi',
   avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -18,6 +18,7 @@ export const mockHouseholds: Household[] = [
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     role: 'owner',
+    members_count: 3,
   },
   {
     id: 'hh-rental',
@@ -27,6 +28,50 @@ export const mockHouseholds: Household[] = [
     created_at: '2026-02-15T00:00:00Z',
     updated_at: '2026-02-15T00:00:00Z',
     role: 'admin',
+    members_count: 2,
+  },
+  {
+    id: 'hh-vacation',
+    name: 'Vacation Villa Eilat',
+    currency: 'ILS',
+    created_by: 'usr-102',
+    created_at: '2026-03-01T00:00:00Z',
+    updated_at: '2026-03-01T00:00:00Z',
+    role: 'admin',
+    members_count: 1,
+  },
+];
+
+export const mockHouseholdMembers: HouseholdMember[] = [
+  {
+    id: 'mem-1',
+    household_id: 'hh-main',
+    user_id: 'usr-101',
+    role: 'admin',
+    is_default: true,
+    joined_at: '2026-01-01T00:00:00Z',
+    email: 'michael.liarzi@gmail.com',
+    full_name: 'Michael Liarzi (Super User)',
+  },
+  {
+    id: 'mem-2',
+    household_id: 'hh-main',
+    user_id: 'usr-102',
+    role: 'user',
+    is_default: false,
+    joined_at: '2026-01-15T00:00:00Z',
+    email: 'sarah.editor@example.com',
+    full_name: 'Sarah Editor',
+  },
+  {
+    id: 'mem-3',
+    household_id: 'hh-main',
+    user_id: 'usr-103',
+    role: 'viewer',
+    is_default: false,
+    joined_at: '2026-02-01T00:00:00Z',
+    email: 'david.viewer@example.com',
+    full_name: 'David Viewer',
   },
 ];
 
