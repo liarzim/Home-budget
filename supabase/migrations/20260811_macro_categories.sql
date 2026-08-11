@@ -1,12 +1,26 @@
 -- ==============================================================================
 -- Migration: Macro Categories (קבוצות על) & Payment Method Aliases
--- Description: Adds macro_categories table for grouping expenses (Fixed, Variable,
---              Seasonal/Vacation) and incomes (Salaries, Benefits), links categories
---              with macro_category_id, and adds payment_method_mappings table.
+-- Description: Self-contained migration including helper functions and RLS policies.
 -- Date: 2026-08-11
 -- ==============================================================================
 
--- 1. Create Macro_Categories Table
+-- 1. Helper Functions (Prevent RLS function missing errors)
+CREATE OR REPLACE FUNCTION public.get_user_households(user_uuid UUID)
+RETURNS TABLE (household_id UUID)
+LANGUAGE sql SECURITY DEFINER SET search_path = public STABLE AS $$
+    SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = user_uuid;
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_household_member(h_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql SECURITY DEFINER SET search_path = public STABLE AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.household_members hm
+        WHERE hm.household_id = h_id AND hm.user_id = auth.uid()
+    );
+$$;
+
+-- 2. Create Macro_Categories Table (קבוצות על: הוצאות קבועות, משתנות, עונתיות)
 CREATE TABLE IF NOT EXISTS public.macro_categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
@@ -19,37 +33,39 @@ CREATE TABLE IF NOT EXISTS public.macro_categories (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2. Indexes on Macro_Categories
 CREATE INDEX IF NOT EXISTS idx_macro_categories_household ON public.macro_categories(household_id);
 CREATE INDEX IF NOT EXISTS idx_macro_categories_type ON public.macro_categories(type);
 
--- 3. Enable RLS on Macro_Categories
 ALTER TABLE public.macro_categories ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view macro categories in their households" ON public.macro_categories;
 CREATE POLICY "Users can view macro categories in their households"
     ON public.macro_categories FOR SELECT
-    USING (public.is_household_member(household_id));
+    USING (household_id IN (SELECT public.get_user_households(auth.uid())));
 
+DROP POLICY IF EXISTS "Users can insert macro categories in their households" ON public.macro_categories;
 CREATE POLICY "Users can insert macro categories in their households"
     ON public.macro_categories FOR INSERT
-    WITH CHECK (public.is_household_member(household_id));
+    WITH CHECK (household_id IN (SELECT public.get_user_households(auth.uid())));
 
+DROP POLICY IF EXISTS "Users can update macro categories in their households" ON public.macro_categories;
 CREATE POLICY "Users can update macro categories in their households"
     ON public.macro_categories FOR UPDATE
-    USING (public.is_household_member(household_id))
-    WITH CHECK (public.is_household_member(household_id));
+    USING (household_id IN (SELECT public.get_user_households(auth.uid())))
+    WITH CHECK (household_id IN (SELECT public.get_user_households(auth.uid())));
 
+DROP POLICY IF EXISTS "Users can delete macro categories in their households" ON public.macro_categories;
 CREATE POLICY "Users can delete macro categories in their households"
     ON public.macro_categories FOR DELETE
-    USING (public.is_household_member(household_id));
+    USING (household_id IN (SELECT public.get_user_households(auth.uid())));
 
--- 4. Add macro_category_id to categories table
+-- 3. Link categories table with macro_category_id
 ALTER TABLE public.categories
     ADD COLUMN IF NOT EXISTS macro_category_id UUID REFERENCES public.macro_categories(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_categories_macro_cat ON public.categories(macro_category_id);
 
--- 5. Create Payment_Method_Mappings Table (טבלת המרת כרטיסי אשראי ומקורות הוצאה)
+-- 4. Create Payment_Method_Mappings Table (המרת שמות כרטיסים ומקורות הוצאה)
 CREATE TABLE IF NOT EXISTS public.payment_method_mappings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
@@ -63,36 +79,28 @@ CREATE TABLE IF NOT EXISTS public.payment_method_mappings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 6. Indexes & RLS for Payment_Method_Mappings
 CREATE INDEX IF NOT EXISTS idx_payment_mappings_household ON public.payment_method_mappings(household_id);
 CREATE INDEX IF NOT EXISTS idx_payment_mappings_pattern ON public.payment_method_mappings(raw_pattern);
 
 ALTER TABLE public.payment_method_mappings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view payment mappings in their households" ON public.payment_method_mappings;
 CREATE POLICY "Users can view payment mappings in their households"
     ON public.payment_method_mappings FOR SELECT
-    USING (public.is_household_member(household_id));
+    USING (household_id IN (SELECT public.get_user_households(auth.uid())));
 
+DROP POLICY IF EXISTS "Users can insert payment mappings in their households" ON public.payment_method_mappings;
 CREATE POLICY "Users can insert payment mappings in their households"
     ON public.payment_method_mappings FOR INSERT
-    WITH CHECK (public.is_household_member(household_id));
+    WITH CHECK (household_id IN (SELECT public.get_user_households(auth.uid())));
 
+DROP POLICY IF EXISTS "Users can update payment mappings in their households" ON public.payment_method_mappings;
 CREATE POLICY "Users can update payment mappings in their households"
     ON public.payment_method_mappings FOR UPDATE
-    USING (public.is_household_member(household_id))
-    WITH CHECK (public.is_household_member(household_id));
+    USING (household_id IN (SELECT public.get_user_households(auth.uid())))
+    WITH CHECK (household_id IN (SELECT public.get_user_households(auth.uid())));
 
+DROP POLICY IF EXISTS "Users can delete payment mappings in their households" ON public.payment_method_mappings;
 CREATE POLICY "Users can delete payment mappings in their households"
     ON public.payment_method_mappings FOR DELETE
-    USING (public.is_household_member(household_id));
-
--- 7. Updated_at Trigger
-CREATE OR REPLACE TRIGGER set_macro_categories_timestamp
-    BEFORE UPDATE ON public.macro_categories
-    FOR EACH ROW
-    EXECUTE FUNCTION public.trigger_set_timestamp();
-
-CREATE OR REPLACE TRIGGER set_payment_method_mappings_timestamp
-    BEFORE UPDATE ON public.payment_method_mappings
-    FOR EACH ROW
-    EXECUTE FUNCTION public.trigger_set_timestamp();
+    USING (household_id IN (SELECT public.get_user_households(auth.uid())));
