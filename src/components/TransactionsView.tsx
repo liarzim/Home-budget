@@ -27,6 +27,7 @@ export const TransactionsView: React.FC = () => {
     setActiveTab,
     toggleTransactionVisibility,
     addTransaction,
+    showHiddenNotice,
     language,
     dir,
   } = useAuth();
@@ -199,25 +200,27 @@ export const TransactionsView: React.FC = () => {
             </button>
           </div>
 
-          {/* Soft-delete Visibility Toggle */}
-          <button
-            style={{
-              ...styles.hiddenToggleBtn,
-              ...(showHidden ? styles.hiddenToggleBtnActive : {}),
-            }}
-            onClick={() => setShowHidden(!showHidden)}
-          >
-            {showHidden ? (
-              <Eye size={14} color="var(--primary)" />
-            ) : (
-              <EyeOff size={14} color="var(--text-secondary)" />
-            )}
-            <span>
-              {showHidden
-                ? (language === 'he' ? 'מציג מוסתרות' : 'Showing Hidden')
-                : (language === 'he' ? 'הצג מוסתרות' : 'Show Hidden')}
-            </span>
-          </button>
+          {/* Soft-delete Visibility Toggle (Only shown if enabled in settings) */}
+          {showHiddenNotice && (
+            <button
+              style={{
+                ...styles.hiddenToggleBtn,
+                ...(showHidden ? styles.hiddenToggleBtnActive : {}),
+              }}
+              onClick={() => setShowHidden(!showHidden)}
+            >
+              {showHidden ? (
+                <Eye size={14} color="var(--primary)" />
+              ) : (
+                <EyeOff size={14} color="var(--text-secondary)" />
+              )}
+              <span>
+                {showHidden
+                  ? (language === 'he' ? 'מציג מוסתרות' : 'Showing Hidden')
+                  : (language === 'he' ? 'הצג מוסתרות' : 'Show Hidden')}
+              </span>
+            </button>
+          )}
 
           {/* Import Statement Button */}
           <button
@@ -237,7 +240,9 @@ export const TransactionsView: React.FC = () => {
             <span>{language === 'he' ? '+ הוסף תנועה' : 'Add Transaction'}</span>
           </button>
         </div>
-      </div>      {/* Transactions Table Card (Desktop & Mobile Responsive) */}
+      </div>
+
+      {/* Transactions Table Card (Desktop & Mobile Responsive) */}
       <div style={styles.listCard}>
         {/* Desktop Table Header */}
         <div style={styles.tableHeaderRow} className="desktop-only">
@@ -246,7 +251,9 @@ export const TransactionsView: React.FC = () => {
           <div style={{ flex: 2.2 }}>{t('colCategory', language)}</div>
           <div style={{ flex: 1.8 }}>{t('colMethod', language)}</div>
           <div style={{ flex: 1.8, textAlign: 'right' }}>{t('colAmount', language)}</div>
-          <div style={{ width: '80px', textAlign: 'center' }}>{t('colActions', language)}</div>
+          {showHiddenNotice && (
+            <div style={{ width: '80px', textAlign: 'center' }}>{t('colActions', language)}</div>
+          )}
         </div>
 
         {filteredTransactions.length === 0 ? (
@@ -331,23 +338,25 @@ export const TransactionsView: React.FC = () => {
                     {Number(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </div>
 
-                  {/* Actions */}
-                  <div style={{ width: '80px', display: 'flex', justifyContent: 'center' }}>
-                    <button
-                      style={{
-                        ...styles.hideBtn,
-                        ...(tx.is_hidden ? styles.hideBtnHidden : {}),
-                      }}
-                      onClick={() => toggleTransactionVisibility(tx.id)}
-                      title={tx.is_hidden ? 'Restore Transaction (is_hidden = false)' : 'Hide Transaction (is_hidden = true)'}
-                    >
-                      {tx.is_hidden ? (
-                        <EyeOff size={14} color="var(--danger)" />
-                      ) : (
-                        <Eye size={14} color="var(--text-secondary)" />
-                      )}
-                    </button>
-                  </div>
+                  {/* Actions (Only shown if showHiddenNotice is enabled in settings) */}
+                  {showHiddenNotice && (
+                    <div style={{ width: '80px', display: 'flex', justifyContent: 'center' }}>
+                      <button
+                        style={{
+                          ...styles.hideBtn,
+                          ...(tx.is_hidden ? styles.hideBtnHidden : {}),
+                        }}
+                        onClick={() => toggleTransactionVisibility(tx.id)}
+                        title={tx.is_hidden ? 'Restore Transaction (is_hidden = false)' : 'Hide Transaction (is_hidden = true)'}
+                      >
+                        {tx.is_hidden ? (
+                          <EyeOff size={14} color="var(--danger)" />
+                        ) : (
+                          <Eye size={14} color="var(--text-secondary)" />
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Mobile View Card */}
@@ -399,24 +408,26 @@ export const TransactionsView: React.FC = () => {
                           *{tx.card_last_digits}
                         </span>
                       )}
-                      {tx.is_hidden && (
+                      {showHiddenNotice && tx.is_hidden && (
                         <span style={styles.hiddenBadge}>Soft-Deleted</span>
                       )}
                     </div>
 
-                    <button
-                      style={{
-                        ...styles.hideBtn,
-                        ...(tx.is_hidden ? styles.hideBtnHidden : {}),
-                      }}
-                      onClick={() => toggleTransactionVisibility(tx.id)}
-                    >
-                      {tx.is_hidden ? (
-                        <EyeOff size={14} color="var(--danger)" />
-                      ) : (
-                        <Eye size={14} color="var(--text-secondary)" />
-                      )}
-                    </button>
+                    {showHiddenNotice && (
+                      <button
+                        style={{
+                          ...styles.hideBtn,
+                          ...(tx.is_hidden ? styles.hideBtnHidden : {}),
+                        }}
+                        onClick={() => toggleTransactionVisibility(tx.id)}
+                      >
+                        {tx.is_hidden ? (
+                          <EyeOff size={14} color="var(--danger)" />
+                        ) : (
+                          <Eye size={14} color="var(--text-secondary)" />
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               </React.Fragment>
@@ -767,22 +778,24 @@ export const TransactionsView: React.FC = () => {
                 />
               </div>
 
-              {/* 7. Soft-Delete / Hide Checkbox */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={newIsHidden}
-                    onChange={(e) => setNewIsHidden(e.target.checked)}
-                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                    {language === 'he'
-                      ? 'שמור כתנועה מוסתרת (לא תיכלל בחישובי התקציב החודשי)'
-                      : 'Save as Hidden (Soft-Delete) — Excludes from active monthly budgets'}
-                  </span>
-                </label>
-              </div>
+              {/* 7. Soft-Delete / Hide Checkbox (Only shown if enabled in settings) */}
+              {showHiddenNotice && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={newIsHidden}
+                      onChange={(e) => setNewIsHidden(e.target.checked)}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                      {language === 'he'
+                        ? 'שמור כתנועה מוסתרת (לא תיכלל בחישובי התקציב החודשי)'
+                        : 'Save as Hidden (Soft-Delete) — Excludes from active monthly budgets'}
+                    </span>
+                  </label>
+                </div>
+              )}
 
               <div style={styles.modalActionRow}>
                 <button

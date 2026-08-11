@@ -603,13 +603,13 @@ CREATE POLICY "Users can delete payment mappings in their households"
           <div>
             <div style={styles.prefTitle}>
               {language === 'he'
-                ? 'הצגת התראת תנועות מוסתרות בלוח הבקרה'
-                : 'Display soft-deleted notice banner in Dashboard'}
+                ? 'אפשר ניהול והצגת תנועות מוסתרות (Soft-Delete)'
+                : 'Enable Hidden Transactions Management & Visibility'}
             </div>
             <div style={styles.prefDesc}>
               {language === 'he'
-                ? 'הצג את הפס "שורות מוסתרות (is_hidden) אינן נכללות בחישובים" בראש לוח הבקרה'
-                : "Show the 'is_hidden rows excluded' badge in the top navigation of the main dashboard"}
+                ? 'מציג את כפתור "הצג מוסתרות" בטבלת התנועות ואת אפשרות "שמור כתנועה מוסתרת" בטופסי הרישום'
+                : 'Shows the "Show Hidden" button in the transactions list and the hidden checkbox in transaction forms'}
             </div>
           </div>
         </div>
@@ -629,11 +629,11 @@ CREATE POLICY "Users can delete payment mappings in their households"
           >
             {showHiddenNotice
               ? language === 'he'
-                ? 'מוצג בלוח הבקרה'
-                : 'Visible'
+                ? 'מופעל (מוצג במערכת)'
+                : 'Enabled (Visible)'
               : language === 'he'
-              ? 'מוסתר (ברירת מחדל)'
-              : 'Hidden (Default)'}
+              ? 'כבוי (מוסתר כברירת מחדל)'
+              : 'Disabled (Hidden by default)'}
           </span>
         </label>
       </div>

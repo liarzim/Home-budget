@@ -33,6 +33,7 @@ export const ManualEntryScreen: React.FC = () => {
     setActiveTab,
     addTransaction,
     isDemoMode,
+    showHiddenNotice,
     language,
     dir,
   } = useAuth();
@@ -595,22 +596,24 @@ export const ManualEntryScreen: React.FC = () => {
             </div>
           </div>
 
-          {/* 6. Soft Delete / Hide Flag Toggle */}
-          <div style={styles.hideCheckboxRow}>
-            <label style={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                style={styles.checkbox}
-                checked={Boolean(formData.is_hidden)}
-                onChange={(e) => handleFieldChange('is_hidden', e.target.checked)}
-              />
-              <span style={styles.checkboxText}>
-                {language === 'he'
-                  ? 'שמור כתנועה מוסתרת (לא תיכלל בחישובי התקציב החודשי)'
-                  : 'Save as Hidden (Soft-Delete) — Excludes from active monthly budgets'}
-              </span>
-            </label>
-          </div>
+          {/* 6. Soft Delete / Hide Flag Toggle (Only shown if enabled in settings) */}
+          {showHiddenNotice && (
+            <div style={styles.hideCheckboxRow}>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  style={styles.checkbox}
+                  checked={Boolean(formData.is_hidden)}
+                  onChange={(e) => handleFieldChange('is_hidden', e.target.checked)}
+                />
+                <span style={styles.checkboxText}>
+                  {language === 'he'
+                    ? 'שמור כתנועה מוסתרת (לא תיכלל בחישובי התקציב החודשי)'
+                    : 'Save as Hidden (Soft-Delete) — Excludes from active monthly budgets'}
+                </span>
+              </label>
+            </div>
+          )}
 
           {/* Submit Action Buttons */}
           <div style={styles.formActions}>
