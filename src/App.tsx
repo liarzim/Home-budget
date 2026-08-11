@@ -6,7 +6,6 @@ import { KPICards } from './components/KPICards';
 import { TransactionsView } from './components/TransactionsView';
 import { BudgetsView } from './components/BudgetsView';
 import { SavingsView } from './components/SavingsView';
-import { BusinessMappingView } from './components/BusinessMappingView';
 import { SchemaViewer } from './components/SchemaViewer';
 import { ImportWizard } from './components/ImportWizard/ImportWizard';
 import { MainDashboard } from './components/Dashboard/MainDashboard';
@@ -41,12 +40,11 @@ const MainScreen: React.FC = () => {
         {activeTab === 'transactions' && <TransactionsView />}
         {activeTab === 'manual-entry' && <ManualEntryScreen />}
         {activeTab === 'import' && <ImportWizard />}
-        {activeTab === 'system-tables' && <SystemTablesScreen />}
+        {(activeTab === 'system-tables' || activeTab === 'mappings') && <SystemTablesScreen />}
         {activeTab === 'bank-accounts' && <ConnectedAccountsScreen />}
         {activeTab === 'migration' && <HistoricalMigrationScreen />}
         {activeTab === 'budgets' && <BudgetsView />}
         {activeTab === 'savings' && <SavingsView />}
-        {activeTab === 'mappings' && <BusinessMappingView />}
         {activeTab === 'schema' && <SchemaViewer />}
       </main>
       {/* Desktop Floating Action Button */}
