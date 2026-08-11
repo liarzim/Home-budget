@@ -42,7 +42,7 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
   onToggleHideTransaction,
   onTransactionUpdated,
 }) => {
-  const { language } = useAuth();
+  const { language, showHiddenNotice } = useAuth();
 
   // Filter state: All, Incomes only, or Expenses only
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
@@ -359,7 +359,7 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
                                     <div style={styles.txActions}>
                                       <button
                                         style={styles.actionBtn}
-                                        title="Edit transaction details"
+                                        title={language === 'he' ? 'ערוך פרטי תנועה' : 'Edit transaction details'}
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           setEditingTransaction(tx);
@@ -367,16 +367,22 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
                                       >
                                         <Edit3 size={13} color="var(--primary)" />
                                       </button>
-                                      <button
-                                        style={{ ...styles.actionBtn, ...styles.actionBtnDanger }}
-                                        title="Hide transaction (soft-delete)"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onToggleHideTransaction(tx.id);
-                                        }}
-                                      >
-                                        <EyeOff size={13} color="var(--danger)" />
-                                      </button>
+                                      {showHiddenNotice && (
+                                        <button
+                                          style={{ ...styles.actionBtn, ...styles.actionBtnDanger }}
+                                          title={
+                                            tx.is_hidden
+                                              ? (language === 'he' ? 'בטל הסתרת תנועה' : 'Unhide transaction')
+                                              : (language === 'he' ? 'הסתר תנועה (מחיקה רכה)' : 'Hide transaction')
+                                          }
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onToggleHideTransaction(tx.id);
+                                          }}
+                                        >
+                                          <EyeOff size={13} color="var(--danger)" />
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 ))
@@ -653,40 +659,49 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   transactionsContainer: {
     backgroundColor: 'var(--bg-surface-subtle)',
-    padding: '8px 20px 12px 54px',
+    padding: '10px 14px',
+    paddingInlineStart: '32px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px',
+    gap: '8px',
     borderTop: '1px solid var(--border-subtle)',
   },
   noTxsNote: {
     fontSize: '0.75rem',
     color: 'var(--text-muted)',
-    padding: '6px 0',
+    padding: '8px 0',
   },
   transactionRow: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '8px 12px',
+    padding: '10px 14px',
     backgroundColor: 'var(--bg-surface)',
-    borderRadius: 'var(--radius-sm)',
+    borderRadius: 'var(--radius-md)',
     border: '1px solid var(--border-main)',
     fontSize: '0.8125rem',
     gap: '12px',
+    boxSizing: 'border-box',
+    width: '100%',
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
   },
   txDate: {
-    width: '85px',
+    minWidth: '78px',
     color: 'var(--text-secondary)',
     fontSize: '0.75rem',
+    flexShrink: 0,
   },
   txPayeeWrap: {
     flex: 1,
-    minWidth: '160px',
+    minWidth: '120px',
+    overflow: 'hidden',
   },
   txPayee: {
     fontWeight: '600',
     color: 'var(--text-primary)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   txNotes: {
     fontSize: '0.6875rem',
@@ -698,30 +713,35 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '4px',
     fontSize: '0.75rem',
     color: 'var(--text-secondary)',
-    width: '80px',
+    flexShrink: 0,
   },
   txAmount: {
     fontWeight: '700',
-    width: '95px',
+    minWidth: '95px',
     textAlign: 'right',
+    flexShrink: 0,
   },
   txActions: {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
+    flexShrink: 0,
+    paddingInlineStart: '4px',
   },
   actionBtn: {
-    padding: '4px 6px',
-    borderRadius: '4px',
+    width: '28px',
+    height: '28px',
+    borderRadius: '6px',
     backgroundColor: 'var(--primary-light)',
-    border: '1px solid var(--primary)',
+    border: '1px solid var(--border-main)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   actionBtnDanger: {
     backgroundColor: 'var(--danger-light)',
-    borderColor: '#FECACA',
+    borderColor: 'rgba(239, 68, 68, 0.25)',
   },
 };
