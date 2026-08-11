@@ -103,8 +103,12 @@ interface AuthContextType {
   toggleTransactionVisibility: (id: string) => void;
   addTransaction: (tx: Partial<Transaction>) => void;
   addBatchTransactions: (txs: Transaction[]) => void;
-  addHousehold: (name: string, currency?: string) => Promise<Household | null>;
-  createHouseholdAsSuperUser: (name: string, currency?: string) => Promise<Household | null>;
+  addHousehold: (name: string, currency?: string, icon?: string, color?: string) => Promise<Household | null>;
+  createHouseholdAsSuperUser: (name: string, currency?: string, icon?: string, color?: string) => Promise<Household | null>;
+  updateHousehold: (
+    householdId: string,
+    updates: { name?: string; icon?: string; currency?: string; color?: string }
+  ) => Promise<{ success: boolean; error?: string }>;
   fetchHouseholdMembers: (householdId: string) => Promise<HouseholdMember[]>;
   addHouseholdMember: (householdId: string, email: string, role: MemberRole, fullName?: string) => Promise<{ success: boolean; error?: string }>;
   updateMemberRole: (memberId: string, newRole: MemberRole) => Promise<{ success: boolean; error?: string }>;
@@ -290,6 +294,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             id: h.id,
             name: h.name,
             currency: h.currency,
+            icon: h.icon || 'Home',
+            color: h.color || '#4F46E5',
             created_by: h.created_by,
             created_at: h.created_at,
             updated_at: h.updated_at,
@@ -312,6 +318,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             id: h.id,
             name: h.name,
             currency: h.currency,
+            icon: h.icon || 'Home',
+            color: h.color || '#4F46E5',
             created_by: h.created_by,
             created_at: h.created_at,
             updated_at: h.updated_at,
@@ -561,11 +569,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const addHousehold = async (name: string, currency: string = 'ILS'): Promise<Household | null> => {
+  const addHousehold = async (
+    name: string,
+    currency: string = 'ILS',
+    icon: string = 'Home',
+    color: string = '#4F46E5'
+  ): Promise<Household | null> => {
     const newHh: Household = {
       id: generateUUID(),
       name: name.trim(),
       currency,
+      icon,
+      color,
       created_by: user?.id || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -580,11 +595,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const { data, error } = await supabase
           .from('households')
-          .insert({ id: newHh.id, name: newHh.name, currency })
+          .insert({ id: newHh.id, name: newHh.name, currency, icon, color })
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          // If icon/color columns are not yet in Supabase schema, retry with just base fields
+          if (error.message?.includes('column')) {
+            await supabase
+              .from('households')
+              .insert({ id: newHh.id, name: newHh.name, currency })
+              .select()
+              .single();
+          } else {
+            throw error;
+          }
+        }
 
         if (user?.id) {
           await supabase.from('household_members').insert({
@@ -604,8 +630,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return newHh;
   };
 
-  const createHouseholdAsSuperUser = async (name: string, currency: string = 'ILS'): Promise<Household | null> => {
-    return addHousehold(name, currency);
+  const createHouseholdAsSuperUser = async (
+    name: string,
+    currency: string = 'ILS',
+    icon: string = 'Home',
+    color: string = '#4F46E5'
+  ): Promise<Household | null> => {
+    return addHousehold(name, currency, icon, color);
+  };
+
+  const updateHousehold = async (
+    householdId: string,
+    updates: { name?: string; icon?: string; currency?: string; color?: string }
+  ): Promise<{ success: boolean; error?: string }> => {
+    const updatedName = updates.name !== undefined ? updates.name.trim() : undefined;
+    const nowIso = new Date().toISOString();
+
+    setHouseholds((prev) =>
+      prev.map((h) =>
+        h.id === householdId
+          ? { ...h, ...updates, ...(updatedName ? { name: updatedName } : {}), updated_at: nowIso }
+          : h
+      )
+    );
+    setAllSystemHouseholds((prev) =>
+      prev.map((h) =>
+        h.id === householdId
+          ? { ...h, ...updates, ...(updatedName ? { name: updatedName } : {}), updated_at: nowIso }
+          : h
+      )
+    );
+    setActiveHousehold((prev) =>
+      prev && prev.id === householdId
+        ? { ...prev, ...updates, ...(updatedName ? { name: updatedName } : {}), updated_at: nowIso }
+        : prev
+    );
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      try {
+        const updatePayload: any = { updated_at: nowIso };
+        if (updatedName) updatePayload.name = updatedName;
+        if (updates.icon) updatePayload.icon = updates.icon;
+        if (updates.currency) updatePayload.currency = updates.currency;
+        if (updates.color) updatePayload.color = updates.color;
+
+        const { error } = await supabase
+          .from('households')
+          .update(updatePayload)
+          .eq('id', householdId);
+
+        if (error) {
+          console.warn('Error updating household in Supabase:', error);
+          if (error.message?.includes('column') && updatedName) {
+            await supabase
+              .from('households')
+              .update({ name: updatedName, updated_at: nowIso })
+              .eq('id', householdId);
+          }
+        }
+      } catch (err: any) {
+        console.error('Failed to update household in Supabase:', err);
+        return { success: false, error: err.message || 'Database error' };
+      }
+    }
+    return { success: true };
   };
 
   // Household Member Management
@@ -1271,6 +1359,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addBatchTransactions,
         addHousehold,
         createHouseholdAsSuperUser,
+        updateHousehold,
         fetchHouseholdMembers,
         addHouseholdMember,
         updateMemberRole,

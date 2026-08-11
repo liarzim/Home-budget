@@ -3,13 +3,12 @@ import { useAuth } from '../../context/AuthContext';
 import {
   Users,
   UserPlus,
-  Shield,
   ShieldCheck,
-  ShieldAlert,
   Eye,
   Edit,
+  Edit2,
+  Edit3,
   Trash2,
-  Home,
   Plus,
   Sparkles,
   CheckCircle2,
@@ -17,12 +16,18 @@ import {
   Clock,
   Mail,
   Crown,
-  ChevronRight,
   ArrowRightLeft,
   X,
+  Palette,
+  Check,
 } from 'lucide-react';
 import { MemberRole, Household, HouseholdMember } from '../../lib/types';
 import { formatDate } from '../../lib/i18n';
+import {
+  HOUSEHOLD_ICONS,
+  HOUSEHOLD_COLORS,
+  renderHouseholdIcon,
+} from '../../lib/householdIcons';
 
 export const HouseholdUsersScreen: React.FC = () => {
   const {
@@ -39,6 +44,7 @@ export const HouseholdUsersScreen: React.FC = () => {
     updateMemberRole,
     removeHouseholdMember,
     createHouseholdAsSuperUser,
+    updateHousehold,
     switchHousehold,
     language,
   } = useAuth();
@@ -46,8 +52,16 @@ export const HouseholdUsersScreen: React.FC = () => {
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAddHhModalOpen, setIsAddHhModalOpen] = useState(false);
+  const [isEditHhModalOpen, setIsEditHhModalOpen] = useState(false);
 
-  // Form states
+  // Edit Household form state
+  const [editingHh, setEditingHh] = useState<Household | null>(null);
+  const [editHhName, setEditHhName] = useState('');
+  const [editHhIcon, setEditHhIcon] = useState('Home');
+  const [editHhColor, setEditHhColor] = useState('#4F46E5');
+  const [editHhCurrency, setEditHhCurrency] = useState('ILS');
+
+  // Add Member form states
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<MemberRole>('user');
@@ -55,15 +69,51 @@ export const HouseholdUsersScreen: React.FC = () => {
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // New Household Form (Super User)
+  // New Household form state (Super User)
   const [newHhName, setNewHhName] = useState('');
   const [newHhCurrency, setNewHhCurrency] = useState('ILS');
+  const [newHhIcon, setNewHhIcon] = useState('Home');
+  const [newHhColor, setNewHhColor] = useState('#4F46E5');
 
   useEffect(() => {
     if (activeHousehold) {
       fetchHouseholdMembers(activeHousehold.id);
     }
   }, [activeHousehold?.id]);
+
+  const handleOpenEditModal = (hh: Household) => {
+    setEditingHh(hh);
+    setEditHhName(hh.name);
+    setEditHhIcon(hh.icon || 'Home');
+    setEditHhColor(hh.color || '#4F46E5');
+    setEditHhCurrency(hh.currency || 'ILS');
+    setIsEditHhModalOpen(true);
+  };
+
+  const handleSaveHouseholdEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingHh || !editHhName.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      const res = await updateHousehold(editingHh.id, {
+        name: editHhName.trim(),
+        icon: editHhIcon,
+        color: editHhColor,
+        currency: editHhCurrency,
+      });
+      if (res.success) {
+        setIsEditHhModalOpen(false);
+        setEditingHh(null);
+      } else {
+        alert(res.error || 'Error saving changes');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to update household');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,8 +198,10 @@ export const HouseholdUsersScreen: React.FC = () => {
     e.preventDefault();
     if (!newHhName.trim()) return;
 
-    await createHouseholdAsSuperUser(newHhName.trim(), newHhCurrency);
+    await createHouseholdAsSuperUser(newHhName.trim(), newHhCurrency, newHhIcon, newHhColor);
     setNewHhName('');
+    setNewHhIcon('Home');
+    setNewHhColor('#4F46E5');
     setIsAddHhModalOpen(false);
   };
 
@@ -233,8 +285,8 @@ export const HouseholdUsersScreen: React.FC = () => {
               </h1>
               <p style={styles.pageSub}>
                 {language === 'he'
-                  ? `ניהול חברי משק הבית: ${activeHousehold?.name || ''} והגדרת הרשאות גישה`
-                  : `Manage members and roles for: ${activeHousehold?.name || ''}`}
+                  ? `ניהול חברי משק הבית והגדרת הרשאות גישה`
+                  : `Manage members and roles for your household`}
               </p>
             </div>
           </div>
@@ -249,6 +301,53 @@ export const HouseholdUsersScreen: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Active Household Summary & Customization Banner */}
+      {activeHousehold && (
+        <div style={styles.activeHhBanner} className="animate-fade-in">
+          <div style={styles.activeHhLeft}>
+            <div
+              style={{
+                ...styles.activeHhIconBox,
+                backgroundColor: `${activeHousehold.color || 'var(--primary)'}18`,
+                borderColor: `${activeHousehold.color || 'var(--primary)'}40`,
+                color: activeHousehold.color || 'var(--primary)',
+              }}
+            >
+              {renderHouseholdIcon(activeHousehold.icon, 24, activeHousehold.color || 'var(--primary)')}
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h2 style={styles.activeHhName}>{activeHousehold.name}</h2>
+                <span style={styles.currencyBadge}>{activeHousehold.currency || 'ILS'}</span>
+                <span style={styles.activePill}>
+                  ✓ {language === 'he' ? 'משק בית פעיל' : 'Active Household'}
+                </span>
+              </div>
+              <div style={styles.activeHhMeta}>
+                <span>
+                  {language === 'he' ? 'נוצר בתאריך:' : 'Created:'} {formatDate(activeHousehold.created_at)}
+                </span>
+                <span>•</span>
+                <span>
+                  {householdMembers.length} {language === 'he' ? 'חברים רשומים' : 'members'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {canManageUsers && (
+            <button
+              style={styles.editHhBtn}
+              onClick={() => handleOpenEditModal(activeHousehold)}
+              title={language === 'he' ? 'ערוך שם ואייקון משק בית' : 'Edit name & icon'}
+            >
+              <Edit3 size={15} color="var(--primary)" />
+              <span>{language === 'he' ? 'ערוך שם ואייקון' : 'Edit Name & Icon'}</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Super User Banner (If logged in as Super User) */}
       {isSuperUser && (
@@ -266,8 +365,8 @@ export const HouseholdUsersScreen: React.FC = () => {
               </div>
               <div style={styles.superSub}>
                 {language === 'he'
-                  ? 'לך הרשאה מלאה לצפות ולעבור בין כל משקי הבית במערכת, ליצור משקי בית חדשים ולנהל משתמשים.'
-                  : 'You have full global access to switch between all households, add new households, and manage users.'}
+                  ? 'לך הרשאה מלאה לצפות ולעבור בין כל משקי הבית במערכת, ליצור משקי בית חדשים ולשנות שמות ואייקונים.'
+                  : 'You have full global access to switch between all households, add new households, and manage names/icons.'}
               </div>
             </div>
           </div>
@@ -291,8 +390,8 @@ export const HouseholdUsersScreen: React.FC = () => {
           </div>
           <p style={styles.roleCardDesc}>
             {language === 'he'
-              ? 'גישה מלאה לכל הפעולות: הוספת ועריכת תנועות, מחיקה, ייבוא קבצים, ניהול קטגוריות והוספת משתמשים.'
-              : 'Full access: manage users, add/edit/delete records, import files, configure categories and settings.'}
+              ? 'גישה מלאה: עריכת שם ואייקון משק הבית, הוספת חברים, עריכת ומחיקת תנועות, ייבוא קבצים והגדרות.'
+              : 'Full access: edit household name/icon, manage members, add/edit/delete records, import files.'}
           </p>
         </div>
 
@@ -335,7 +434,7 @@ export const HouseholdUsersScreen: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Users size={18} color="var(--primary)" />
             <span style={styles.tableTitle}>
-              {language === 'he' ? 'חברי משק הבית הנוכחי' : 'Current Household Members'}
+              {language === 'he' ? `חברי משק הבית: ${activeHousehold?.name || ''}` : `Members of: ${activeHousehold?.name || ''}`}
             </span>
             <span style={styles.countBadge}>{householdMembers.length}</span>
           </div>
@@ -456,45 +555,66 @@ export const HouseholdUsersScreen: React.FC = () => {
         <div style={styles.superHubCard}>
           <div style={styles.superHubHeader}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Home size={20} color="#7C3AED" />
+              <div style={styles.superIconWrap}>
+                <Sparkles size={18} color="#7C3AED" />
+              </div>
               <div>
                 <h3 style={styles.superHubTitle}>
                   {language === 'he' ? 'כל משקי הבית במערכת (Super User Hub)' : 'All System Households (Super User Hub)'}
                 </h3>
                 <p style={styles.superHubSub}>
                   {language === 'he'
-                    ? 'צפייה ומעבר מיידי בין כל משקי הבית הרשומים במסד הנתונים'
-                    : 'Switch instantly between any household in the system'}
+                    ? 'מעבר ועריכת שמות ואייקונים של כלל משקי הבית הרשומים במסד הנתונים'
+                    : 'Switch and customize name & icon for any household in the system'}
                 </p>
               </div>
             </div>
             <span style={styles.hhCountBadge}>
               {allSystemHouseholds.length || households.length}{' '}
-              {language === 'he' ? 'משקי בית פעילים' : 'households'}
+              {language === 'he' ? 'משקי בית' : 'households'}
             </span>
           </div>
 
           <div style={styles.householdsGrid}>
             {(allSystemHouseholds.length > 0 ? allSystemHouseholds : households).map((hh) => {
               const isActive = activeHousehold?.id === hh.id;
+              const hhColor = hh.color || '#4F46E5';
+
               return (
                 <div
                   key={hh.id}
                   style={{
                     ...styles.hhCard,
                     ...(isActive ? styles.hhCardActive : {}),
+                    borderTop: `3px solid ${hhColor}`,
                   }}
                 >
                   <div style={styles.hhCardTop}>
-                    <div style={styles.hhCardIconWrap}>
-                      <Home size={18} color={isActive ? 'var(--primary)' : 'var(--text-secondary)'} />
+                    <div
+                      style={{
+                        ...styles.hhCardIconWrap,
+                        backgroundColor: `${hhColor}15`,
+                        borderColor: `${hhColor}35`,
+                        color: hhColor,
+                      }}
+                    >
+                      {renderHouseholdIcon(hh.icon, 20, hhColor)}
                     </div>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <div style={styles.hhCardName}>{hh.name}</div>
                       <div style={styles.hhCardMeta}>
                         {hh.currency} • {formatDate(hh.created_at)}
                       </div>
                     </div>
+
+                    {/* Edit Household Button on Card */}
+                    <button
+                      style={styles.cardEditBtn}
+                      onClick={() => handleOpenEditModal(hh)}
+                      title={language === 'he' ? 'ערוך שם ואייקון' : 'Edit name & icon'}
+                    >
+                      <Edit2 size={13} color="var(--text-secondary)" />
+                    </button>
                   </div>
 
                   <div style={styles.hhCardBottom}>
@@ -603,7 +723,7 @@ export const HouseholdUsersScreen: React.FC = () => {
                       <strong>{language === 'he' ? 'מנהל (Admin)' : 'Admin'}</strong>
                     </div>
                     <span style={styles.roleOptionSub}>
-                      {language === 'he' ? 'גישה מלאה כולל ניהול משתמשים' : 'Full access & user management'}
+                      {language === 'he' ? 'גישה מלאה כולל עריכת שם משק בית וניהול משתמשים' : 'Full access & management'}
                     </span>
                   </label>
 
@@ -680,13 +800,169 @@ export const HouseholdUsersScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Modal 2: Create Household (Super User) */}
+      {/* Modal 2: Edit Household Name & Icon */}
+      {isEditHhModalOpen && editingHh && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent} className="animate-fade-in">
+            <div style={styles.modalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Edit3 size={20} color="var(--primary)" />
+                <h3 style={styles.modalTitle}>
+                  {language === 'he' ? 'עריכת שם ואייקון משק בית' : 'Edit Household Name & Icon'}
+                </h3>
+              </div>
+              <button style={styles.closeBtn} onClick={() => setIsEditHhModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveHouseholdEdit}>
+              {/* Live Preview Card */}
+              <div style={styles.previewBox}>
+                <div style={styles.previewLabel}>
+                  {language === 'he' ? 'תצוגה מקדימה:' : 'Live Preview:'}
+                </div>
+                <div style={styles.previewCard}>
+                  <div
+                    style={{
+                      ...styles.previewIconWrap,
+                      backgroundColor: `${editHhColor}18`,
+                      borderColor: `${editHhColor}40`,
+                      color: editHhColor,
+                    }}
+                  >
+                    {renderHouseholdIcon(editHhIcon, 22, editHhColor)}
+                  </div>
+                  <div>
+                    <div style={styles.previewName}>{editHhName || 'שם משק הבית'}</div>
+                    <div style={styles.previewMeta}>
+                      {editHhCurrency} • {householdMembers.length} {language === 'he' ? 'חברים' : 'members'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Household Display Name Input */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  {language === 'he' ? 'שם תצוגה של משק הבית *' : 'Household Display Name *'}
+                </label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="לדוגמה: בית משפחת כהן"
+                  value={editHhName}
+                  onChange={(e) => setEditHhName(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {/* Currency Selector */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  {language === 'he' ? 'מטבע ראשי' : 'Main Currency'}
+                </label>
+                <select
+                  style={styles.input}
+                  value={editHhCurrency}
+                  onChange={(e) => setEditHhCurrency(e.target.value)}
+                >
+                  <option value="ILS">₪ ILS (שקל חדש)</option>
+                  <option value="USD">$ USD (דולר)</option>
+                  <option value="EUR">€ EUR (אירו)</option>
+                </select>
+              </div>
+
+              {/* Color Palette Selector */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  {language === 'he' ? 'בחר צבע ראשי' : 'Select Theme Color'}
+                </label>
+                <div style={styles.colorPaletteGrid}>
+                  {HOUSEHOLD_COLORS.map((col) => (
+                    <button
+                      key={col}
+                      type="button"
+                      style={{
+                        ...styles.colorCircle,
+                        backgroundColor: col,
+                        transform: editHhColor === col ? 'scale(1.2)' : 'scale(1)',
+                        boxShadow: editHhColor === col ? `0 0 0 3px var(--bg-surface), 0 0 0 5px ${col}` : 'none',
+                      }}
+                      onClick={() => setEditHhColor(col)}
+                    >
+                      {editHhColor === col && <Check size={12} color="#FFFFFF" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Icon Picker Grid */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  {language === 'he' ? 'בחר אייקון למשק הבית' : 'Select Household Icon'}
+                </label>
+                <div style={styles.iconPickerGrid}>
+                  {HOUSEHOLD_ICONS.map((item) => {
+                    const isSelected = editHhIcon.toLowerCase() === item.id.toLowerCase();
+                    const IconComp = item.icon;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        style={{
+                          ...styles.iconPickerItem,
+                          ...(isSelected ? {
+                            backgroundColor: `${editHhColor}18`,
+                            borderColor: editHhColor,
+                            color: editHhColor,
+                          } : {}),
+                        }}
+                        onClick={() => setEditHhIcon(item.id)}
+                        title={language === 'he' ? item.nameHe : item.nameEn}
+                      >
+                        <IconComp size={18} color={isSelected ? editHhColor : 'var(--text-primary)'} />
+                        <span style={styles.iconNameText}>
+                          {language === 'he' ? item.nameHe : item.nameEn}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={styles.modalActions}>
+                <button
+                  type="button"
+                  style={styles.modalCancelBtn}
+                  onClick={() => setIsEditHhModalOpen(false)}
+                >
+                  {language === 'he' ? 'ביטול' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  style={styles.modalSaveBtn}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting
+                    ? (language === 'he' ? 'שומר...' : 'Saving...')
+                    : (language === 'he' ? 'שמור שינויים' : 'Save Changes')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Create Household (Super User) */}
       {isAddHhModalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent} className="animate-fade-in">
             <div style={styles.modalHeader}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Home size={20} color="#7C3AED" />
+                <Plus size={20} color="#7C3AED" />
                 <h3 style={styles.modalTitle}>
                   {language === 'he' ? 'יצירת משק בית חדש במערכת' : 'Create New Household'}
                 </h3>
@@ -725,6 +1001,64 @@ export const HouseholdUsersScreen: React.FC = () => {
                   <option value="USD">$ USD (דולר)</option>
                   <option value="EUR">€ EUR (אירו)</option>
                 </select>
+              </div>
+
+              {/* Color Palette */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  {language === 'he' ? 'בחר צבע' : 'Select Color'}
+                </label>
+                <div style={styles.colorPaletteGrid}>
+                  {HOUSEHOLD_COLORS.map((col) => (
+                    <button
+                      key={col}
+                      type="button"
+                      style={{
+                        ...styles.colorCircle,
+                        backgroundColor: col,
+                        transform: newHhColor === col ? 'scale(1.2)' : 'scale(1)',
+                        boxShadow: newHhColor === col ? `0 0 0 3px var(--bg-surface), 0 0 0 5px ${col}` : 'none',
+                      }}
+                      onClick={() => setNewHhColor(col)}
+                    >
+                      {newHhColor === col && <Check size={12} color="#FFFFFF" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Icon Picker */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  {language === 'he' ? 'בחר אייקון' : 'Select Icon'}
+                </label>
+                <div style={styles.iconPickerGrid}>
+                  {HOUSEHOLD_ICONS.slice(0, 12).map((item) => {
+                    const isSelected = newHhIcon.toLowerCase() === item.id.toLowerCase();
+                    const IconComp = item.icon;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        style={{
+                          ...styles.iconPickerItem,
+                          ...(isSelected ? {
+                            backgroundColor: `${newHhColor}18`,
+                            borderColor: newHhColor,
+                            color: newHhColor,
+                          } : {}),
+                        }}
+                        onClick={() => setNewHhIcon(item.id)}
+                      >
+                        <IconComp size={18} color={isSelected ? newHhColor : 'var(--text-primary)'} />
+                        <span style={styles.iconNameText}>
+                          {language === 'he' ? item.nameHe : item.nameEn}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div style={styles.modalActions}>
@@ -794,6 +1128,79 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
     boxShadow: 'var(--shadow-sm)',
     border: 'none',
+  },
+  activeHhBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'var(--bg-surface)',
+    border: '1.5px solid var(--border-main)',
+    borderRadius: 'var(--radius-lg)',
+    padding: '18px 22px',
+    boxShadow: 'var(--shadow-sm)',
+    flexWrap: 'wrap',
+    gap: '16px',
+  },
+  activeHhLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    flexWrap: 'wrap',
+  },
+  activeHhIconBox: {
+    width: '52px',
+    height: '52px',
+    borderRadius: '14px',
+    border: '1.5px solid',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  activeHhName: {
+    fontSize: '1.1875rem',
+    fontWeight: '800',
+    color: 'var(--text-primary)',
+    margin: 0,
+  },
+  currencyBadge: {
+    fontSize: '0.6875rem',
+    fontWeight: '800',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    color: 'var(--text-secondary)',
+    padding: '2px 8px',
+    borderRadius: '8px',
+    border: '1px solid var(--border-main)',
+  },
+  activePill: {
+    fontSize: '0.6875rem',
+    fontWeight: '700',
+    color: 'var(--primary)',
+    backgroundColor: 'rgba(79, 70, 229, 0.08)',
+    padding: '2px 8px',
+    borderRadius: '12px',
+  },
+  activeHhMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '0.75rem',
+    color: 'var(--text-muted)',
+    marginTop: '4px',
+  },
+  editHhBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    color: 'var(--primary)',
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   superUserBanner: {
     display: 'flex',
@@ -1034,6 +1441,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     flexWrap: 'wrap',
     gap: '12px',
   },
+  superIconWrap: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '8px',
+    backgroundColor: 'rgba(124, 58, 237, 0.1)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   superHubTitle: {
     fontSize: '1rem',
     fontWeight: '800',
@@ -1054,7 +1470,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   householdsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
     gap: '14px',
   },
   hhCard: {
@@ -1066,6 +1482,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     flexDirection: 'column',
     justifyContent: 'space-between',
     gap: '12px',
+    transition: 'all 0.15s ease',
   },
   hhCardActive: {
     borderColor: 'var(--primary)',
@@ -1077,11 +1494,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '10px',
   },
   hhCardIconWrap: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '8px',
-    backgroundColor: 'var(--bg-surface)',
-    border: '1px solid var(--border-main)',
+    width: '38px',
+    height: '38px',
+    borderRadius: '10px',
+    border: '1.5px solid',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1096,6 +1512,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.6875rem',
     color: 'var(--text-muted)',
     marginTop: '2px',
+  },
+  cardEditBtn: {
+    padding: '6px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-main)',
+    backgroundColor: 'var(--bg-surface)',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   hhCardBottom: {
     display: 'flex',
@@ -1137,7 +1563,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'var(--bg-surface)',
     borderRadius: 'var(--radius-lg)',
     width: '100%',
-    maxWidth: '480px',
+    maxWidth: '520px',
+    maxHeight: '90vh',
+    overflowY: 'auto',
     padding: '24px',
     boxShadow: 'var(--shadow-lg)',
   },
@@ -1145,7 +1573,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: '20px',
+    marginBottom: '18px',
   },
   modalTitle: {
     fontSize: '1.125rem',
@@ -1158,6 +1586,44 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: 'var(--text-muted)',
     cursor: 'pointer',
     padding: '4px',
+  },
+  previewBox: {
+    marginBottom: '16px',
+    padding: '12px 14px',
+    borderRadius: 'var(--radius-md)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+  },
+  previewLabel: {
+    fontSize: '0.6875rem',
+    fontWeight: '700',
+    color: 'var(--text-muted)',
+    marginBottom: '6px',
+  },
+  previewCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  previewIconWrap: {
+    width: '42px',
+    height: '42px',
+    borderRadius: '12px',
+    border: '1.5px solid',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  previewName: {
+    fontSize: '0.9375rem',
+    fontWeight: '800',
+    color: 'var(--text-primary)',
+  },
+  previewMeta: {
+    fontSize: '0.75rem',
+    color: 'var(--text-muted)',
+    marginTop: '2px',
   },
   errorBanner: {
     padding: '10px 14px',
@@ -1202,6 +1668,55 @@ const styles: { [key: string]: React.CSSProperties } = {
     outline: 'none',
     boxSizing: 'border-box',
     fontFamily: 'inherit',
+  },
+  colorPaletteGrid: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flexWrap: 'wrap',
+  },
+  colorCircle: {
+    width: '26px',
+    height: '26px',
+    borderRadius: '50%',
+    border: 'none',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.15s ease',
+  },
+  iconPickerGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))',
+    gap: '6px',
+    maxHeight: '160px',
+    overflowY: 'auto',
+    padding: '4px',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border-main)',
+  },
+  iconPickerItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '8px 4px',
+    borderRadius: '6px',
+    border: '1px solid transparent',
+    backgroundColor: 'var(--bg-surface)',
+    cursor: 'pointer',
+    gap: '4px',
+    transition: 'all 0.15s ease',
+  },
+  iconNameText: {
+    fontSize: '0.625rem',
+    color: 'var(--text-secondary)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: '100%',
   },
   roleOptionsGrid: {
     display: 'flex',

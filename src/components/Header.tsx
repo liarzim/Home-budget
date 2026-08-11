@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { t } from '../lib/i18n';
 import { SidebarDrawer } from './Navigation/SidebarDrawer';
+import { renderHouseholdIcon } from '../lib/householdIcons';
 
 export const Header: React.FC = () => {
   const {
@@ -90,7 +91,21 @@ export const Header: React.FC = () => {
               style={styles.tenantSelectorBtn}
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             >
-              <div style={styles.tenantIndicatorDot} />
+              <div
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '6px',
+                  backgroundColor: `${activeHousehold?.color || 'var(--primary)'}18`,
+                  color: activeHousehold?.color || 'var(--primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                {renderHouseholdIcon(activeHousehold?.icon, 14, activeHousehold?.color || 'var(--primary)')}
+              </div>
               <span style={styles.tenantName}>
                 {activeHousehold?.name || (language === 'he' ? 'בחר משק בית' : 'Select Household')}
               </span>
@@ -103,42 +118,65 @@ export const Header: React.FC = () => {
                 <div style={styles.dropdownHeader}>
                   {language === 'he' ? 'החלף משק בית' : 'Switch Household'}
                 </div>
-                {households.map((h) => (
-                  <button
-                    key={h.id}
-                    style={{
-                      ...styles.dropdownItem,
-                      ...(h.id === activeHousehold?.id ? styles.dropdownItemActive : {}),
-                    }}
-                    onClick={() => {
-                      switchHousehold(h.id);
-                      setIsDropdownOpen(false);
-                    }}
-                  >
-                    <span
+                {households.map((h) => {
+                  const hhColor = h.color || 'var(--primary)';
+                  const isSelected = h.id === activeHousehold?.id;
+                  return (
+                    <button
+                      key={h.id}
                       style={{
-                        ...styles.dropdownItemText,
-                        ...(h.id === activeHousehold?.id ? styles.dropdownItemTextActive : {}),
+                        ...styles.dropdownItem,
+                        ...(isSelected ? styles.dropdownItemActive : {}),
+                      }}
+                      onClick={() => {
+                        switchHousehold(h.id);
+                        setIsDropdownOpen(false);
                       }}
                     >
-                      {h.name}
-                    </span>
-                    <span style={styles.dropdownRoleTag}>{h.role || 'member'}</span>
-                  </button>
-                ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div
+                          style={{
+                            width: '22px',
+                            height: '22px',
+                            borderRadius: '6px',
+                            backgroundColor: `${hhColor}18`,
+                            color: hhColor,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {renderHouseholdIcon(h.icon, 13, hhColor)}
+                        </div>
+                        <span
+                          style={{
+                            ...styles.dropdownItemText,
+                            ...(isSelected ? styles.dropdownItemTextActive : {}),
+                          }}
+                        >
+                          {h.name}
+                        </span>
+                      </div>
+                      <span style={styles.dropdownRoleTag}>{h.role || 'member'}</span>
+                    </button>
+                  );
+                })}
 
-                <button
-                  style={styles.addHhBtn}
-                  onClick={() => {
-                    setIsDropdownOpen(false);
-                    setIsAddHhModalOpen(true);
-                  }}
-                >
-                  <Plus size={14} color="var(--primary)" />
-                  <span style={styles.addHhText}>
-                    {language === 'he' ? '+ צור משק בית חדש' : 'Add New Household'}
-                  </span>
-                </button>
+                {canManageUsers && (
+                  <button
+                    style={styles.addHhBtn}
+                    onClick={() => {
+                      setIsDropdownOpen(false);
+                      setIsAddHhModalOpen(true);
+                    }}
+                  >
+                    <Plus size={14} color="var(--primary)" />
+                    <span style={styles.addHhText}>
+                      {language === 'he' ? '+ צור משק בית חדש' : 'Add New Household'}
+                    </span>
+                  </button>
+                )}
               </div>
             )}
           </div>

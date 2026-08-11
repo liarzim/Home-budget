@@ -18,6 +18,8 @@ export interface Household {
   id: string;
   name: string;
   currency: string;
+  icon?: string;
+  color?: string;
   created_by: string | null;
   created_at: string;
   updated_at: string;
