@@ -12,6 +12,9 @@ import {
   RefreshCw,
   Sparkles,
   UploadCloud,
+  PiggyBank,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
 
 export const TransactionsView: React.FC = () => {
@@ -39,12 +42,13 @@ export const TransactionsView: React.FC = () => {
   // New Transaction Form State
   const [newPayee, setNewPayee] = useState('');
   const [newAmount, setNewAmount] = useState('');
-  const [newType, setNewType] = useState<TransactionType>('expense');
+  const [newType, setNewType] = useState<'expense' | 'income' | 'savings'>('expense');
   const [newCategoryId, setNewCategoryId] = useState('');
   const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
   const [newPaymentMethod, setNewPaymentMethod] = useState('credit_card');
   const [newCardDigits, setNewCardDigits] = useState('2285');
   const [newNotes, setNewNotes] = useState('');
+  const [newIsHidden, setNewIsHidden] = useState(false);
 
   // Live Auto-Mapping detector
   const detectedRule = newPayee
@@ -67,21 +71,59 @@ export const TransactionsView: React.FC = () => {
     }
   };
 
+  const applyModalPreset = (preset: {
+    payee: string;
+    amount: string;
+    type: 'expense' | 'income' | 'savings';
+    categoryNameKw: string;
+    method: string;
+    digits?: string;
+  }) => {
+    const matchedCat = categories.find((c) =>
+      c.name.toLowerCase().includes(preset.categoryNameKw.toLowerCase())
+    );
+
+    setNewPayee(preset.payee);
+    setNewAmount(preset.amount);
+    setNewType(preset.type);
+    setNewCategoryId(matchedCat?.id || '');
+    setNewPaymentMethod(preset.method);
+    setNewCardDigits(preset.digits || '');
+    setNewNotes('');
+    setNewIsHidden(false);
+  };
+
   const handleSaveTransaction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPayee.trim() || !newAmount) return;
     const parsedAmount = parseFloat(newAmount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) return;
 
+    const isSavings = newType === 'savings';
+    const effectiveType: TransactionType = newType === 'income' ? 'income' : 'expense';
+
+    let catId = newCategoryId || (detectedCategory ? detectedCategory.id : null);
+    if (isSavings && !catId) {
+      const savingsCat = categories.find(
+        (c) => c.name.includes('חיסכון') || c.name.toLowerCase().includes('savings')
+      );
+      if (savingsCat) catId = savingsCat.id;
+    }
+
+    const notesText = isSavings
+      ? `[Savings Deposit] ${newNotes}`.trim()
+      : newNotes || (detectedCategory ? `Auto-mapped by rule: ${detectedRule?.pattern}` : undefined);
+
     addTransaction({
       payee_name: newPayee.trim(),
       amount: parsedAmount,
-      transaction_type: newType,
-      category_id: newCategoryId || (detectedCategory ? detectedCategory.id : null),
+      transaction_type: effectiveType,
+      category_id: catId,
       date: newDate,
       payment_method: newPaymentMethod,
       card_last_digits: newCardDigits || null,
-      notes: newNotes || (detectedCategory ? `Auto-mapped by rule: ${detectedRule?.pattern}` : undefined),
+      is_hidden: newIsHidden,
+      notes: notesText || undefined,
     });
 
     // Reset
@@ -89,6 +131,7 @@ export const TransactionsView: React.FC = () => {
     setNewAmount('');
     setNewCategoryId('');
     setNewNotes('');
+    setNewIsHidden(false);
     setIsAddModalOpen(false);
   };
 
@@ -395,8 +438,90 @@ export const TransactionsView: React.FC = () => {
                 : 'Transactions are securely stored in your tenant with auto-categorization matching.'}
             </p>
 
+            {/* Quick 1-Click Preset Templates */}
+            <div style={styles.modalPresetsRow}>
+              <button
+                type="button"
+                style={styles.modalPresetPill}
+                onClick={() =>
+                  applyModalPreset({
+                    payee: 'שופרסל דיל',
+                    amount: '450.00',
+                    type: 'expense',
+                    categoryNameKw: 'מזון',
+                    method: 'credit_card',
+                    digits: '2285',
+                  })
+                }
+              >
+                🛒 {language === 'he' ? 'סופרמרקט (₪450)' : 'Supermarket (₪450)'}
+              </button>
+              <button
+                type="button"
+                style={styles.modalPresetPill}
+                onClick={() =>
+                  applyModalPreset({
+                    payee: 'תחנת דלק פז',
+                    amount: '320.00',
+                    type: 'expense',
+                    categoryNameKw: 'דלק',
+                    method: 'credit_card',
+                    digits: '2285',
+                  })
+                }
+              >
+                ⛽ {language === 'he' ? 'דלק ונסיעות (₪320)' : 'Fuel (₪320)'}
+              </button>
+              <button
+                type="button"
+                style={styles.modalPresetPill}
+                onClick={() =>
+                  applyModalPreset({
+                    payee: 'סופר-פארם',
+                    amount: '145.00',
+                    type: 'expense',
+                    categoryNameKw: 'פארם',
+                    method: 'credit_card',
+                    digits: '2285',
+                  })
+                }
+              >
+                💊 {language === 'he' ? 'סופר-פארם (₪145)' : 'Pharm (₪145)'}
+              </button>
+              <button
+                type="button"
+                style={styles.modalPresetPill}
+                onClick={() =>
+                  applyModalPreset({
+                    payee: 'משכורת חודשית',
+                    amount: '24500.00',
+                    type: 'income',
+                    categoryNameKw: 'משכורת',
+                    method: 'bank_transfer',
+                  })
+                }
+              >
+                💼 {language === 'he' ? 'משכורת (₪24.5k)' : 'Salary (₪24.5k)'}
+              </button>
+              <button
+                type="button"
+                style={styles.modalPresetPill}
+                onClick={() =>
+                  applyModalPreset({
+                    payee: 'מיטב דש - קופת גמל להשקעה',
+                    amount: '2500.00',
+                    type: 'savings',
+                    categoryNameKw: 'חיסכון',
+                    method: 'bank_transfer',
+                  })
+                }
+              >
+                🏦 {language === 'he' ? 'הפקדה לחיסכון (₪2,500)' : 'Savings (₪2,500)'}
+              </button>
+            </div>
+
             <form onSubmit={handleSaveTransaction}>
-              {/* Type Switcher */}
+              {/* 1. Type Switcher - 3 Options */}
               <div style={styles.typeSelectorRow}>
                 <button
                   type="button"
@@ -406,7 +531,8 @@ export const TransactionsView: React.FC = () => {
                   }}
                   onClick={() => setNewType('expense')}
                 >
-                  {language === 'he' ? 'הוצאה' : 'Expense'}
+                  <TrendingDown size={15} />
+                  <span>{language === 'he' ? 'הוצאה' : 'Expense'}</span>
                 </button>
                 <button
                   type="button"
@@ -416,11 +542,23 @@ export const TransactionsView: React.FC = () => {
                   }}
                   onClick={() => setNewType('income')}
                 >
-                  {language === 'he' ? 'הכנסה' : 'Income'}
+                  <TrendingUp size={15} />
+                  <span>{language === 'he' ? 'הכנסה' : 'Income'}</span>
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.typeOptionBtn,
+                    ...(newType === 'savings' ? styles.typeOptionBtnActiveSavings : {}),
+                  }}
+                  onClick={() => setNewType('savings')}
+                >
+                  <PiggyBank size={15} />
+                  <span>{language === 'he' ? 'הפקדה לחיסכון' : 'Savings Deposit'}</span>
                 </button>
               </div>
 
-              {/* Payee with Auto-Mapping */}
+              {/* 2. Payee with Auto-Mapping */}
               <div style={styles.formGroup}>
                 <label style={styles.inputLabel}>
                   {language === 'he' ? 'שם בית עסק / מוטב' : 'Payee / Merchant Name'}
@@ -448,7 +586,7 @@ export const TransactionsView: React.FC = () => {
                 )}
               </div>
 
-              {/* Amount & Date */}
+              {/* 3. Amount & Date */}
               <div style={styles.twoColumnRow}>
                 <div style={{ ...styles.formGroup, flex: 1 }}>
                   <label style={styles.inputLabel}>
@@ -479,16 +617,16 @@ export const TransactionsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Category Picker */}
+              {/* 4. Category Picker */}
               <div style={styles.formGroup}>
                 <label style={styles.inputLabel}>
                   {language === 'he'
-                    ? newType === 'income' ? 'סוג הכנסה (קטגוריה)' : 'סוג הוצאה (קטגוריה)'
+                    ? newType === 'income' ? 'סוג הכנסה (קטגוריה)' : newType === 'savings' ? 'יעד חיסכון / קטגוריה' : 'סוג הוצאה (קטגוריה)'
                     : 'Category'}
                 </label>
                 <div style={styles.catPickerScroll}>
                   {categories
-                    .filter((c) => c.type === newType)
+                    .filter((c) => (newType === 'income' ? c.type === 'income' : c.type === 'expense'))
                     .map((cat) => {
                       const isSelected = newCategoryId === cat.id;
                       return (
@@ -515,7 +653,7 @@ export const TransactionsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Payment Method & Last 4 Digits */}
+              {/* 5. Payment Method & Last 4 Digits */}
               <div style={styles.twoColumnRow}>
                 <div style={{ ...styles.formGroup, flex: 1 }}>
                   <label style={styles.inputLabel}>
@@ -570,7 +708,7 @@ export const TransactionsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Notes */}
+              {/* 6. Notes */}
               <div style={styles.formGroup}>
                 <label style={styles.inputLabel}>
                   {language === 'he' ? 'הערות (אופציונלי)' : 'Notes (Optional)'}
@@ -586,7 +724,40 @@ export const TransactionsView: React.FC = () => {
                 />
               </div>
 
+              {/* 7. Soft-Delete / Hide Checkbox */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={newIsHidden}
+                    onChange={(e) => setNewIsHidden(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                    {language === 'he'
+                      ? 'שמור כתנועה מוסתרת (לא תיכלל בחישובי התקציב החודשי)'
+                      : 'Save as Hidden (Soft-Delete) — Excludes from active monthly budgets'}
+                  </span>
+                </label>
+              </div>
+
               <div style={styles.modalActionRow}>
+                <button
+                  type="button"
+                  style={styles.resetBtn}
+                  onClick={() => {
+                    setNewPayee('');
+                    setNewAmount('');
+                    setNewType('expense');
+                    setNewCategoryId('');
+                    setNewNotes('');
+                    setNewIsHidden(false);
+                  }}
+                >
+                  <RefreshCw size={14} color="var(--text-secondary)" />
+                  <span>{language === 'he' ? 'נקה טופס' : 'Clear'}</span>
+                </button>
+
                 <button
                   type="button"
                   style={styles.cancelBtn}
@@ -594,6 +765,7 @@ export const TransactionsView: React.FC = () => {
                 >
                   {language === 'he' ? 'ביטול' : 'Cancel'}
                 </button>
+
                 <button type="submit" style={styles.submitBtn}>
                   {language === 'he' ? 'שמור תנועה' : 'Save Transaction'}
                 </button>
@@ -903,6 +1075,29 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: 'var(--success-text)',
     fontWeight: '700',
   },
+  typeOptionBtnActiveSavings: {
+    backgroundColor: 'rgba(6, 182, 212, 0.15)',
+    borderColor: '#67E8F9',
+    color: '#0891B2',
+    fontWeight: '700',
+  },
+  modalPresetsRow: {
+    display: 'flex',
+    gap: '6px',
+    flexWrap: 'wrap',
+    marginBottom: '16px',
+  },
+  modalPresetPill: {
+    padding: '4px 10px',
+    borderRadius: '12px',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    fontSize: '0.75rem',
+    fontWeight: '600',
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
   formGroup: {
     marginBottom: '14px',
   },
@@ -951,12 +1146,28 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.75rem',
     whiteSpace: 'nowrap',
     color: 'var(--text-secondary)',
+    cursor: 'pointer',
   },
   modalActionRow: {
     display: 'flex',
     justifyContent: 'flex-end',
+    alignItems: 'center',
     gap: '10px',
     marginTop: '20px',
+  },
+  resetBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '9px 14px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'transparent',
+    border: '1px solid var(--border-main)',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+    marginRight: 'auto',
   },
   cancelBtn: {
     padding: '9px 16px',
@@ -965,6 +1176,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.8125rem',
     fontWeight: '600',
     color: 'var(--text-secondary)',
+    border: '1px solid var(--border-main)',
+    cursor: 'pointer',
   },
   submitBtn: {
     padding: '9px 18px',
@@ -972,6 +1185,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'var(--primary)',
     color: '#FFFFFF',
     fontSize: '0.8125rem',
-    fontWeight: '600',
+    fontWeight: '700',
+    border: 'none',
+    cursor: 'pointer',
   },
 };

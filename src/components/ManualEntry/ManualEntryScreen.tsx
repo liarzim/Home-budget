@@ -28,6 +28,7 @@ export const ManualEntryScreen: React.FC = () => {
   const {
     activeHousehold,
     categories,
+    businessMappings,
     cardMappings,
     setActiveTab,
     addTransaction,
@@ -57,15 +58,39 @@ export const ManualEntryScreen: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isHistoricalModalOpen, setIsHistoricalModalOpen] = useState(false);
 
+  // Live Auto-Mapping detector
+  const detectedRule = formData.payee_name
+    ? businessMappings.find((rule) =>
+        formData.payee_name.toUpperCase().includes(rule.pattern.toUpperCase())
+      )
+    : null;
+
+  const detectedCategory = detectedRule
+    ? categories.find((c) => c.id === detectedRule.category_id)
+    : null;
+
   // Filter categories by selected transaction type
   const targetCategoryType = formData.transaction_type === 'income' ? 'income' : 'expense';
   const filteredCategories = categories.filter((c) => c.type === targetCategoryType);
 
   const handleFieldChange = (field: keyof ManualEntryFormData, value: any) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setFormData((prev) => {
+      const updated = {
+        ...prev,
+        [field]: value,
+      };
+
+      if (field === 'payee_name' && typeof value === 'string') {
+        const match = businessMappings.find((rule) =>
+          value.toUpperCase().includes(rule.pattern.toUpperCase())
+        );
+        if (match) {
+          updated.category_id = match.category_id;
+        }
+      }
+
+      return updated;
+    });
     setErrorMsg(null);
   };
 
@@ -410,6 +435,15 @@ export const ManualEntryScreen: React.FC = () => {
                   required
                 />
               </div>
+              {detectedCategory && (
+                <div style={styles.autoDetectedPill}>
+                  <Sparkles size={13} color="var(--primary)" />
+                  <span>
+                    {language === 'he' ? 'זוהה סיווג אוטומטי לפי הכלל ' : 'Auto-matched rule for '}
+                    "{detectedRule?.pattern}": <strong>{formatCategoryName(detectedCategory.name, language)}</strong>
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Category Dropdown */}
@@ -891,5 +925,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     boxShadow: 'var(--shadow-sm)',
     border: 'none',
     cursor: 'pointer',
+  },
+  autoDetectedPill: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    marginTop: '6px',
+    padding: '4px 10px',
+    backgroundColor: 'var(--primary-light)',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: '0.75rem',
+    color: 'var(--primary)',
   },
 };
