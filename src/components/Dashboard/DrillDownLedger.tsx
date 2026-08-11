@@ -13,6 +13,12 @@ import {
   TrendingDown,
   TrendingUp,
   AlertCircle,
+  Wallet,
+  PiggyBank,
+  DollarSign,
+  Layers,
+  FolderTree,
+  Tag,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { MacroGroup, CategoryDrillDown, Transaction, Category } from '../../lib/types';
@@ -37,6 +43,9 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
   onTransactionUpdated,
 }) => {
   const { language } = useAuth();
+
+  // Filter state: All, Incomes only, or Expenses only
+  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
 
   // State for expanded Level 1 (Macro Groups)
   const [expandedMacroIds, setExpandedMacroIds] = useState<Record<string, boolean>>({});
@@ -83,10 +92,28 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
         return <Gift size={18} color={color} />;
       case 'Calendar':
         return <Sparkles size={18} color={color} />;
+      case 'Wallet':
+        return <Wallet size={18} color={color} />;
+      case 'PiggyBank':
+        return <PiggyBank size={18} color={color} />;
+      case 'DollarSign':
+        return <DollarSign size={18} color={color} />;
+      case 'TrendingUp':
+        return <TrendingUp size={18} color={color} />;
+      case 'Layers':
+        return <Layers size={18} color={color} />;
+      case 'FolderTree':
+        return <FolderTree size={18} color={color} />;
+      case 'Tag':
+        return <Tag size={18} color={color} />;
       default:
         return <ShoppingBag size={18} color={color} />;
     }
   };
+
+  const incomeCount = macroGroups.filter((g) => g.type === 'income').length;
+  const expenseCount = macroGroups.filter((g) => g.type === 'expense').length;
+  const displayedGroups = macroGroups.filter((g) => typeFilter === 'all' || g.type === typeFilter);
 
   return (
     <div style={styles.container}>
@@ -101,10 +128,48 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
               : 'Level 1: Macro Buckets → Level 2: Category Budgets → Level 3: Individual Transactions'}
           </p>
         </div>
+
+        {/* Filter Pills: All / Incomes / Expenses */}
+        <div style={styles.filterPillsWrap}>
+          <button
+            style={{
+              ...styles.filterPill,
+              ...(typeFilter === 'all' ? styles.filterPillActive : {}),
+            }}
+            onClick={() => setTypeFilter('all')}
+          >
+            {language === 'he' ? `הכל (${macroGroups.length})` : `All (${macroGroups.length})`}
+          </button>
+          <button
+            style={{
+              ...styles.filterPill,
+              ...(typeFilter === 'income' ? styles.filterPillActiveIncome : {}),
+            }}
+            onClick={() => setTypeFilter('income')}
+          >
+            {language === 'he' ? `הכנסות (${incomeCount})` : `Incomes (${incomeCount})`}
+          </button>
+          <button
+            style={{
+              ...styles.filterPill,
+              ...(typeFilter === 'expense' ? styles.filterPillActiveExpense : {}),
+            }}
+            onClick={() => setTypeFilter('expense')}
+          >
+            {language === 'he' ? `הוצאות (${expenseCount})` : `Expenses (${expenseCount})`}
+          </button>
+        </div>
       </div>
 
       <div style={styles.macroList}>
-        {macroGroups.map((group) => {
+        {displayedGroups.length === 0 ? (
+          <div style={styles.emptyMacroNotice}>
+            {language === 'he'
+              ? 'לא נמצאו קבוצות התואמות לסינון הנבחר.'
+              : 'No macro groups found matching the selected filter.'}
+          </div>
+        ) : (
+          displayedGroups.map((group) => {
           const isExpanded = expandedMacroIds[group.id] ?? true;
           const isExpense = group.type === 'expense';
           const iconColor = group.color || (isExpense ? 'var(--primary)' : 'var(--success)');
@@ -326,7 +391,8 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
               )}
             </div>
           );
-        })}
+        })
+      )}
       </div>
 
       {/* Edit Transaction Modal */}
@@ -352,7 +418,56 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '16px',
   },
   sectionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '12px',
     marginBottom: '4px',
+  },
+  filterPillsWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    padding: '4px',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-main)',
+  },
+  filterPill: {
+    padding: '5px 12px',
+    borderRadius: 'var(--radius-sm)',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: 'var(--text-secondary)',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  filterPillActive: {
+    backgroundColor: 'var(--bg-surface)',
+    color: 'var(--text-primary)',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  filterPillActiveIncome: {
+    backgroundColor: 'var(--success)',
+    color: '#FFFFFF',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  filterPillActiveExpense: {
+    backgroundColor: 'var(--primary)',
+    color: '#FFFFFF',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  emptyMacroNotice: {
+    textAlign: 'center',
+    padding: '36px 20px',
+    color: 'var(--text-muted)',
+    fontSize: '0.875rem',
+    backgroundColor: 'var(--bg-surface)',
+    borderRadius: 'var(--radius-lg)',
+    border: '1px dashed var(--border-main)',
   },
   sectionTitle: {
     fontSize: '1.125rem',

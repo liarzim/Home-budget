@@ -262,10 +262,9 @@ function buildMacroGroups(
       }
     }
 
-    // Build the dynamic MacroGroup array - Expenses only for the dashboard ledger
+    // Build the dynamic MacroGroup array - both Expenses and Incomes
     const resultGroups: MacroGroup[] = [];
     macroBuckets.forEach(({ macro, drills }) => {
-      if (macro.type !== 'expense') return; // Only show expense macro groups on main dashboard breakdown
       drills.sort((a, b) => b.actualAmount - a.actualAmount);
       const totalAmount = drills.reduce((sum, c) => sum + c.actualAmount, 0);
       const totalBudget = drills.reduce((sum, c) => sum + c.budgetAmount, 0);
@@ -274,9 +273,9 @@ function buildMacroGroups(
         id: macro.id,
         name: macro.name,
         hebrewName: macro.name,
-        type: 'expense',
-        color: macro.color,
-        icon: macro.icon || 'ShoppingBag',
+        type: macro.type,
+        color: macro.color || (macro.type === 'income' ? '#10B981' : '#4F46E5'),
+        icon: macro.icon || (macro.type === 'income' ? 'Wallet' : 'ShoppingBag'),
         totalAmount,
         totalBudget,
         categories: drills,
@@ -296,6 +295,22 @@ function buildMacroGroups(
         totalAmount,
         totalBudget,
         categories: fallbackExpenseDrills,
+      });
+    }
+
+    if (fallbackIncomeDrills.length > 0) {
+      const totalAmount = fallbackIncomeDrills.reduce((sum, c) => sum + c.actualAmount, 0);
+      const totalBudget = fallbackIncomeDrills.reduce((sum, c) => sum + c.budgetAmount, 0);
+      resultGroups.push({
+        id: 'fallback_incomes',
+        name: 'Other Incomes',
+        hebrewName: 'הכנסות כלליות נוספות',
+        type: 'income',
+        icon: 'Wallet',
+        color: '#10B981',
+        totalAmount,
+        totalBudget,
+        categories: fallbackIncomeDrills,
       });
     }
 
@@ -414,7 +429,37 @@ function buildMacroGroups(
     };
   };
 
-  return [
+  const groups: MacroGroup[] = [];
+
+  if (salaryDrills.length > 0) {
+    groups.push(
+      makeGroup(
+        'income_salary',
+        'Salary & Main Income',
+        'משכורות והכנסות עיקריות',
+        'income',
+        'Briefcase',
+        '#10B981',
+        salaryDrills
+      )
+    );
+  }
+
+  if (otherIncomeDrills.length > 0) {
+    groups.push(
+      makeGroup(
+        'income_other',
+        'Other Income',
+        'קצבאות, מענקים והכנסות נוספות',
+        'income',
+        'Wallet',
+        '#059669',
+        otherIncomeDrills
+      )
+    );
+  }
+
+  groups.push(
     makeGroup(
       'fixed_expenses',
       'Fixed Expenses',
@@ -432,8 +477,10 @@ function buildMacroGroups(
       'ShoppingBag',
       '#F59E0B',
       variableDrills
-    ),
-  ];
+    )
+  );
+
+  return groups;
 }
 
 /**
