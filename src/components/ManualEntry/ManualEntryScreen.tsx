@@ -19,7 +19,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { t } from '../../lib/i18n';
+import { t, formatCategoryName } from '../../lib/i18n';
 import { ManualEntryFormData, Category } from '../../lib/types';
 import { createManualTransaction } from '../../lib/services/manualEntryService';
 import { HistoricalDataModal } from './HistoricalDataModal';
@@ -28,10 +28,12 @@ export const ManualEntryScreen: React.FC = () => {
   const {
     activeHousehold,
     categories,
+    cardMappings,
     setActiveTab,
     addTransaction,
     isDemoMode,
     language,
+    dir,
   } = useAuth();
 
   const currencySymbol = activeHousehold?.currency === 'ILS' ? '₪' : activeHousehold?.currency || '$';
@@ -295,10 +297,12 @@ export const ManualEntryScreen: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={styles.form}>
+        <form onSubmit={handleSubmit} style={styles.form} dir={dir}>
           {/* 1. Transaction Type Segmented Toggle */}
           <div style={styles.typeSelectorRow}>
-            <label style={styles.fieldLabel}>Transaction Type</label>
+            <label style={styles.fieldLabel}>
+              {language === 'he' ? 'סוג תנועה' : 'Transaction Type'}
+            </label>
             <div style={styles.segmentedGroup}>
               {/* Expense Option */}
               <button
@@ -310,7 +314,7 @@ export const ManualEntryScreen: React.FC = () => {
                 onClick={() => handleFieldChange('transaction_type', 'expense')}
               >
                 <TrendingDown size={16} />
-                <span>Expense (הוצאה)</span>
+                <span>{language === 'he' ? 'הוצאה' : 'Expense'}</span>
               </button>
 
               {/* Income Option */}
@@ -323,7 +327,7 @@ export const ManualEntryScreen: React.FC = () => {
                 onClick={() => handleFieldChange('transaction_type', 'income')}
               >
                 <TrendingUp size={16} />
-                <span>Income (הכנסה)</span>
+                <span>{language === 'he' ? 'הכנסה' : 'Income'}</span>
               </button>
 
               {/* Savings Deposit Option */}
@@ -336,7 +340,7 @@ export const ManualEntryScreen: React.FC = () => {
                 onClick={() => handleFieldChange('transaction_type', 'savings')}
               >
                 <PiggyBank size={16} />
-                <span>Savings Deposit (חיסכון)</span>
+                <span>{language === 'he' ? 'הפקדה לחיסכון' : 'Savings Deposit'}</span>
               </button>
             </div>
           </div>
@@ -346,7 +350,8 @@ export const ManualEntryScreen: React.FC = () => {
             {/* Amount Field */}
             <div style={{ flex: 1.2, ...styles.formGroup }}>
               <label style={styles.fieldLabel}>
-                Amount ({currencySymbol}) <span style={{ color: 'var(--danger)' }}>*</span>
+                {language === 'he' ? `סכום (${currencySymbol})` : `Amount (${currencySymbol})`}{' '}
+                <span style={{ color: 'var(--danger)' }}>*</span>
               </label>
               <div style={styles.inputWrapper}>
                 <span style={styles.inputPrefix}>{currencySymbol}</span>
@@ -366,7 +371,8 @@ export const ManualEntryScreen: React.FC = () => {
             {/* Date Field */}
             <div style={{ flex: 1, ...styles.formGroup }}>
               <label style={styles.fieldLabel}>
-                Transaction Date <span style={{ color: 'var(--danger)' }}>*</span>
+                {language === 'he' ? 'תאריך תנועה' : 'Transaction Date'}{' '}
+                <span style={{ color: 'var(--danger)' }}>*</span>
               </label>
               <div style={styles.inputWrapper}>
                 <Calendar size={16} color="var(--text-secondary)" style={{ marginLeft: '10px' }} />
@@ -386,14 +392,19 @@ export const ManualEntryScreen: React.FC = () => {
             {/* Payee / Description Field */}
             <div style={{ flex: 1.3, ...styles.formGroup }}>
               <label style={styles.fieldLabel}>
-                Payee / Business / Description <span style={{ color: 'var(--danger)' }}>*</span>
+                {language === 'he' ? 'שם בית עסק / מוטב / תיאור' : 'Payee / Business / Description'}{' '}
+                <span style={{ color: 'var(--danger)' }}>*</span>
               </label>
               <div style={styles.inputWrapper}>
                 <Store size={16} color="var(--text-secondary)" style={{ marginLeft: '10px' }} />
                 <input
                   type="text"
                   style={styles.textInput}
-                  placeholder="e.g. Shufersal Deal, Paz, Landlord Rent..."
+                  placeholder={
+                    language === 'he'
+                      ? 'לדוגמה: שופרסל דיל, פז, שכירות...'
+                      : 'e.g. Shufersal Deal, Paz, Landlord Rent...'
+                  }
                   value={formData.payee_name}
                   onChange={(e) => handleFieldChange('payee_name', e.target.value)}
                   required
@@ -403,7 +414,11 @@ export const ManualEntryScreen: React.FC = () => {
 
             {/* Category Dropdown */}
             <div style={{ flex: 1.1, ...styles.formGroup }}>
-              <label style={styles.fieldLabel}>Category</label>
+              <label style={styles.fieldLabel}>
+                {language === 'he'
+                  ? formData.transaction_type === 'income' ? 'סוג הכנסה (קטגוריה)' : 'סוג הוצאה (קטגוריה)'
+                  : 'Category'}
+              </label>
               <div style={styles.inputWrapper}>
                 <Tag size={16} color="var(--text-secondary)" style={{ marginLeft: '10px' }} />
                 <select
@@ -411,10 +426,12 @@ export const ManualEntryScreen: React.FC = () => {
                   value={formData.category_id}
                   onChange={(e) => handleFieldChange('category_id', e.target.value)}
                 >
-                  <option value="">-- Select Category --</option>
+                  <option value="">
+                    {language === 'he' ? '-- בחר סוג סיווג --' : '-- Select Category --'}
+                  </option>
                   {filteredCategories.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {formatCategoryName(c.name, language)}
                     </option>
                   ))}
                 </select>
@@ -425,7 +442,9 @@ export const ManualEntryScreen: React.FC = () => {
           {/* 4. Payment Method & Card Digits Row */}
           <div style={styles.formRow}>
             <div style={{ flex: 1.2, ...styles.formGroup }}>
-              <label style={styles.fieldLabel}>Payment Method</label>
+              <label style={styles.fieldLabel}>
+                {language === 'he' ? 'אמצעי תשלום' : 'Payment Method'}
+              </label>
               <div style={styles.inputWrapper}>
                 <CreditCard size={16} color="var(--text-secondary)" style={{ marginLeft: '10px' }} />
                 <select
@@ -433,22 +452,42 @@ export const ManualEntryScreen: React.FC = () => {
                   value={formData.payment_method}
                   onChange={(e) => handleFieldChange('payment_method', e.target.value)}
                 >
-                  <option value="credit_card">Credit Card (כרטיס אשראי)</option>
-                  <option value="bank_transfer">Bank Transfer (העברה בנקאית)</option>
-                  <option value="direct_debit">Direct Debit / Standing Order (הוראת קבע)</option>
-                  <option value="cash">Cash (מזומן)</option>
-                  <option value="app_payment">Bit / Paybox (אפליקציה)</option>
+                  <option value="credit_card">
+                    {language === 'he' ? '💳 כרטיס אשראי' : '💳 Credit Card'}
+                  </option>
+                  {cardMappings && cardMappings.length > 0 && cardMappings.map((cm) => (
+                    <option key={cm.id} value={cm.raw_pattern || cm.display_name}>
+                      {cm.display_name} {cm.card_last_digits ? `(•••• ${cm.card_last_digits})` : ''}
+                    </option>
+                  ))}
+                  <option value="bank_transfer">
+                    {language === 'he' ? '🏦 העברה בנקאית' : '🏦 Bank Transfer'}
+                  </option>
+                  <option value="direct_debit">
+                    {language === 'he' ? '🔄 הוראת קבע' : '🔄 Direct Debit / Standing Order'}
+                  </option>
+                  <option value="cash">
+                    {language === 'he' ? '💵 מזומן' : '💵 Cash'}
+                  </option>
+                  <option value="app_payment">
+                    {language === 'he' ? '📱 Bit / Paybox / אפליקציה' : '📱 Bit / Paybox / App'}
+                  </option>
+                  <option value="other">
+                    {language === 'he' ? '🔘 אחר' : '🔘 Other'}
+                  </option>
                 </select>
               </div>
             </div>
 
             <div style={{ flex: 0.8, ...styles.formGroup }}>
-              <label style={styles.fieldLabel}>Card Last 4 Digits</label>
+              <label style={styles.fieldLabel}>
+                {language === 'he' ? '4 ספרות כרטיס אחרונות' : 'Card Last 4 Digits'}
+              </label>
               <input
                 type="text"
                 maxLength={4}
                 style={styles.plainInput}
-                placeholder="e.g. 2285"
+                placeholder={language === 'he' ? 'לדוגמה: 2285' : 'e.g. 2285'}
                 value={formData.card_last_digits || ''}
                 onChange={(e) => handleFieldChange('card_last_digits', e.target.value)}
               />
@@ -457,13 +496,19 @@ export const ManualEntryScreen: React.FC = () => {
 
           {/* 5. Notes / Memo */}
           <div style={styles.formGroup}>
-            <label style={styles.fieldLabel}>Notes / Reference (Optional)</label>
+            <label style={styles.fieldLabel}>
+              {language === 'he' ? 'הערות / אסמכתא (אופציונלי)' : 'Notes / Reference (Optional)'}
+            </label>
             <div style={styles.inputWrapper}>
               <FileText size={16} color="var(--text-secondary)" style={{ marginLeft: '10px' }} />
               <input
                 type="text"
                 style={styles.textInput}
-                placeholder="Additional details, invoice number, or memo..."
+                placeholder={
+                  language === 'he'
+                    ? 'הערות נוספות, מספר חשבונית או פירוט...'
+                    : 'Additional details, invoice number, or memo...'
+                }
                 value={formData.notes || ''}
                 onChange={(e) => handleFieldChange('notes', e.target.value)}
               />
@@ -480,7 +525,9 @@ export const ManualEntryScreen: React.FC = () => {
                 onChange={(e) => handleFieldChange('is_hidden', e.target.checked)}
               />
               <span style={styles.checkboxText}>
-                Save as Hidden (Soft-Delete) — Excludes from active monthly budgets
+                {language === 'he'
+                  ? 'שמור כתנועה מוסתרת (לא תיכלל בחישובי התקציב החודשי)'
+                  : 'Save as Hidden (Soft-Delete) — Excludes from active monthly budgets'}
               </span>
             </label>
           </div>
@@ -505,7 +552,7 @@ export const ManualEntryScreen: React.FC = () => {
               }
             >
               <RefreshCw size={14} color="var(--text-secondary)" />
-              <span>Clear Form</span>
+              <span>{language === 'he' ? 'נקה טופס' : 'Clear Form'}</span>
             </button>
 
             <button
@@ -514,7 +561,11 @@ export const ManualEntryScreen: React.FC = () => {
               disabled={isSubmitting}
             >
               <PlusCircle size={16} color="#FFFFFF" />
-              <span>{isSubmitting ? 'Saving Transaction...' : 'Record Transaction'}</span>
+              <span>
+                {isSubmitting
+                  ? language === 'he' ? 'שומר תנועה...' : 'Saving Transaction...'
+                  : language === 'he' ? 'שמור ורשום תנועה' : 'Record Transaction'}
+              </span>
             </button>
           </div>
         </form>
