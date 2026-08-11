@@ -237,70 +237,85 @@ export function suggestInitialMapping(headers: string[]): ColumnMapping {
     reverseAmountSign: false,
   };
 
-  const normalize = (s: string) => s.toLowerCase().replace(/[\s_\-:"'()]/g, '');
+  const normalize = (s: string) => String(s || '').toLowerCase().replace(/[\s_\-:"'()\r\n]/g, '');
 
   // Patterns for auto-detection
-  const txDatePatterns = ['תאריךעסקה', 'תאריךביצוע', 'תאריךרכישה', 'מועדביצוע', 'מועדעסקה', 'transactiondate', 'txdate', 'transdate', 'purchasedate'];
-  const billingDatePatterns = ['תאריךחיוב', 'חודשחיוב', 'מועדחיוב', 'תאריךערך', 'billingdate', 'postdate', 'postingdate', 'chargedate', 'valuedate', 'statementdate'];
+  const txDatePatterns = ['תאריךעסקה', 'תאריךהעסקה', 'תאריךביצוע', 'תאריךרכישה', 'מועדביצוע', 'מועדעסקה', 'transactiondate', 'txdate', 'transdate', 'purchasedate'];
+  const billingDatePatterns = ['תאריךחיוב', 'תאריךהחיוב', 'חודשחיוב', 'מועדחיוב', 'תאריךערך', 'billingdate', 'postdate', 'postingdate', 'chargedate', 'valuedate', 'statementdate'];
   const generalDatePatterns = ['תאריך', 'date', 'posted', 'time'];
 
-  const payeePatterns = ['שםביתעסק', 'שםביתיעסק', 'שםהספק', 'שםביתהעסק', 'תיאורעסקה', 'תיאור', 'ביתעסק', 'פירוט', 'payee', 'merchant', 'description', 'vendor', 'name', 'details'];
+  const payeePatterns = ['שםביתעסק', 'שםביתיעסק', 'שםהספק', 'שםביתהעסק', 'תיאורעסקה', 'תיאור', 'ביתעסק', 'פירוט', 'מוטב', 'payee', 'merchant', 'description', 'vendor', 'name', 'details'];
   
-  const billingAmountPatterns = ['סכוםחיוב', 'סכוםלתשלום', 'סכוםחיובבפועל', 'סכוםבפועל', 'חיוב', 'billingamount', 'billedamount', 'chargeamount', 'amountcharged'];
-  const originalAmountPatterns = ['סכוםעסקה', 'סכוםמקורי', 'סכוםבמטבעמקור', 'סכוםמקור', 'סכוםברוטו', 'originalamount', 'txamount', 'transamount', 'foreignamount'];
-  const generalAmountPatterns = ['סכום', 'סה"כ', 'amount', 'total', 'charge', 'price', 'sum'];
+  // Amount exclusions: a column cannot be treated as an amount if it is a date, month, method, currency, rate, or status
+  const amountExclusions = ['תאריך', 'חודש', 'מועד', 'סוג', 'אופן', 'תנאי', 'מטבע', 'שער', 'הוצג'];
+
+  const billingAmountPatterns = ['סכוםחיובבפועל', 'סכוםלחיוב', 'סכוםהחיוב', 'סכוםחיוב', 'סכוםלתשלום', 'סכוםהוצאה', 'billingamount', 'billedamount', 'chargeamount', 'amountcharged'];
+  const originalAmountPatterns = ['סכוםעסקהמקור', 'סכוםבמטבעמקור', 'סכוםמקור', 'סכוםמקורי', 'originalamount', 'txamount', 'transamount', 'foreignamount'];
+  const generalAmountPatterns = ['סכוםהעסקה', 'סכוםעסקה', 'סכום', 'סה"כ', 'סהכ', 'amount', 'total', 'charge', 'price', 'sum'];
   
-  const currencyPatterns = ['מטבע', 'מטבעמקור', 'מטבעעסקה', 'סוגמטבע', 'currency', 'curr', 'origcurrency', 'txcurrency'];
+  const currencyPatterns = ['סוגמטבעמקור', 'מטבעעסקהמקור', 'מטבעמקור', 'מטבעעסקה', 'סוגמטבעחיוב', 'מטבעחיוב', 'סוגמטבע', 'מטבע', 'currency', 'curr', 'origcurrency', 'txcurrency'];
   
-  const cardNamePatterns = ['שםכרטיס', 'כרטיס', 'כרטיסאשראי', 'סוגכרטיס', 'אמצעיתשלום', 'שםחשבון', 'חשבון', 'cardname', 'card', 'paymentmethod', 'cardtype', 'accountname'];
+  const cardNamePatterns = ['שםכרטיס', 'כרטיס', 'כרטיסאשראי', 'סוגכרטיס', 'אמצעיתשלום', 'שםחשבון', 'חשבון', 'מנפיק', 'cardname', 'card', 'paymentmethod', 'cardtype', 'accountname'];
   const cardDigitsPatterns = ['4ספרות', 'ארבעספרות', 'ספרותכרטיס', 'מספרכרטיס', 'ספרות', 'last4', 'carddigits', 'cardlast4'];
   
-  const notesPatterns = ['הערות', 'פרטיםנוספים', 'מידענוסף', 'פירוטנוסף', 'הערה', 'notes', 'memo', 'comment', 'remarks', 'extra'];
-  const referencePatterns = ['שובר', 'מספרשובר', 'אסמכתא', 'מספראסמכתא', 'מזההעסקה', 'voucher', 'ref', 'reference', 'referencenumber'];
-  const categoryPatterns = ['ענף', 'ענףפעילות', 'קטגוריה', 'סיווג', 'תחום', 'category', 'industry', 'type', 'group'];
+  const notesPatterns = ['הערותפנימיות', 'הערות', 'פרטיםנוספים', 'מידענוסף', 'פירוטנוסף', 'הערה', 'notes', 'memo', 'comment', 'remarks', 'extra'];
+  const referencePatterns = ['שובר', 'מספרשובר', 'אסמכתא', 'אסמכתה', 'מספראסמכתא', 'מספראסמכתה', 'מזההעסקה', 'voucher', 'ref', 'reference', 'referencenumber'];
+  const categoryPatterns = ['ענףפעילות', 'ענף', 'סוגהוצאה', 'קטגוריה', 'סיווג', 'תחום', 'category', 'industry', 'type', 'group'];
 
-  const debitPatterns = ['חובה', 'סכוםחובה', 'סכוםחיוב', 'debit', 'expense', 'withdrawal', 'outflow'];
+  const debitPatterns = ['חובה', 'סכוםחובה', 'debit', 'withdrawal', 'outflow'];
   const creditPatterns = ['זכות', 'סכוםזכות', 'זיכוי', 'הכנסה', 'credit', 'income', 'deposit', 'inflow'];
 
-  // Helper to find first matching header
-  const findMatch = (patterns: string[], excludedHeaders: string[] = []) => {
+  // Helper to find first matching header with optional exclusions
+  const findMatch = (patterns: string[], excludedPatterns: string[] = []) => {
     return headers.find((h) => {
-      if (excludedHeaders.includes(h)) return false;
       const norm = normalize(h);
+      const hasExcluded = excludedPatterns.some((ep) => norm.includes(ep));
+      if (hasExcluded) return false;
       return patterns.some((p) => norm.includes(p));
     }) || '';
   };
 
   // 1. Dates
-  mapping.dateColumn = findMatch(txDatePatterns);
+  mapping.dateColumn = findMatch(txDatePatterns) || findMatch(generalDatePatterns, ['חיוב', 'ערך']);
   mapping.billingDateColumn = findMatch(billingDatePatterns);
-  if (!mapping.dateColumn) {
-    mapping.dateColumn = findMatch(generalDatePatterns, [mapping.billingDateColumn]);
+  if (!mapping.dateColumn && mapping.billingDateColumn) {
+    mapping.dateColumn = mapping.billingDateColumn;
   }
 
   // 2. Payee
   mapping.payeeColumn = findMatch(payeePatterns);
 
   // 3. Amounts & Currency
-  mapping.amountColumn = findMatch(billingAmountPatterns);
-  mapping.originalAmountColumn = findMatch(originalAmountPatterns);
-  if (!mapping.amountColumn) {
-    mapping.amountColumn = findMatch(generalAmountPatterns, [mapping.originalAmountColumn]);
+  let amountCol = findMatch(billingAmountPatterns, amountExclusions);
+  let origAmountCol = findMatch(originalAmountPatterns, amountExclusions);
+
+  if (!amountCol) {
+    amountCol = findMatch(generalAmountPatterns, amountExclusions);
   }
+  if (!origAmountCol && amountCol) {
+    // If amountColumn is billing amount (e.g. סכום לחיוב), check if there is also סכום העסקה
+    const secondaryAmount = findMatch(generalAmountPatterns, [...amountExclusions, normalize(amountCol)]);
+    if (secondaryAmount) {
+      origAmountCol = secondaryAmount;
+    }
+  }
+
+  mapping.amountColumn = amountCol;
+  mapping.originalAmountColumn = origAmountCol;
   mapping.originalCurrencyColumn = findMatch(currencyPatterns);
 
   // 4. Card & Account
-  mapping.paymentMethodColumn = findMatch(cardNamePatterns);
+  mapping.paymentMethodColumn = findMatch(cardNamePatterns, ['תאריך', 'סכום', 'הוצג']);
   mapping.cardDigitsColumn = findMatch(cardDigitsPatterns);
 
   // 5. Remarks & Metadata
   mapping.notesColumn = findMatch(notesPatterns);
   mapping.referenceColumn = findMatch(referencePatterns);
-  mapping.categoryColumn = findMatch(categoryPatterns);
+  mapping.categoryColumn = findMatch(categoryPatterns, ['כרטיס', 'עסקה']);
 
   // Debit/Credit columns check
-  const debitMatch = findMatch(debitPatterns);
-  const creditMatch = findMatch(creditPatterns);
+  const debitMatch = findMatch(debitPatterns, amountExclusions);
+  const creditMatch = findMatch(creditPatterns, amountExclusions);
 
   if (debitMatch && creditMatch && (!mapping.amountColumn || debitMatch !== mapping.amountColumn)) {
     mapping.debitColumn = debitMatch;
@@ -386,14 +401,21 @@ export function parseAmountValue(raw: any): number | null {
     return isNaN(raw) ? null : raw;
   }
 
+  if (raw instanceof Date) return null;
+
   let str = String(raw).trim();
+
+  // Guard against date patterns being parsed as numbers (e.g. "02/06/2026", "2026-08-01")
+  if (/^\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4}/.test(str) || /^\d{1,2}[-/.]\d{4}$/.test(str)) {
+    return null;
+  }
 
   // Handle accounting negative parentheses e.g. (1,234.50) -> -1234.50
   const isParenNegative = /^\(.*\)$/.test(str);
   str = str.replace(/[()]/g, '');
 
   // Remove currencies, spaces, and commas
-  str = str.replace(/[₪$€£,A-Za-z\s]/g, '');
+  str = str.replace(/[₪$€£,A-Za-z\u0590-\u05FF\s]/g, '');
 
   let val = parseFloat(str);
   if (isNaN(val)) return null;
