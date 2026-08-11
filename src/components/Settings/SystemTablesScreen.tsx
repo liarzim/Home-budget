@@ -20,6 +20,11 @@ import {
   ArrowRight,
   ArrowLeft,
   EyeOff,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  Filter,
+  RotateCcw,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
@@ -59,6 +64,12 @@ export const SystemTablesScreen: React.FC = () => {
 
   const [activeSubTab, setActiveSubTab] = useState<SystemTab>('macros');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortField, setSortField] = useState<string>('');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [macroFilter, setMacroFilter] = useState<string>('all');
+  const [macroTypeFilter, setMacroTypeFilter] = useState<string>('all');
+
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [showSqlGuide, setShowSqlGuide] = useState(false);
@@ -91,47 +102,175 @@ export const SystemTablesScreen: React.FC = () => {
   const expenseCategories = categories.filter((c) => c.type === 'expense');
   const incomeCategories = categories.filter((c) => c.type === 'income');
 
-  // Filtered lists based on search
-  const filteredMacros = macroCategories.filter(
-    (m) =>
+  // Reset all filters & sorting
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setSortField('');
+    setSortDirection('asc');
+    setCategoryFilter('all');
+    setMacroFilter('all');
+    setMacroTypeFilter('all');
+  };
+
+  const handleSwitchTab = (tab: SystemTab) => {
+    setActiveSubTab(tab);
+    setPreviewRows(null);
+    handleResetFilters();
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // 1. MACROS (Filtered & Sorted)
+  let processedMacros = macroCategories.filter((m) => {
+    const matchesSearch =
+      !searchQuery ||
       m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (m.type === 'expense' ? 'הוצאה' : 'הכנסה').includes(searchQuery)
-  );
-
-  const filteredExpenses = expenseCategories.filter((c) =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.macro_category_id &&
-      macroCategories
-        .find((m) => m.id === c.macro_category_id)
-        ?.name.toLowerCase()
-        .includes(searchQuery.toLowerCase()))
-  );
-
-  const filteredIncomes = incomeCategories.filter((c) =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.macro_category_id &&
-      macroCategories
-        .find((m) => m.id === c.macro_category_id)
-        ?.name.toLowerCase()
-        .includes(searchQuery.toLowerCase()))
-  );
-
-  const filteredMerchants = businessMappings.filter((m) => {
-    const cat = categories.find((c) => c.id === m.category_id);
-    const catName = cat ? formatCategoryName(cat.name, language) : '';
-    return (
-      m.pattern.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      catName.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+      (m.type === 'expense' ? 'הוצאה' : 'הכנסה').includes(searchQuery);
+    const matchesType = macroTypeFilter === 'all' || m.type === macroTypeFilter;
+    return matchesSearch && matchesType;
   });
 
-  const filteredCards = cardMappings.filter((c) =>
-    c.raw_pattern.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.card_last_digits && c.card_last_digits.includes(searchQuery))
-  );
+  if (sortField) {
+    processedMacros = [...processedMacros].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'name') {
+        cmp = a.name.localeCompare(b.name, 'he');
+      } else if (sortField === 'type') {
+        cmp = a.type.localeCompare(b.type);
+      } else if (sortField === 'display_order') {
+        cmp = (a.display_order ?? 0) - (b.display_order ?? 0);
+      } else if (sortField === 'linkedCount') {
+        const aCount = categories.filter((c) => c.macro_category_id === a.id).length;
+        const bCount = categories.filter((c) => c.macro_category_id === b.id).length;
+        cmp = aCount - bCount;
+      }
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  // 2. EXPENSES (Filtered & Sorted)
+  let processedExpenses = expenseCategories.filter((c) => {
+    const matchesSearch =
+      !searchQuery ||
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.macro_category_id &&
+        macroCategories
+          .find((m) => m.id === c.macro_category_id)
+          ?.name.toLowerCase()
+          .includes(searchQuery.toLowerCase()));
+    const matchesMacro = macroFilter === 'all' || c.macro_category_id === macroFilter;
+    return matchesSearch && matchesMacro;
+  });
+
+  if (sortField) {
+    processedExpenses = [...processedExpenses].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'name') {
+        const aName = formatCategoryName(a.name, language);
+        const bName = formatCategoryName(b.name, language);
+        cmp = aName.localeCompare(bName, 'he');
+      } else if (sortField === 'macro') {
+        const aMacro = macroCategories.find((m) => m.id === a.macro_category_id)?.name || '';
+        const bMacro = macroCategories.find((m) => m.id === b.macro_category_id)?.name || '';
+        cmp = aMacro.localeCompare(bMacro, 'he');
+      }
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  // 3. INCOMES (Filtered & Sorted)
+  let processedIncomes = incomeCategories.filter((c) => {
+    const matchesSearch =
+      !searchQuery ||
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.macro_category_id &&
+        macroCategories
+          .find((m) => m.id === c.macro_category_id)
+          ?.name.toLowerCase()
+          .includes(searchQuery.toLowerCase()));
+    const matchesMacro = macroFilter === 'all' || c.macro_category_id === macroFilter;
+    return matchesSearch && matchesMacro;
+  });
+
+  if (sortField) {
+    processedIncomes = [...processedIncomes].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'name') {
+        const aName = formatCategoryName(a.name, language);
+        const bName = formatCategoryName(b.name, language);
+        cmp = aName.localeCompare(bName, 'he');
+      } else if (sortField === 'macro') {
+        const aMacro = macroCategories.find((m) => m.id === a.macro_category_id)?.name || '';
+        const bMacro = macroCategories.find((m) => m.id === b.macro_category_id)?.name || '';
+        cmp = aMacro.localeCompare(bMacro, 'he');
+      }
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  // 4. MERCHANTS (Filtered & Sorted)
+  let processedMerchants = businessMappings.filter((m) => {
+    const cat = categories.find((c) => c.id === m.category_id);
+    const catName = cat ? formatCategoryName(cat.name, language) : '';
+    const matchesSearch =
+      !searchQuery ||
+      m.pattern.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      catName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory =
+      categoryFilter === 'all' ||
+      m.category_id === categoryFilter ||
+      (categoryFilter === 'uncategorized' && !m.category_id);
+    return matchesSearch && matchesCategory;
+  });
+
+  if (sortField) {
+    processedMerchants = [...processedMerchants].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'pattern') {
+        cmp = a.pattern.localeCompare(b.pattern, 'he');
+      } else if (sortField === 'category') {
+        const aCat = categories.find((c) => c.id === a.category_id);
+        const bCat = categories.find((c) => c.id === b.category_id);
+        const aName = aCat ? formatCategoryName(aCat.name, language) : '';
+        const bName = bCat ? formatCategoryName(bCat.name, language) : '';
+        cmp = aName.localeCompare(bName, 'he');
+      }
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  // 5. CARDS (Filtered & Sorted)
+  let processedCards = cardMappings.filter((c) => {
+    const matchesSearch =
+      !searchQuery ||
+      c.raw_pattern.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.display_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.card_last_digits && c.card_last_digits.includes(searchQuery));
+    return matchesSearch;
+  });
+
+  if (sortField) {
+    processedCards = [...processedCards].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'raw_pattern') {
+        cmp = a.raw_pattern.localeCompare(b.raw_pattern, 'he');
+      } else if (sortField === 'display_name') {
+        cmp = a.display_name.localeCompare(b.display_name, 'he');
+      } else if (sortField === 'card_last_digits') {
+        cmp = (a.card_last_digits || '').localeCompare(b.card_last_digits || '');
+      }
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  }
 
   // Template Downloader
   const handleDownloadTemplate = () => {
@@ -401,6 +540,39 @@ export const SystemTablesScreen: React.FC = () => {
     }
   };
 
+  // Helper to render sortable column header with visual icons
+  const renderSortableTh = (title: string, field: string, styleExtra?: React.CSSProperties) => {
+    const isSorted = sortField === field;
+    return (
+      <th
+        style={{
+          ...styles.th,
+          cursor: 'pointer',
+          userSelect: 'none',
+          transition: 'all 0.15s ease',
+          backgroundColor: isSorted ? 'rgba(79, 70, 229, 0.08)' : undefined,
+          color: isSorted ? 'var(--primary)' : 'var(--text-secondary)',
+          ...styleExtra,
+        }}
+        onClick={() => handleSort(field)}
+        title={language === 'he' ? `לחץ למיון לפי ${title}` : `Click to sort by ${title}`}
+      >
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <span>{title}</span>
+          {isSorted ? (
+            sortDirection === 'asc' ? (
+              <ArrowUp size={13} color="var(--primary)" />
+            ) : (
+              <ArrowDown size={13} color="var(--primary)" />
+            )
+          ) : (
+            <ArrowUpDown size={12} color="var(--text-muted)" style={{ opacity: 0.4 }} />
+          )}
+        </div>
+      </th>
+    );
+  };
+
   return (
     <div style={styles.container}>
       {/* Top Header */}
@@ -645,11 +817,7 @@ CREATE POLICY "Users can delete payment mappings in their households"
             ...styles.subTabBtn,
             ...(activeSubTab === 'macros' ? styles.subTabBtnActive : {}),
           }}
-          onClick={() => {
-            setActiveSubTab('macros');
-            setPreviewRows(null);
-            setSearchQuery('');
-          }}
+          onClick={() => handleSwitchTab('macros')}
         >
           <Layers size={16} />
           <span>1. {t('tabMacroCategories', language)}</span>
@@ -661,11 +829,7 @@ CREATE POLICY "Users can delete payment mappings in their households"
             ...styles.subTabBtn,
             ...(activeSubTab === 'expenses' ? styles.subTabBtnActive : {}),
           }}
-          onClick={() => {
-            setActiveSubTab('expenses');
-            setPreviewRows(null);
-            setSearchQuery('');
-          }}
+          onClick={() => handleSwitchTab('expenses')}
         >
           <FolderTree size={16} />
           <span>2. {t('tabExpenseCategories', language)}</span>
@@ -677,11 +841,7 @@ CREATE POLICY "Users can delete payment mappings in their households"
             ...styles.subTabBtn,
             ...(activeSubTab === 'incomes' ? styles.subTabBtnActive : {}),
           }}
-          onClick={() => {
-            setActiveSubTab('incomes');
-            setPreviewRows(null);
-            setSearchQuery('');
-          }}
+          onClick={() => handleSwitchTab('incomes')}
         >
           <Tag size={16} />
           <span>3. {t('tabIncomeCategories', language)}</span>
@@ -693,11 +853,7 @@ CREATE POLICY "Users can delete payment mappings in their households"
             ...styles.subTabBtn,
             ...(activeSubTab === 'merchants' ? styles.subTabBtnActive : {}),
           }}
-          onClick={() => {
-            setActiveSubTab('merchants');
-            setPreviewRows(null);
-            setSearchQuery('');
-          }}
+          onClick={() => handleSwitchTab('merchants')}
         >
           <ArrowRightLeft size={16} />
           <span>4. {t('tabMerchantMappings', language)}</span>
@@ -709,11 +865,7 @@ CREATE POLICY "Users can delete payment mappings in their households"
             ...styles.subTabBtn,
             ...(activeSubTab === 'cards' ? styles.subTabBtnActive : {}),
           }}
-          onClick={() => {
-            setActiveSubTab('cards');
-            setPreviewRows(null);
-            setSearchQuery('');
-          }}
+          onClick={() => handleSwitchTab('cards')}
         >
           <CreditCard size={16} />
           <span>5. {t('tabCardMappings', language)}</span>
@@ -898,15 +1050,152 @@ CREATE POLICY "Users can delete payment mappings in their households"
       {/* Main Table Toolbar & List */}
       <div style={styles.tableCard}>
         <div style={styles.tableToolbar}>
-          <div style={styles.searchWrap}>
-            <Search size={16} color="var(--text-muted)" />
-            <input
-              style={styles.searchInput}
-              type="text"
-              placeholder={t('searchTable', language)}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div style={styles.toolbarLeft}>
+            {/* Search Input */}
+            <div style={styles.searchWrap}>
+              <Search size={16} color="var(--text-muted)" />
+              <input
+                style={styles.searchInput}
+                type="text"
+                placeholder={t('searchTable', language)}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}
+                  onClick={() => setSearchQuery('')}
+                >
+                  <X size={14} color="var(--text-muted)" />
+                </button>
+              )}
+            </div>
+
+            {/* Filter Dropdown for Merchants (Target Category) */}
+            {activeSubTab === 'merchants' && (
+              <div style={styles.filterWrap}>
+                <Filter size={14} color="var(--text-muted)" />
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  style={styles.filterSelect}
+                >
+                  <option value="all">{language === 'he' ? 'כל הקטגוריות' : 'All Categories'}</option>
+                  <option value="uncategorized">{language === 'he' ? 'ללא קטגוריה' : 'Uncategorized'}</option>
+                  {[...categories]
+                    .sort((a, b) =>
+                      formatCategoryName(a.name, language).localeCompare(
+                        formatCategoryName(b.name, language),
+                        'he'
+                      )
+                    )
+                    .map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {formatCategoryName(cat.name, language)} ({cat.type === 'expense' ? 'הוצאה' : 'הכנסה'})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+
+            {/* Filter Dropdown for Expenses (Macro Group) */}
+            {activeSubTab === 'expenses' && (
+              <div style={styles.filterWrap}>
+                <Filter size={14} color="var(--text-muted)" />
+                <select
+                  value={macroFilter}
+                  onChange={(e) => setMacroFilter(e.target.value)}
+                  style={styles.filterSelect}
+                >
+                  <option value="all">{language === 'he' ? 'כל קבוצות העל' : 'All Macro Groups'}</option>
+                  {macroCategories
+                    .filter((m) => m.type === 'expense')
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+
+            {/* Filter Dropdown for Incomes (Macro Group) */}
+            {activeSubTab === 'incomes' && (
+              <div style={styles.filterWrap}>
+                <Filter size={14} color="var(--text-muted)" />
+                <select
+                  value={macroFilter}
+                  onChange={(e) => setMacroFilter(e.target.value)}
+                  style={styles.filterSelect}
+                >
+                  <option value="all">{language === 'he' ? 'כל קבוצות העל' : 'All Macro Groups'}</option>
+                  {macroCategories
+                    .filter((m) => m.type === 'income')
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+
+            {/* Filter Dropdown for Macros (Type: Expense / Income) */}
+            {activeSubTab === 'macros' && (
+              <div style={styles.filterWrap}>
+                <Filter size={14} color="var(--text-muted)" />
+                <select
+                  value={macroTypeFilter}
+                  onChange={(e) => setMacroTypeFilter(e.target.value)}
+                  style={styles.filterSelect}
+                >
+                  <option value="all">{language === 'he' ? 'כל הסוגים' : 'All Types'}</option>
+                  <option value="expense">{language === 'he' ? 'הוצאות בלבד' : 'Expenses only'}</option>
+                  <option value="income">{language === 'he' ? 'הכנסות בלבד' : 'Income only'}</option>
+                </select>
+              </div>
+            )}
+
+            {/* Clear Filters & Sort Button */}
+            {(searchQuery ||
+              categoryFilter !== 'all' ||
+              macroFilter !== 'all' ||
+              macroTypeFilter !== 'all' ||
+              sortField) && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                style={styles.clearFilterBtn}
+                title={language === 'he' ? 'נקה סינונים ואיפוס מיון' : 'Clear filters & reset sort'}
+              >
+                <RotateCcw size={13} />
+                <span>{language === 'he' ? 'נקה סינון' : 'Clear'}</span>
+              </button>
+            )}
+
+            {/* Results Count Pill */}
+            <span style={styles.countPill}>
+              {activeSubTab === 'macros'
+                ? language === 'he'
+                  ? `מציג ${processedMacros.length} מתוך ${macroCategories.length}`
+                  : `Showing ${processedMacros.length} of ${macroCategories.length}`
+                : activeSubTab === 'expenses'
+                ? language === 'he'
+                  ? `מציג ${processedExpenses.length} מתוך ${expenseCategories.length}`
+                  : `Showing ${processedExpenses.length} of ${expenseCategories.length}`
+                : activeSubTab === 'incomes'
+                ? language === 'he'
+                  ? `מציג ${processedIncomes.length} מתוך ${incomeCategories.length}`
+                  : `Showing ${processedIncomes.length} of ${incomeCategories.length}`
+                : activeSubTab === 'merchants'
+                ? language === 'he'
+                  ? `מציג ${processedMerchants.length} מתוך ${businessMappings.length}`
+                  : `Showing ${processedMerchants.length} of ${businessMappings.length}`
+                : language === 'he'
+                ? `מציג ${processedCards.length} מתוך ${cardMappings.length}`
+                : `Showing ${processedCards.length} of ${cardMappings.length}`}
+            </span>
           </div>
 
           <button style={styles.addBtn} onClick={handleOpenAddModal}>
@@ -932,32 +1221,32 @@ CREATE POLICY "Users can delete payment mappings in their households"
               <tr>
                 {activeSubTab === 'macros' ? (
                   <>
-                    <th style={styles.th}>{t('colCategoryName', language)}</th>
-                    <th style={styles.th}>{t('colType', language)}</th>
+                    {renderSortableTh(t('colCategoryName', language), 'name')}
+                    {renderSortableTh(t('colType', language), 'type')}
                     <th style={styles.th}>{t('colColor', language)}</th>
-                    <th style={styles.th}>{t('colDisplayOrder', language)}</th>
-                    <th style={styles.th}>{t('colLinkedCategories', language)}</th>
+                    {renderSortableTh(t('colDisplayOrder', language), 'display_order')}
+                    {renderSortableTh(t('colLinkedCategories', language), 'linkedCount')}
                     <th style={{ ...styles.th, textAlign: 'center' }}>{t('colActions', language)}</th>
                   </>
                 ) : activeSubTab === 'expenses' || activeSubTab === 'incomes' ? (
                   <>
-                    <th style={styles.th}>{t('colCategoryName', language)}</th>
-                    <th style={styles.th}>{t('colMacroCategory', language)}</th>
-                    <th style={styles.th}>{t('colType', language)}</th>
+                    {renderSortableTh(t('colCategoryName', language), 'name')}
+                    {renderSortableTh(t('colMacroCategory', language), 'macro')}
+                    {renderSortableTh(t('colType', language), 'type')}
                     <th style={styles.th}>{t('colColor', language)}</th>
                     <th style={{ ...styles.th, textAlign: 'center' }}>{t('colActions', language)}</th>
                   </>
                 ) : activeSubTab === 'merchants' ? (
                   <>
-                    <th style={styles.th}>{t('colMerchantPattern', language)}</th>
-                    <th style={styles.th}>{t('colTargetCategory', language)}</th>
+                    {renderSortableTh(t('colMerchantPattern', language), 'pattern')}
+                    {renderSortableTh(t('colTargetCategory', language), 'category')}
                     <th style={{ ...styles.th, textAlign: 'center' }}>{t('colActions', language)}</th>
                   </>
                 ) : (
                   <>
-                    <th style={styles.th}>{t('colRawCardName', language)}</th>
-                    <th style={styles.th}>{t('colDisplayCardName', language)}</th>
-                    <th style={styles.th}>{t('colLastDigits', language)}</th>
+                    {renderSortableTh(t('colRawCardName', language), 'raw_pattern')}
+                    {renderSortableTh(t('colDisplayCardName', language), 'display_name')}
+                    {renderSortableTh(t('colLastDigits', language), 'card_last_digits')}
                     <th style={{ ...styles.th, textAlign: 'center' }}>{t('colActions', language)}</th>
                   </>
                 )}
@@ -966,217 +1255,308 @@ CREATE POLICY "Users can delete payment mappings in their households"
             <tbody>
               {/* 1. MACRO CATEGORIES TABLE */}
               {activeSubTab === 'macros' &&
-                filteredMacros.map((macro) => {
-                  const linkedCount = categories.filter((c) => c.macro_category_id === macro.id).length;
-                  return (
-                    <tr key={macro.id} style={styles.tr}>
-                      <td style={styles.td}>
-                        <div style={styles.catCell}>
-                          <span style={{ ...styles.colorPreviewDot, backgroundColor: macro.color }} />
-                          <span style={styles.cellBold}>{macro.name}</span>
-                        </div>
-                      </td>
-                      <td style={styles.td}>
-                        <span style={macro.type === 'income' ? styles.incomeTag : styles.expenseTag}>
-                          {macro.type === 'income' ? 'הכנסה' : 'הוצאה'}
-                        </span>
-                      </td>
-                      <td style={styles.td}>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>
-                          {macro.color}
-                        </span>
-                      </td>
-                      <td style={styles.td}>
-                        <span style={styles.orderBadge}>{macro.display_order || 1}</span>
-                      </td>
-                      <td style={styles.td}>
-                        <span style={styles.linkedCountBadge}>
-                          {linkedCount} {language === 'he' ? 'קטגוריות משויכות' : 'Categories'}
-                        </span>
-                      </td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>
-                        <div style={styles.actionButtons}>
-                          <button
-                            style={styles.editBtn}
-                            onClick={() => handleOpenEditModal(macro)}
-                            title="ערוך"
-                          >
-                            <Edit3 size={14} color="var(--primary)" />
-                          </button>
-                          <button
-                            style={styles.deleteBtn}
-                            onClick={() => handleDeleteItem(macro)}
-                            title="מחק"
-                          >
-                            <Trash2 size={14} color="var(--danger)" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                (processedMacros.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={styles.emptyTableTd}>
+                      {language === 'he'
+                        ? 'לא נמצאו קבוצות על תואמות לחיפוש או הסינון'
+                        : 'No macro groups found matching search/filter'}
+                    </td>
+                  </tr>
+                ) : (
+                  processedMacros.map((macro) => {
+                    const linkedCount = categories.filter((c) => c.macro_category_id === macro.id).length;
+                    return (
+                      <tr key={macro.id} style={styles.tr}>
+                        <td style={styles.td}>
+                          <div style={styles.catCell}>
+                            <span style={{ ...styles.colorPreviewDot, backgroundColor: macro.color }} />
+                            <span style={styles.cellBold}>{macro.name}</span>
+                          </div>
+                        </td>
+                        <td style={styles.td}>
+                          <span style={macro.type === 'income' ? styles.incomeTag : styles.expenseTag}>
+                            {macro.type === 'income' ? 'הכנסה' : 'הוצאה'}
+                          </span>
+                        </td>
+                        <td style={styles.td}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>
+                            {macro.color}
+                          </span>
+                        </td>
+                        <td style={styles.td}>
+                          <span style={styles.orderBadge}>{macro.display_order || 1}</span>
+                        </td>
+                        <td style={styles.td}>
+                          <span style={styles.linkedCountBadge}>
+                            {linkedCount} {language === 'he' ? 'קטגוריות משויכות' : 'Categories'}
+                          </span>
+                        </td>
+                        <td style={{ ...styles.td, textAlign: 'center' }}>
+                          <div style={styles.actionButtons}>
+                            <button
+                              style={styles.editBtn}
+                              onClick={() => handleOpenEditModal(macro)}
+                              title="ערוך"
+                            >
+                              <Edit3 size={14} color="var(--primary)" />
+                            </button>
+                            <button
+                              style={styles.deleteBtn}
+                              onClick={() => handleDeleteItem(macro)}
+                              title="מחק"
+                            >
+                              <Trash2 size={14} color="var(--danger)" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ))}
 
               {/* 2. EXPENSE CATEGORIES TABLE */}
               {activeSubTab === 'expenses' &&
-                filteredExpenses.map((cat) => {
-                  const linkedMacro = macroCategories.find((m) => m.id === cat.macro_category_id);
-                  return (
-                    <tr key={cat.id} style={styles.tr}>
-                      <td style={styles.td}>
-                        <div style={styles.catCell}>
-                          <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
-                          <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
-                          {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
-                        </div>
-                      </td>
-                      <td style={styles.td}>
-                        {linkedMacro ? (
-                          <span
-                            style={{
-                              ...styles.macroPill,
-                              backgroundColor: `${linkedMacro.color}15`,
-                              borderColor: `${linkedMacro.color}40`,
-                              color: linkedMacro.color,
-                            }}
-                          >
-                            <span style={{ ...styles.colorPreviewDot, backgroundColor: linkedMacro.color }} />
-                            {linkedMacro.name}
-                          </span>
-                        ) : (
-                          <span style={styles.unassignedMacro}>
-                            {language === 'he' ? 'ללא שיוך (ברירת מחדל: משתנות)' : 'Unassigned (Variable)'}
-                          </span>
-                        )}
-                      </td>
-                      <td style={styles.td}>
-                        <span style={styles.expenseTag}>הוצאה</span>
-                      </td>
-                      <td style={styles.td}>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{cat.color}</span>
-                      </td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>
-                        <div style={styles.actionButtons}>
-                          <button
-                            style={styles.editBtn}
-                            onClick={() => handleOpenEditModal(cat)}
-                            title="ערוך"
-                          >
-                            <Edit3 size={14} color="var(--primary)" />
-                          </button>
-                          <button
-                            style={styles.deleteBtn}
-                            onClick={() => handleDeleteItem(cat)}
-                            title="מחק"
-                          >
-                            <Trash2 size={14} color="var(--danger)" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                (processedExpenses.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={styles.emptyTableTd}>
+                      {language === 'he'
+                        ? 'לא נמצאו סוגי הוצאות תואמים לחיפוש או הסינון'
+                        : 'No expense categories found matching search/filter'}
+                    </td>
+                  </tr>
+                ) : (
+                  processedExpenses.map((cat) => {
+                    const linkedMacro = macroCategories.find((m) => m.id === cat.macro_category_id);
+                    return (
+                      <tr key={cat.id} style={styles.tr}>
+                        <td style={styles.td}>
+                          <div style={styles.catCell}>
+                            <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
+                            <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
+                            {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
+                          </div>
+                        </td>
+                        <td style={styles.td}>
+                          {linkedMacro ? (
+                            <span
+                              style={{
+                                ...styles.macroPill,
+                                backgroundColor: `${linkedMacro.color}15`,
+                                borderColor: `${linkedMacro.color}40`,
+                                color: linkedMacro.color,
+                              }}
+                            >
+                              <span style={{ ...styles.colorPreviewDot, backgroundColor: linkedMacro.color }} />
+                              {linkedMacro.name}
+                            </span>
+                          ) : (
+                            <span style={styles.unassignedMacro}>
+                              {language === 'he' ? 'ללא שיוך (ברירת מחדל: משתנות)' : 'Unassigned (Variable)'}
+                            </span>
+                          )}
+                        </td>
+                        <td style={styles.td}>
+                          <span style={styles.expenseTag}>הוצאה</span>
+                        </td>
+                        <td style={styles.td}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{cat.color}</span>
+                        </td>
+                        <td style={{ ...styles.td, textAlign: 'center' }}>
+                          <div style={styles.actionButtons}>
+                            <button
+                              style={styles.editBtn}
+                              onClick={() => handleOpenEditModal(cat)}
+                              title="ערוך"
+                            >
+                              <Edit3 size={14} color="var(--primary)" />
+                            </button>
+                            <button
+                              style={styles.deleteBtn}
+                              onClick={() => handleDeleteItem(cat)}
+                              title="מחק"
+                            >
+                              <Trash2 size={14} color="var(--danger)" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ))}
 
               {/* 3. INCOME CATEGORIES TABLE */}
               {activeSubTab === 'incomes' &&
-                filteredIncomes.map((cat) => {
-                  const linkedMacro = macroCategories.find((m) => m.id === cat.macro_category_id);
-                  return (
-                    <tr key={cat.id} style={styles.tr}>
-                      <td style={styles.td}>
-                        <div style={styles.catCell}>
-                          <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
-                          <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
-                          {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
-                        </div>
-                      </td>
-                      <td style={styles.td}>
-                        {linkedMacro ? (
-                          <span
-                            style={{
-                              ...styles.macroPill,
-                              backgroundColor: `${linkedMacro.color}15`,
-                              borderColor: `${linkedMacro.color}40`,
-                              color: linkedMacro.color,
-                            }}
-                          >
-                            <span style={{ ...styles.colorPreviewDot, backgroundColor: linkedMacro.color }} />
-                            {linkedMacro.name}
-                          </span>
-                        ) : (
-                          <span style={styles.unassignedMacro}>
-                            {language === 'he' ? 'ללא שיוך' : 'Unassigned'}
-                          </span>
-                        )}
-                      </td>
-                      <td style={styles.td}>
-                        <span style={styles.incomeTag}>הכנסה</span>
-                      </td>
-                      <td style={styles.td}>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{cat.color}</span>
-                      </td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>
-                        <div style={styles.actionButtons}>
-                          <button
-                            style={styles.editBtn}
-                            onClick={() => handleOpenEditModal(cat)}
-                            title="ערוך"
-                          >
-                            <Edit3 size={14} color="var(--primary)" />
-                          </button>
-                          <button
-                            style={styles.deleteBtn}
-                            onClick={() => handleDeleteItem(cat)}
-                            title="מחק"
-                          >
-                            <Trash2 size={14} color="var(--danger)" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                (processedIncomes.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={styles.emptyTableTd}>
+                      {language === 'he'
+                        ? 'לא נמצאו סוגי הכנסות תואמים לחיפוש או הסינון'
+                        : 'No income categories found matching search/filter'}
+                    </td>
+                  </tr>
+                ) : (
+                  processedIncomes.map((cat) => {
+                    const linkedMacro = macroCategories.find((m) => m.id === cat.macro_category_id);
+                    return (
+                      <tr key={cat.id} style={styles.tr}>
+                        <td style={styles.td}>
+                          <div style={styles.catCell}>
+                            <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
+                            <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
+                            {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
+                          </div>
+                        </td>
+                        <td style={styles.td}>
+                          {linkedMacro ? (
+                            <span
+                              style={{
+                                ...styles.macroPill,
+                                backgroundColor: `${linkedMacro.color}15`,
+                                borderColor: `${linkedMacro.color}40`,
+                                color: linkedMacro.color,
+                              }}
+                            >
+                              <span style={{ ...styles.colorPreviewDot, backgroundColor: linkedMacro.color }} />
+                              {linkedMacro.name}
+                            </span>
+                          ) : (
+                            <span style={styles.unassignedMacro}>
+                              {language === 'he' ? 'ללא שיוך' : 'Unassigned'}
+                            </span>
+                          )}
+                        </td>
+                        <td style={styles.td}>
+                          <span style={styles.incomeTag}>הכנסה</span>
+                        </td>
+                        <td style={styles.td}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{cat.color}</span>
+                        </td>
+                        <td style={{ ...styles.td, textAlign: 'center' }}>
+                          <div style={styles.actionButtons}>
+                            <button
+                              style={styles.editBtn}
+                              onClick={() => handleOpenEditModal(cat)}
+                              title="ערוך"
+                            >
+                              <Edit3 size={14} color="var(--primary)" />
+                            </button>
+                            <button
+                              style={styles.deleteBtn}
+                              onClick={() => handleDeleteItem(cat)}
+                              title="מחק"
+                            >
+                              <Trash2 size={14} color="var(--danger)" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ))}
 
               {/* 4. MERCHANT MAPPING RULES TABLE */}
               {activeSubTab === 'merchants' &&
-                filteredMerchants.map((rule) => {
-                  const cat = categories.find((c) => c.id === rule.category_id);
-                  return (
-                    <tr key={rule.id} style={styles.tr}>
+                (processedMerchants.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} style={styles.emptyTableTd}>
+                      {language === 'he'
+                        ? 'לא נמצאו כללי שיוך בתי עסק תואמים לחיפוש או הסינון'
+                        : 'No merchant rules found matching search/filter'}
+                    </td>
+                  </tr>
+                ) : (
+                  processedMerchants.map((rule) => {
+                    const cat = categories.find((c) => c.id === rule.category_id);
+                    return (
+                      <tr key={rule.id} style={styles.tr}>
+                        <td style={styles.td}>
+                          <div style={styles.patternBox}>
+                            <Sparkles size={13} color="var(--primary)" />
+                            <span style={styles.patternText}>{rule.pattern}</span>
+                          </div>
+                        </td>
+                        <td style={styles.td}>
+                          {cat ? (
+                            <span
+                              style={{
+                                ...styles.categoryBadge,
+                                backgroundColor: `${cat.color}15`,
+                                borderColor: `${cat.color}40`,
+                                color: cat.color,
+                              }}
+                            >
+                              <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
+                              {formatCategoryName(cat.name, language)}
+                            </span>
+                          ) : (
+                            <span style={styles.unknownCategory}>ללא קטגוריה</span>
+                          )}
+                        </td>
+                        <td style={{ ...styles.td, textAlign: 'center' }}>
+                          <div style={styles.actionButtons}>
+                            <button
+                              style={styles.editBtn}
+                              onClick={() => handleOpenEditModal(rule)}
+                              title="ערוך"
+                            >
+                              <Edit3 size={14} color="var(--primary)" />
+                            </button>
+                            <button
+                              style={styles.deleteBtn}
+                              onClick={() => handleDeleteItem(rule)}
+                              title="מחק"
+                            >
+                              <Trash2 size={14} color="var(--danger)" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ))}
+
+              {/* 5. CREDIT CARDS & EXPENSE SOURCES TABLE */}
+              {activeSubTab === 'cards' &&
+                (processedCards.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={styles.emptyTableTd}>
+                      {language === 'he'
+                        ? 'לא נמצאו מקורות תשלום תואמים לחיפוש או הסינון'
+                        : 'No card sources found matching search/filter'}
+                    </td>
+                  </tr>
+                ) : (
+                  processedCards.map((card) => (
+                    <tr key={card.id} style={styles.tr}>
                       <td style={styles.td}>
-                        <div style={styles.patternBox}>
-                          <Sparkles size={13} color="var(--primary)" />
-                          <span style={styles.patternText}>{rule.pattern}</span>
+                        <span style={styles.rawCardText}>{card.raw_pattern}</span>
+                      </td>
+                      <td style={styles.td}>
+                        <div style={styles.displayCardWrap}>
+                          <CreditCard size={15} color={card.color || 'var(--primary)'} />
+                          <span style={styles.displayCardName}>{card.display_name}</span>
                         </div>
                       </td>
                       <td style={styles.td}>
-                        {cat ? (
-                          <span
-                            style={{
-                              ...styles.categoryBadge,
-                              backgroundColor: `${cat.color}15`,
-                              borderColor: `${cat.color}40`,
-                              color: cat.color,
-                            }}
-                          >
-                            <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
-                            {formatCategoryName(cat.name, language)}
-                          </span>
+                        {card.card_last_digits ? (
+                          <span style={styles.digitsBadge}>•••• {card.card_last_digits}</span>
                         ) : (
-                          <span style={styles.unknownCategory}>ללא קטגוריה</span>
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
                         )}
                       </td>
                       <td style={{ ...styles.td, textAlign: 'center' }}>
                         <div style={styles.actionButtons}>
                           <button
                             style={styles.editBtn}
-                            onClick={() => handleOpenEditModal(rule)}
+                            onClick={() => handleOpenEditModal(card)}
                             title="ערוך"
                           >
                             <Edit3 size={14} color="var(--primary)" />
                           </button>
                           <button
                             style={styles.deleteBtn}
-                            onClick={() => handleDeleteItem(rule)}
+                            onClick={() => handleDeleteItem(card)}
                             title="מחק"
                           >
                             <Trash2 size={14} color="var(--danger)" />
@@ -1184,48 +1564,7 @@ CREATE POLICY "Users can delete payment mappings in their households"
                         </div>
                       </td>
                     </tr>
-                  );
-                })}
-
-              {/* 5. CREDIT CARDS & EXPENSE SOURCES TABLE */}
-              {activeSubTab === 'cards' &&
-                filteredCards.map((card) => (
-                  <tr key={card.id} style={styles.tr}>
-                    <td style={styles.td}>
-                      <span style={styles.rawCardText}>{card.raw_pattern}</span>
-                    </td>
-                    <td style={styles.td}>
-                      <div style={styles.displayCardWrap}>
-                        <CreditCard size={15} color={card.color || 'var(--primary)'} />
-                        <span style={styles.displayCardName}>{card.display_name}</span>
-                      </div>
-                    </td>
-                    <td style={styles.td}>
-                      {card.card_last_digits ? (
-                        <span style={styles.digitsBadge}>•••• {card.card_last_digits}</span>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>—</span>
-                      )}
-                    </td>
-                    <td style={{ ...styles.td, textAlign: 'center' }}>
-                      <div style={styles.actionButtons}>
-                        <button
-                          style={styles.editBtn}
-                          onClick={() => handleOpenEditModal(card)}
-                          title="ערוך"
-                        >
-                          <Edit3 size={14} color="var(--primary)" />
-                        </button>
-                        <button
-                          style={styles.deleteBtn}
-                          onClick={() => handleDeleteItem(card)}
-                          title="מחק"
-                        >
-                          <Trash2 size={14} color="var(--danger)" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                  ))
                 ))}
             </tbody>
           </table>
@@ -1702,6 +2041,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     flexWrap: 'wrap',
     gap: '12px',
   },
+  toolbarLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    flexWrap: 'wrap',
+  },
   searchWrap: {
     display: 'flex',
     alignItems: 'center',
@@ -1710,7 +2055,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: '1px solid var(--border-main)',
     borderRadius: 'var(--radius-sm)',
     padding: '8px 12px',
-    minWidth: '260px',
+    minWidth: '220px',
   },
   searchInput: {
     border: 'none',
@@ -1719,6 +2064,55 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.8125rem',
     color: 'var(--text-primary)',
     width: '100%',
+  },
+  filterWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '6px 10px',
+  },
+  filterSelect: {
+    border: 'none',
+    outline: 'none',
+    backgroundColor: 'transparent',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  },
+  clearFilterBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 12px',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    color: 'var(--text-secondary)',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  countPill: {
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: 'var(--text-muted)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    padding: '4px 10px',
+    borderRadius: '12px',
+    border: '1px solid var(--border-main)',
+  },
+  emptyTableTd: {
+    textAlign: 'center',
+    padding: '36px 20px',
+    color: 'var(--text-muted)',
+    fontSize: '0.875rem',
+    fontWeight: '500',
   },
   addBtn: {
     display: 'flex',
