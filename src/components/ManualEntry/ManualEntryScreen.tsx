@@ -22,7 +22,6 @@ import { useAuth } from '../../context/AuthContext';
 import { t, formatCategoryName } from '../../lib/i18n';
 import { ManualEntryFormData, Category } from '../../lib/types';
 import { createManualTransaction } from '../../lib/services/manualEntryService';
-import { HistoricalDataModal } from './HistoricalDataModal';
 
 export const ManualEntryScreen: React.FC = () => {
   const {
@@ -57,7 +56,6 @@ export const ManualEntryScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [isHistoricalModalOpen, setIsHistoricalModalOpen] = useState(false);
 
   // Live Auto-Mapping detector
   const detectedRule = formData.payee_name
@@ -178,7 +176,7 @@ export const ManualEntryScreen: React.FC = () => {
 
   return (
     <div style={styles.container} className="animate-fade-in">
-      {/* Header & Quick Action */}
+      {/* Header */}
       <div style={styles.header}>
         <div>
           <h2 style={styles.title}>
@@ -190,17 +188,6 @@ export const ManualEntryScreen: React.FC = () => {
               : 'Quickly log everyday expenses, income receipts, or savings deposits into your household ledger.'}
           </p>
         </div>
-
-        {/* Historical Aggregated Ingestion Trigger */}
-        <button
-          style={styles.historicalBtn}
-          onClick={() => setIsHistoricalModalOpen(true)}
-        >
-          <FileSpreadsheet size={15} color="var(--primary)" />
-          <span>
-            {language === 'he' ? 'שחזור קובץ שנתי (טבלה)' : 'Historical Summary Ingestion'}
-          </span>
-        </button>
       </div>
 
       {/* Quick 1-Click Preset Pills */}
@@ -653,20 +640,6 @@ export const ManualEntryScreen: React.FC = () => {
           </div>
         </form>
       </div>
-
-      {/* Historical Data Ingestion Modal */}
-      {isHistoricalModalOpen && activeHousehold && (
-        <HistoricalDataModal
-          householdId={activeHousehold.id}
-          categories={categories}
-          isDemoMode={isDemoMode}
-          onClose={() => setIsHistoricalModalOpen(false)}
-          onSuccess={() => {
-            setIsHistoricalModalOpen(false);
-            setActiveTab('dashboard');
-          }}
-        />
-      )}
     </div>
   );
 };
