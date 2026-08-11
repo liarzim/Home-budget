@@ -529,7 +529,12 @@ export const TransactionsView: React.FC = () => {
                     ...styles.typeOptionBtn,
                     ...(newType === 'expense' ? styles.typeOptionBtnActiveExpense : {}),
                   }}
-                  onClick={() => setNewType('expense')}
+                  onClick={() => {
+                    setNewType('expense');
+                    if (newPaymentMethod === 'bank_transfer') {
+                      setNewPaymentMethod('credit_card');
+                    }
+                  }}
                 >
                   <TrendingDown size={15} />
                   <span>{language === 'he' ? 'הוצאה' : 'Expense'}</span>
@@ -540,7 +545,13 @@ export const TransactionsView: React.FC = () => {
                     ...styles.typeOptionBtn,
                     ...(newType === 'income' ? styles.typeOptionBtnActiveIncome : {}),
                   }}
-                  onClick={() => setNewType('income')}
+                  onClick={() => {
+                    setNewType('income');
+                    if (newPaymentMethod === 'credit_card') {
+                      setNewPaymentMethod('bank_transfer');
+                    }
+                    setNewCardDigits('');
+                  }}
                 >
                   <TrendingUp size={15} />
                   <span>{language === 'he' ? 'הכנסה' : 'Income'}</span>
@@ -551,7 +562,13 @@ export const TransactionsView: React.FC = () => {
                     ...styles.typeOptionBtn,
                     ...(newType === 'savings' ? styles.typeOptionBtnActiveSavings : {}),
                   }}
-                  onClick={() => setNewType('savings')}
+                  onClick={() => {
+                    setNewType('savings');
+                    if (newPaymentMethod === 'credit_card') {
+                      setNewPaymentMethod('bank_transfer');
+                    }
+                    setNewCardDigits('');
+                  }}
                 >
                   <PiggyBank size={15} />
                   <span>{language === 'he' ? 'הפקדה לחיסכון' : 'Savings Deposit'}</span>
@@ -653,59 +670,85 @@ export const TransactionsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* 5. Payment Method & Last 4 Digits */}
-              <div style={styles.twoColumnRow}>
-                <div style={{ ...styles.formGroup, flex: 1 }}>
+              {/* 5. Payment Method & Optional Card Digits */}
+              <div style={newType === 'income' || newPaymentMethod !== 'credit_card' ? { marginBottom: '14px' } : styles.twoColumnRow}>
+                <div style={{ ...styles.formGroup, flex: 1, marginBottom: 0 }}>
                   <label style={styles.inputLabel}>
-                    {language === 'he' ? 'אמצעי תשלום / מקור' : 'Payment Method'}
+                    {language === 'he'
+                      ? newType === 'income' ? 'אופן קבלת התשלום / חשבון יעד' : 'אמצעי תשלום / מקור'
+                      : newType === 'income' ? 'Receiving Method / Account' : 'Payment Method'}
                   </label>
                   <select
                     style={styles.textInput}
                     value={newPaymentMethod}
                     onChange={(e) => setNewPaymentMethod(e.target.value)}
                   >
-                    <option value="credit_card">
-                      {language === 'he' ? '💳 כרטיס אשראי' : '💳 Credit Card'}
-                    </option>
-                    {cardMappings && cardMappings.length > 0 && cardMappings.map((cm) => (
-                      <option key={cm.id} value={cm.raw_pattern || cm.display_name}>
-                        {cm.display_name} {cm.card_last_digits ? `(•••• ${cm.card_last_digits})` : ''}
-                      </option>
-                    ))}
-                    <option value="bank_transfer">
-                      {language === 'he' ? '🏦 העברה בנקאית' : '🏦 Bank Transfer'}
-                    </option>
-                    <option value="standing_order">
-                      {language === 'he' ? '🔄 הוראת קבע' : '🔄 Standing Order'}
-                    </option>
-                    <option value="cash">
-                      {language === 'he' ? '💵 מזומן' : '💵 Cash'}
-                    </option>
-                    <option value="check">
-                      {language === 'he' ? '📑 המחאה (צ\'ק)' : '📑 Check'}
-                    </option>
-                    <option value="bit">
-                      {language === 'he' ? '📱 Bit / אפליקציה' : '📱 Bit / App'}
-                    </option>
-                    <option value="other">
-                      {language === 'he' ? '🔘 אחר' : '🔘 Other'}
-                    </option>
+                    {newType === 'income' ? (
+                      <>
+                        <option value="bank_transfer">
+                          {language === 'he' ? '🏦 העברה לחשבון בנק' : '🏦 Bank Transfer / Direct Deposit'}
+                        </option>
+                        <option value="bit">
+                          {language === 'he' ? '📱 Bit / Paybox / אפליקציה' : '📱 Bit / Paybox / App'}
+                        </option>
+                        <option value="check">
+                          {language === 'he' ? '📑 המחאה (צ\'ק)' : '📑 Check'}
+                        </option>
+                        <option value="cash">
+                          {language === 'he' ? '💵 מזומן' : '💵 Cash'}
+                        </option>
+                        <option value="other">
+                          {language === 'he' ? '🔘 אחר' : '🔘 Other'}
+                        </option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="credit_card">
+                          {language === 'he' ? '💳 כרטיס אשראי' : '💳 Credit Card'}
+                        </option>
+                        {cardMappings && cardMappings.length > 0 && cardMappings.map((cm) => (
+                          <option key={cm.id} value={cm.raw_pattern || cm.display_name}>
+                            {cm.display_name} {cm.card_last_digits ? `(•••• ${cm.card_last_digits})` : ''}
+                          </option>
+                        ))}
+                        <option value="bank_transfer">
+                          {language === 'he' ? '🏦 העברה בנקאית' : '🏦 Bank Transfer'}
+                        </option>
+                        <option value="standing_order">
+                          {language === 'he' ? '🔄 הוראת קבע' : '🔄 Standing Order'}
+                        </option>
+                        <option value="cash">
+                          {language === 'he' ? '💵 מזומן' : '💵 Cash'}
+                        </option>
+                        <option value="check">
+                          {language === 'he' ? '📑 המחאה (צ\'ק)' : '📑 Check'}
+                        </option>
+                        <option value="bit">
+                          {language === 'he' ? '📱 Bit / אפליקציה' : '📱 Bit / App'}
+                        </option>
+                        <option value="other">
+                          {language === 'he' ? '🔘 אחר' : '🔘 Other'}
+                        </option>
+                      </>
+                    )}
                   </select>
                 </div>
 
-                <div style={{ ...styles.formGroup, flex: 1 }}>
-                  <label style={styles.inputLabel}>
-                    {language === 'he' ? '4 ספרות כרטיס אחרונות' : 'Card Last 4 Digits'}
-                  </label>
-                  <input
-                    style={styles.textInput}
-                    type="text"
-                    maxLength={4}
-                    placeholder={language === 'he' ? 'לדוגמה: 2285' : 'e.g. 2285'}
-                    value={newCardDigits}
-                    onChange={(e) => setNewCardDigits(e.target.value)}
-                  />
-                </div>
+                {newType !== 'income' && newPaymentMethod === 'credit_card' && (
+                  <div style={{ ...styles.formGroup, flex: 1, marginBottom: 0 }}>
+                    <label style={styles.inputLabel}>
+                      {language === 'he' ? '4 ספרות כרטיס אחרונות' : 'Card Last 4 Digits'}
+                    </label>
+                    <input
+                      style={styles.textInput}
+                      type="text"
+                      maxLength={4}
+                      placeholder={language === 'he' ? 'לדוגמה: 2285' : 'e.g. 2285'}
+                      value={newCardDigits}
+                      onChange={(e) => setNewCardDigits(e.target.value)}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* 6. Notes */}
