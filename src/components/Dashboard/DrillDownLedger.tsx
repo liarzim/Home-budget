@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { MacroGroup, CategoryDrillDown, Transaction, Category } from '../../lib/types';
 import { EditTransactionModal } from './EditTransactionModal';
+import { formatDate } from '../../lib/i18n';
 
 interface DrillDownLedgerProps {
   macroGroups: MacroGroup[];
@@ -265,7 +266,7 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
                               ) : (
                                 drill.transactions.map((tx) => (
                                   <div key={tx.id} style={styles.transactionRow}>
-                                    <div style={styles.txDate}>{tx.date}</div>
+                                    <div style={styles.txDate}>{formatDate(tx.date)}</div>
 
                                     <div style={styles.txPayeeWrap}>
                                       <div style={styles.txPayee}>{tx.payee_name}</div>

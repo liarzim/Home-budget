@@ -364,3 +364,45 @@ export function formatCategoryName(name: string, lang: Language = 'he'): string 
   };
   return map[name] || name;
 }
+
+/**
+ * Formats any date string (e.g. YYYY-MM-DD or ISO) into dd/mm/yyyy
+ */
+export function formatDisplayDate(dateInput: string | Date | null | undefined): string {
+  if (!dateInput) return '';
+
+  if (typeof dateInput === 'string') {
+    const trimmed = dateInput.trim();
+    // If it's already in DD/MM/YYYY format
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+      return trimmed;
+    }
+    // If it's in YYYY-MM-DD (e.g. 2026-08-01 or 2026-08-01T...)
+    const ymdMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (ymdMatch) {
+      const year = ymdMatch[1];
+      const month = ymdMatch[2].padStart(2, '0');
+      const day = ymdMatch[3].padStart(2, '0');
+      return `${day}/${month}/${year}`;
+    }
+    // If it's in DD/MM/YYYY or DD-MM-YYYY
+    const dmyMatch = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+    if (dmyMatch) {
+      const p1 = dmyMatch[1].padStart(2, '0');
+      const p2 = dmyMatch[2].padStart(2, '0');
+      const year = dmyMatch[3];
+      return `${p1}/${p2}/${year}`;
+    }
+  }
+
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return String(dateInput);
+
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+export const formatDate = formatDisplayDate;
+

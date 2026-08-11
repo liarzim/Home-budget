@@ -405,7 +405,6 @@ export const ManualEntryScreen: React.FC = () => {
                 <span style={{ color: 'var(--danger)' }}>*</span>
               </label>
               <div style={styles.inputWrapper}>
-                <Calendar size={16} color="var(--text-secondary)" style={{ marginLeft: '10px' }} />
                 <input
                   type="date"
                   style={styles.textInput}

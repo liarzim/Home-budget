@@ -18,6 +18,7 @@ import {
 import { TransformedImportRow, Category, BusinessMapping } from '../../lib/types';
 import { saveBusinessMapping } from '../../lib/services/mappingService';
 import { applyClassificationToRows } from '../../lib/classifier';
+import { formatDate } from '../../lib/i18n';
 
 interface PreviewStepProps {
   rows: TransformedImportRow[];
@@ -407,7 +408,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
 
                     {/* Date */}
                     <div style={{ flex: 1.2 }}>
-                      <div style={styles.dateText}>{row.date}</div>
+                      <div style={styles.dateText}>{formatDate(row.date)}</div>
                       {row.is_hidden && (
                         <span style={styles.hiddenTag}>Hidden (Soft-Delete)</span>
                       )}
@@ -525,7 +526,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
                         />
                         <div>
                           <div style={styles.payeeText}>{row.payee_name}</div>
-                          <div style={styles.dateText}>{row.date}</div>
+                          <div style={styles.dateText}>{formatDate(row.date)}</div>
                         </div>
                       </div>
 

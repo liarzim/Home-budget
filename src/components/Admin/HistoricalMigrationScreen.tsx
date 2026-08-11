@@ -15,6 +15,7 @@ import {
   Search,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { formatDate } from '../../lib/i18n';
 import {
   parseHistoricalYearlyExcel,
   ParsedHistoricalYearlySummary,
@@ -430,7 +431,7 @@ export const HistoricalMigrationScreen: React.FC = () => {
                       <div style={{ flex: 1 }}>
                         <span style={styles.monthBadge}>Month {tx.monthIndex}</span>
                       </div>
-                      <div style={{ flex: 1.2, color: 'var(--text-secondary)' }}>{tx.date}</div>
+                      <div style={{ flex: 1.2, color: 'var(--text-secondary)' }}>{formatDate(tx.date)}</div>
                       <div style={{ flex: 3, fontWeight: '600' }}>{tx.payee}</div>
                       <div style={{ flex: 2 }}>
                         <span style={styles.categoryPill}>{tx.categoryName}</span>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { t, formatCategoryName } from '../lib/i18n';
+import { t, formatCategoryName, formatDate } from '../lib/i18n';
 import { TransactionType } from '../lib/types';
 import {
   Plus,
@@ -283,7 +283,7 @@ export const TransactionsView: React.FC = () => {
                 >
                   {/* Date */}
                   <div style={{ flex: 1.2 }}>
-                    <div style={styles.dateText}>{tx.date}</div>
+                    <div style={styles.dateText}>{formatDate(tx.date)}</div>
                     {tx.is_hidden && (
                       <span style={styles.hiddenBadge}>Soft-Deleted</span>
                     )}
@@ -370,7 +370,7 @@ export const TransactionsView: React.FC = () => {
                   <div style={styles.mobileCardTop}>
                     <div>
                       <div style={styles.payeeText}>{tx.payee_name}</div>
-                      <div style={styles.dateText}>{tx.date}</div>
+                      <div style={styles.dateText}>{formatDate(tx.date)}</div>
                     </div>
                     <div
                       style={{
