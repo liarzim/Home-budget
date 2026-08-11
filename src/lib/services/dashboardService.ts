@@ -4,6 +4,7 @@ import {
   Budget,
   Savings,
   Category,
+  MacroCategory,
   MacroGroup,
   CategoryDrillDown,
   SavingsYearlySummary,
@@ -29,7 +30,8 @@ export async function fetchMonthlyDashboardData(
   householdId: string,
   monthStr: string, // YYYY-MM
   categories: Category[],
-  isDemoMode: boolean = false
+  isDemoMode: boolean = false,
+  macroCategories: MacroCategory[] = []
 ): Promise<MonthlyDashboardResult> {
   const [yearStr, mStr] = monthStr.split('-');
   const year = parseInt(yearStr, 10);
@@ -100,7 +102,7 @@ export async function fetchMonthlyDashboardData(
   const savingsRate = totalIncome > 0 ? Math.max(0, (netCashFlow / totalIncome) * 100) : 0;
 
   // Build Macro Groups & Category Drill-Down Hierarchy
-  const macroGroups = buildMacroGroups(categories, rawTransactions, rawBudgets);
+  const macroGroups = buildMacroGroups(categories, rawTransactions, rawBudgets, macroCategories);
 
   return {
     monthStr,
@@ -119,9 +121,10 @@ export async function fetchMonthlyDashboardData(
 function buildMacroGroups(
   categories: Category[],
   transactions: Transaction[],
-  budgets: Budget[]
+  budgets: Budget[],
+  macroCategories: MacroCategory[] = []
 ): MacroGroup[] {
-  // Category helper to identify fixed vs variable expenses
+  // Category helper to identify fixed vs variable expenses as fallback
   const fixedCategoryNames = [
     'שכירות ומשכנתה', 'דיור', 'ארנונה ומים', 'חשמל וגז', 'ביטוחים',
     'תקשורת ומנויים', 'הלוואות', 'שכירות', 'ועד בית', 'חינוך וחוגים',
@@ -132,12 +135,6 @@ function buildMacroGroups(
     'משכורת עיקרית', 'משכורת', 'שכר עבודה', 'salary', 'income'
   ];
 
-  // Group buckets definitions
-  const fixedDrills: CategoryDrillDown[] = [];
-  const variableDrills: CategoryDrillDown[] = [];
-  const salaryDrills: CategoryDrillDown[] = [];
-  const otherIncomeDrills: CategoryDrillDown[] = [];
-
   // Group transactions by category_id
   const txByCategory = new Map<string | null, Transaction[]>();
   transactions.forEach((tx) => {
@@ -145,6 +142,186 @@ function buildMacroGroups(
     list.push(tx);
     txByCategory.set(tx.category_id, list);
   });
+
+  // If dynamic macro categories are defined, create buckets for them
+  if (macroCategories.length > 0) {
+    const macroBuckets = new Map<string, { macro: MacroCategory; drills: CategoryDrillDown[] }>();
+    macroCategories
+      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+      .forEach((mc) => {
+        macroBuckets.set(mc.id, { macro: mc, drills: [] });
+      });
+
+    // Default fallback buckets if a category doesn't match any macro group
+    const fallbackExpenseDrills: CategoryDrillDown[] = [];
+    const fallbackIncomeDrills: CategoryDrillDown[] = [];
+
+    categories.forEach((cat) => {
+      const catTxs = txByCategory.get(cat.id) || [];
+      const catTotal = catTxs.reduce((sum, tx) => sum + Number(tx.amount), 0);
+      const catBudgetObj = budgets.find((b) => b.category_id === cat.id);
+      const budgetAmount = catBudgetObj?.limit_amount || 0;
+      const percentageOfBudget = budgetAmount > 0 ? (catTotal / budgetAmount) * 100 : 0;
+
+      const drill: CategoryDrillDown = {
+        category: cat,
+        actualAmount: catTotal,
+        budgetAmount,
+        transactions: catTxs,
+        percentageOfBudget,
+      };
+
+      if (cat.macro_category_id && macroBuckets.has(cat.macro_category_id)) {
+        macroBuckets.get(cat.macro_category_id)!.drills.push(drill);
+      } else {
+        // Fallback matching
+        const normName = cat.name.toLowerCase();
+        if (cat.type === 'expense') {
+          const isFixed = fixedCategoryNames.some((kw) => normName.includes(kw));
+          const targetMacro = macroCategories.find((m) =>
+            m.type === 'expense' && (isFixed ? m.name.includes('קבועות') : m.name.includes('משתנות'))
+          );
+          if (targetMacro && macroBuckets.has(targetMacro.id)) {
+            macroBuckets.get(targetMacro.id)!.drills.push(drill);
+          } else {
+            fallbackExpenseDrills.push(drill);
+          }
+        } else {
+          const isSalary = salaryCategoryNames.some((kw) => normName.includes(kw));
+          const targetMacro = macroCategories.find((m) =>
+            m.type === 'income' && (isSalary ? m.name.includes('משכורת') : m.name.includes('נוספות'))
+          );
+          if (targetMacro && macroBuckets.has(targetMacro.id)) {
+            macroBuckets.get(targetMacro.id)!.drills.push(drill);
+          } else {
+            fallbackIncomeDrills.push(drill);
+          }
+        }
+      }
+    });
+
+    // Handle uncategorized transactions
+    const uncategorizedTxs = txByCategory.get(null) || [];
+    if (uncategorizedTxs.length > 0) {
+      const uncatExpenses = uncategorizedTxs.filter((tx) => tx.transaction_type === 'expense');
+      const uncatIncomes = uncategorizedTxs.filter((tx) => tx.transaction_type === 'income');
+
+      if (uncatExpenses.length > 0) {
+        const uncatExpDrill: CategoryDrillDown = {
+          category: {
+            id: 'uncategorized-exp',
+            household_id: '',
+            name: 'שונות ולא מסווג (Uncategorized)',
+            type: 'expense',
+            icon: 'HelpCircle',
+            color: '#94A3B8',
+            is_system: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          actualAmount: uncatExpenses.reduce((sum, t) => sum + t.amount, 0),
+          budgetAmount: 0,
+          transactions: uncatExpenses,
+          percentageOfBudget: 0,
+        };
+
+        // Place in first variable or fallback expense group
+        const varMacro = macroCategories.find((m) => m.type === 'expense');
+        if (varMacro && macroBuckets.has(varMacro.id)) {
+          macroBuckets.get(varMacro.id)!.drills.push(uncatExpDrill);
+        } else {
+          fallbackExpenseDrills.push(uncatExpDrill);
+        }
+      }
+
+      if (uncatIncomes.length > 0) {
+        const uncatIncDrill: CategoryDrillDown = {
+          category: {
+            id: 'uncategorized-inc',
+            household_id: '',
+            name: 'הכנסות אחרות (Other Income)',
+            type: 'income',
+            icon: 'HelpCircle',
+            color: '#94A3B8',
+            is_system: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          actualAmount: uncatIncomes.reduce((sum, t) => sum + t.amount, 0),
+          budgetAmount: 0,
+          transactions: uncatIncomes,
+          percentageOfBudget: 0,
+        };
+
+        const incMacro = macroCategories.find((m) => m.type === 'income');
+        if (incMacro && macroBuckets.has(incMacro.id)) {
+          macroBuckets.get(incMacro.id)!.drills.push(uncatIncDrill);
+        } else {
+          fallbackIncomeDrills.push(uncatIncDrill);
+        }
+      }
+    }
+
+    // Build the dynamic MacroGroup array
+    const resultGroups: MacroGroup[] = [];
+    macroBuckets.forEach(({ macro, drills }) => {
+      drills.sort((a, b) => b.actualAmount - a.actualAmount);
+      const totalAmount = drills.reduce((sum, c) => sum + c.actualAmount, 0);
+      const totalBudget = drills.reduce((sum, c) => sum + c.budgetAmount, 0);
+
+      resultGroups.push({
+        id: macro.id,
+        name: macro.name,
+        hebrewName: macro.name,
+        type: macro.type,
+        color: macro.color,
+        icon: macro.icon || (macro.type === 'income' ? 'Briefcase' : 'ShoppingBag'),
+        totalAmount,
+        totalBudget,
+        categories: drills,
+      });
+    });
+
+    if (fallbackExpenseDrills.length > 0) {
+      const totalAmount = fallbackExpenseDrills.reduce((sum, c) => sum + c.actualAmount, 0);
+      const totalBudget = fallbackExpenseDrills.reduce((sum, c) => sum + c.budgetAmount, 0);
+      resultGroups.push({
+        id: 'fallback_expenses',
+        name: 'Other Expenses',
+        hebrewName: 'הוצאות כלליות',
+        type: 'expense',
+        icon: 'ShoppingBag',
+        color: '#6366F1',
+        totalAmount,
+        totalBudget,
+        categories: fallbackExpenseDrills,
+      });
+    }
+
+    if (fallbackIncomeDrills.length > 0) {
+      const totalAmount = fallbackIncomeDrills.reduce((sum, c) => sum + c.actualAmount, 0);
+      const totalBudget = fallbackIncomeDrills.reduce((sum, c) => sum + c.budgetAmount, 0);
+      resultGroups.push({
+        id: 'fallback_incomes',
+        name: 'Other Incomes',
+        hebrewName: 'הכנסות כלליות',
+        type: 'income',
+        icon: 'Gift',
+        color: '#10B981',
+        totalAmount,
+        totalBudget,
+        categories: fallbackIncomeDrills,
+      });
+    }
+
+    return resultGroups;
+  }
+
+  // Fallback if no macroCategories provided
+  const fixedDrills: CategoryDrillDown[] = [];
+  const variableDrills: CategoryDrillDown[] = [];
+  const salaryDrills: CategoryDrillDown[] = [];
+  const otherIncomeDrills: CategoryDrillDown[] = [];
 
   categories.forEach((cat) => {
     const catTxs = txByCategory.get(cat.id) || [];
@@ -180,7 +357,6 @@ function buildMacroGroups(
     }
   });
 
-  // Handle uncategorized transactions (transactions with category_id === null)
   const uncategorizedTxs = txByCategory.get(null) || [];
   if (uncategorizedTxs.length > 0) {
     const uncatExpenses = uncategorizedTxs.filter((tx) => tx.transaction_type === 'expense');
@@ -227,16 +403,15 @@ function buildMacroGroups(
     }
   }
 
-  // Helper to construct MacroGroup
   const makeGroup = (
     id: string,
     name: string,
     hebrewName: string,
     type: 'expense' | 'income',
     icon: string,
+    color: string,
     categoriesList: CategoryDrillDown[]
   ): MacroGroup => {
-    // Sort categories by actualAmount descending
     categoriesList.sort((a, b) => b.actualAmount - a.actualAmount);
     const totalAmount = categoriesList.reduce((sum, c) => sum + c.actualAmount, 0);
     const totalBudget = categoriesList.reduce((sum, c) => sum + c.budgetAmount, 0);
@@ -246,6 +421,7 @@ function buildMacroGroups(
       name,
       hebrewName,
       type,
+      color,
       icon,
       totalAmount,
       totalBudget,
@@ -260,6 +436,7 @@ function buildMacroGroups(
       'הוצאות קבועות ומחייבות',
       'expense',
       'Lock',
+      '#4F46E5',
       fixedDrills
     ),
     makeGroup(
@@ -268,6 +445,7 @@ function buildMacroGroups(
       'הוצאות משתנות ומחיה',
       'expense',
       'ShoppingBag',
+      '#F59E0B',
       variableDrills
     ),
     makeGroup(
@@ -276,6 +454,7 @@ function buildMacroGroups(
       'משכורות עיקריות',
       'income',
       'Briefcase',
+      '#10B981',
       salaryDrills
     ),
     makeGroup(
@@ -284,6 +463,7 @@ function buildMacroGroups(
       'קצבאות, מילואים והשקעות',
       'income',
       'Gift',
+      '#06B6D4',
       otherIncomeDrills
     ),
   ];

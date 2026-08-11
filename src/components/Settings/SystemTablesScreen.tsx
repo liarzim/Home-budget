@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
+  Layers,
   FolderTree,
   Tag,
   ArrowRightLeft,
@@ -23,15 +24,20 @@ import {
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { t, formatCategoryName } from '../../lib/i18n';
-import { Category, BusinessMapping, CardMapping } from '../../lib/types';
+import { Category, BusinessMapping, CardMapping, MacroCategory } from '../../lib/types';
 
-type SystemTab = 'expenses' | 'incomes' | 'merchants' | 'cards';
+type SystemTab = 'macros' | 'expenses' | 'incomes' | 'merchants' | 'cards';
 
 export const SystemTablesScreen: React.FC = () => {
   const {
+    macroCategories,
     categories,
     businessMappings,
     cardMappings,
+    addMacroCategory,
+    updateMacroCategory,
+    deleteMacroCategory,
+    batchAddMacroCategories,
     addCategory,
     updateCategory,
     deleteCategory,
@@ -50,7 +56,7 @@ export const SystemTablesScreen: React.FC = () => {
     dir,
   } = useAuth();
 
-  const [activeSubTab, setActiveSubTab] = useState<SystemTab>('expenses');
+  const [activeSubTab, setActiveSubTab] = useState<SystemTab>('macros');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals for CRUD
@@ -60,7 +66,10 @@ export const SystemTablesScreen: React.FC = () => {
   // Form states for manual Add/Edit
   const [formName, setFormName] = useState('');
   const [formColor, setFormColor] = useState('#4F46E5');
-  const [formIcon, setFormIcon] = useState('tag');
+  const [formIcon, setFormIcon] = useState('ShoppingBag');
+  const [formMacroType, setFormMacroType] = useState<'expense' | 'income'>('expense');
+  const [formDisplayOrder, setFormDisplayOrder] = useState(1);
+  const [formMacroId, setFormMacroId] = useState<string>('');
   const [formPattern, setFormPattern] = useState('');
   const [formTargetCatId, setFormTargetCatId] = useState('');
   const [formRawCard, setFormRawCard] = useState('');
@@ -74,20 +83,34 @@ export const SystemTablesScreen: React.FC = () => {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const ArrowIcon = dir === 'rtl' ? ArrowLeft : ArrowRight;
-
   const expenseCategories = categories.filter((c) => c.type === 'expense');
   const incomeCategories = categories.filter((c) => c.type === 'income');
 
   // Filtered lists based on search
+  const filteredMacros = macroCategories.filter(
+    (m) =>
+      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (m.type === 'expense' ? 'הוצאה' : 'הכנסה').includes(searchQuery)
+  );
+
   const filteredExpenses = expenseCategories.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase())
+    formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (c.macro_category_id &&
+      macroCategories
+        .find((m) => m.id === c.macro_category_id)
+        ?.name.toLowerCase()
+        .includes(searchQuery.toLowerCase()))
   );
 
   const filteredIncomes = incomeCategories.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase())
+    formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (c.macro_category_id &&
+      macroCategories
+        .find((m) => m.id === c.macro_category_id)
+        ?.name.toLowerCase()
+        .includes(searchQuery.toLowerCase()))
   );
 
   const filteredMerchants = businessMappings.filter((m) => {
@@ -110,11 +133,14 @@ export const SystemTablesScreen: React.FC = () => {
     let csvContent = '';
     let fileName = '';
 
-    if (activeSubTab === 'expenses') {
-      csvContent = '\uFEFFשם קטגוריה,צבע (קוד HEX),אייקון\nסופרמרקט ומזון,#10B981,shopping-cart\nביגוד והנעלה,#EC4899,shirt\nאחזקת הבית וחשבונות,#4F46E5,home\n';
+    if (activeSubTab === 'macros') {
+      csvContent = '\uFEFFשם קבוצת על,סוג (הוצאה / הכנסה),צבע (HEX),אייקון,סדר תצוגה\nהוצאות קבועות (דיור ורכב),הוצאה,#4F46E5,Lock,1\nהוצאות משתנות (מזון ובילויים),הוצאה,#F59E0B,ShoppingBag,2\nהוצאות עונתיות ונופש,הוצאה,#EC4899,Calendar,3\nמשכורות והכנסות עיקריות,הכנסה,#10B981,Briefcase,4\nקצבאות ומענקים,הכנסה,#06B6D4,Gift,5\n';
+      fileName = 'תבנית_קבוצות_על.csv';
+    } else if (activeSubTab === 'expenses') {
+      csvContent = '\uFEFFשם קטגוריה,קבוצת על,צבע (קוד HEX),אייקון\nסופרמרקט ומזון,הוצאות משתנות (מזון, בילויים, קניות),#10B981,shopping-cart\nביגוד והנעלה,הוצאות משתנות (מזון, בילויים, קניות),#EC4899,shirt\nשכירות ומשכנתה,הוצאות קבועות (דיור, רכב, ביטוח),#4F46E5,home\nנופש בחו"ל,הוצאות עונתיות, נופש ושנתיות,#8B5CF6,plane\n';
       fileName = 'תבנית_סוגי_הוצאות.csv';
     } else if (activeSubTab === 'incomes') {
-      csvContent = '\uFEFFשם קטגוריית הכנסה,צבע (קוד HEX),אייקון\nמשכורת ראשית,#10B981,briefcase\nשכר דירה מהשקעה,#4F46E5,building\nקצבאות ובונוסים,#F59E0B,gift\n';
+      csvContent = '\uFEFFשם קטגוריית הכנסה,קבוצת על,צבע (קוד HEX),אייקון\nמשכורת ראשית,משכורות והכנסות עיקריות,#10B981,briefcase\nשכר דירה מהשקעה,קצבאות והכנסות נוספות,#4F46E5,building\nקצבאות ובונוסים,קצבאות והכנסות נוספות,#F59E0B,gift\n';
       fileName = 'תבנית_סוגי_הכנסות.csv';
     } else if (activeSubTab === 'merchants') {
       csvContent = '\uFEFFשם בית עסק / מילת מפתח,קטגוריית יעד\nSHUFERSAL,Groceries & Supermarket\nPAZ,Transportation & Fuel\nSUPER-PHARM,Healthcare & Pharmacy\n';
@@ -162,13 +188,48 @@ export const SystemTablesScreen: React.FC = () => {
       }
 
       // Normalize based on active tab
-      if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
+      if (activeSubTab === 'macros') {
+        const normalized = rawData.map((row: any, idx: number) => {
+          const name = row['שם קבוצת על'] || row['שם קבוצה'] || row['שם'] || row['Name'] || Object.values(row)[0];
+          const typeStr = String(row['סוג (הוצאה / הכנסה)'] || row['סוג'] || row['Type'] || 'expense').toLowerCase();
+          const type: 'expense' | 'income' = typeStr.includes('הכנסה') || typeStr === 'income' ? 'income' : 'expense';
+          const color = row['צבע (HEX)'] || row['צבע'] || row['Color'] || (type === 'income' ? '#10B981' : '#4F46E5');
+          const icon = row['אייקון'] || row['Icon'] || (type === 'income' ? 'Briefcase' : 'ShoppingBag');
+          const order = Number(row['סדר תצוגה'] || row['סדר'] || row['Order'] || idx + 1);
+
+          return {
+            name: String(name || '').trim(),
+            type,
+            color,
+            icon,
+            display_order: order,
+          };
+        }).filter((r) => r.name);
+
+        setPreviewRows(normalized);
+      } else if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
         const normalized = rawData.map((row: any) => {
           const name = row['שם קטגוריה'] || row['שם קטגוריית הכנסה'] || row['שם'] || row['קטגוריה'] || row['Category'] || row['Name'] || Object.values(row)[0];
+          const macroName = row['קבוצת על'] || row['קבוצה'] || row['Macro Group'] || row['Group'] || '';
           const color = row['צבע (קוד HEX)'] || row['צבע'] || row['Color'] || (activeSubTab === 'incomes' ? '#10B981' : '#4F46E5');
           const icon = row['אייקון'] || row['Icon'] || (activeSubTab === 'incomes' ? 'briefcase' : 'tag');
-          return { name: String(name || '').trim(), color, icon, type: activeSubTab === 'incomes' ? 'income' : 'expense' };
-        }).filter(r => r.name);
+          
+          // Match Macro Category ID
+          const matchedMacro = macroCategories.find(
+            (m) =>
+              m.name.toLowerCase() === String(macroName || '').toLowerCase() ||
+              m.name.toLowerCase().includes(String(macroName || '').toLowerCase())
+          );
+
+          return {
+            name: String(name || '').trim(),
+            macro_category_id: matchedMacro?.id || null,
+            macro_name: matchedMacro?.name || macroName || (language === 'he' ? 'כללי' : 'General'),
+            color,
+            icon,
+            type: activeSubTab === 'incomes' ? 'income' : 'expense',
+          };
+        }).filter((r) => r.name);
 
         setPreviewRows(normalized);
       } else if (activeSubTab === 'merchants') {
@@ -176,10 +237,10 @@ export const SystemTablesScreen: React.FC = () => {
           const pattern = row['שם בית עסק / מילת מפתח'] || row['בית עסק'] || row['מילת מפתח'] || row['תבנית'] || row['Pattern'] || row['Merchant'] || Object.values(row)[0];
           const catName = row['קטגוריית יעד'] || row['קטגוריה'] || row['סוג הוצאה'] || row['Category'] || Object.values(row)[1];
           
-          // Match category ID by name or localized name
-          const matchedCat = categories.find(c =>
-            c.name.toLowerCase() === String(catName || '').toLowerCase() ||
-            formatCategoryName(c.name, 'he').toLowerCase() === String(catName || '').toLowerCase()
+          const matchedCat = categories.find(
+            (c) =>
+              c.name.toLowerCase() === String(catName || '').toLowerCase() ||
+              formatCategoryName(c.name, 'he').toLowerCase() === String(catName || '').toLowerCase()
           );
 
           return {
@@ -187,7 +248,7 @@ export const SystemTablesScreen: React.FC = () => {
             category_id: matchedCat?.id || categories[0]?.id || '',
             category_name: matchedCat ? formatCategoryName(matchedCat.name, language) : String(catName || 'ללא סיווג'),
           };
-        }).filter(r => r.pattern);
+        }).filter((r) => r.pattern);
 
         setPreviewRows(normalized);
       } else if (activeSubTab === 'cards') {
@@ -203,7 +264,7 @@ export const SystemTablesScreen: React.FC = () => {
             payment_type: 'credit_card' as const,
             color,
           };
-        }).filter(r => r.raw_pattern);
+        }).filter((r) => r.raw_pattern);
 
         setPreviewRows(normalized);
       }
@@ -218,11 +279,13 @@ export const SystemTablesScreen: React.FC = () => {
   const handleConfirmImport = () => {
     if (!previewRows || previewRows.length === 0) return;
 
-    if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
+    if (activeSubTab === 'macros') {
+      batchAddMacroCategories(previewRows);
+    } else if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
       batchAddCategories(previewRows);
     } else if (activeSubTab === 'merchants') {
       batchAddBusinessMappings(
-        previewRows.map(r => ({ pattern: r.pattern, category_id: r.category_id }))
+        previewRows.map((r) => ({ pattern: r.pattern, category_id: r.category_id }))
       );
     } else if (activeSubTab === 'cards') {
       batchAddCardMappings(previewRows);
@@ -238,7 +301,15 @@ export const SystemTablesScreen: React.FC = () => {
     setEditingItem(null);
     setFormName('');
     setFormColor(activeSubTab === 'incomes' ? '#10B981' : '#4F46E5');
-    setFormIcon(activeSubTab === 'incomes' ? 'briefcase' : 'tag');
+    setFormIcon(activeSubTab === 'incomes' ? 'Briefcase' : 'ShoppingBag');
+    setFormMacroType(activeSubTab === 'incomes' ? 'income' : 'expense');
+    setFormDisplayOrder(macroCategories.length + 1);
+
+    const defaultMacro = macroCategories.find((m) =>
+      activeSubTab === 'incomes' ? m.type === 'income' : m.type === 'expense'
+    );
+    setFormMacroId(defaultMacro?.id || '');
+
     setFormPattern('');
     setFormTargetCatId(categories[0]?.id || '');
     setFormRawCard('');
@@ -250,10 +321,17 @@ export const SystemTablesScreen: React.FC = () => {
   // Open Edit Modal
   const handleOpenEditModal = (item: any) => {
     setEditingItem(item);
-    if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
+    if (activeSubTab === 'macros') {
+      setFormName(item.name);
+      setFormMacroType(item.type);
+      setFormColor(item.color || '#4F46E5');
+      setFormIcon(item.icon || 'ShoppingBag');
+      setFormDisplayOrder(item.display_order || 1);
+    } else if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
       setFormName(item.name);
       setFormColor(item.color || '#4F46E5');
       setFormIcon(item.icon || 'tag');
+      setFormMacroId(item.macro_category_id || '');
     } else if (activeSubTab === 'merchants') {
       setFormPattern(item.pattern);
       setFormTargetCatId(item.category_id);
@@ -271,8 +349,10 @@ export const SystemTablesScreen: React.FC = () => {
     e.preventDefault();
     if (editingItem) {
       // Edit
-      if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
-        updateCategory(editingItem.id, formName, formColor, formIcon);
+      if (activeSubTab === 'macros') {
+        updateMacroCategory(editingItem.id, formName, formColor, formIcon, formDisplayOrder);
+      } else if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
+        updateCategory(editingItem.id, formName, formColor, formIcon, formMacroId || null);
       } else if (activeSubTab === 'merchants') {
         updateBusinessMapping(editingItem.id, formPattern, formTargetCatId);
       } else if (activeSubTab === 'cards') {
@@ -280,10 +360,12 @@ export const SystemTablesScreen: React.FC = () => {
       }
     } else {
       // Add
-      if (activeSubTab === 'expenses') {
-        addCategory(formName, 'expense', formColor, formIcon);
+      if (activeSubTab === 'macros') {
+        addMacroCategory(formName, formMacroType, formColor, formIcon, formDisplayOrder);
+      } else if (activeSubTab === 'expenses') {
+        addCategory(formName, 'expense', formColor, formIcon, formMacroId || null);
       } else if (activeSubTab === 'incomes') {
-        addCategory(formName, 'income', formColor, formIcon);
+        addCategory(formName, 'income', formColor, formIcon, formMacroId || null);
       } else if (activeSubTab === 'merchants') {
         addBusinessMapping(formPattern, formTargetCatId);
       } else if (activeSubTab === 'cards') {
@@ -302,7 +384,9 @@ export const SystemTablesScreen: React.FC = () => {
         : `Are you sure you want to delete "${label}"?`;
 
     if (confirm(confirmPrompt)) {
-      if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
+      if (activeSubTab === 'macros') {
+        deleteMacroCategory(item.id);
+      } else if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
         deleteCategory(item.id);
       } else if (activeSubTab === 'merchants') {
         deleteBusinessMapping(item.id);
@@ -348,16 +432,42 @@ export const SystemTablesScreen: React.FC = () => {
             onChange={(e) => setShowHiddenNotice(e.target.checked)}
             style={{ width: '18px', height: '18px', cursor: 'pointer' }}
           />
-          <span style={{ fontSize: '0.8125rem', fontWeight: '700', color: showHiddenNotice ? 'var(--primary)' : 'var(--text-muted)' }}>
+          <span
+            style={{
+              fontSize: '0.8125rem',
+              fontWeight: '700',
+              color: showHiddenNotice ? 'var(--primary)' : 'var(--text-muted)',
+            }}
+          >
             {showHiddenNotice
-              ? (language === 'he' ? 'מוצג בלוח הבקרה' : 'Visible')
-              : (language === 'he' ? 'מוסתר (ברירת מחדל)' : 'Hidden (Default)')}
+              ? language === 'he'
+                ? 'מוצג בלוח הבקרה'
+                : 'Visible'
+              : language === 'he'
+              ? 'מוסתר (ברירת מחדל)'
+              : 'Hidden (Default)'}
           </span>
         </label>
       </div>
 
-      {/* 4 System Sub-Tabs */}
+      {/* 5 System Sub-Tabs */}
       <div style={styles.tabNav}>
+        <button
+          style={{
+            ...styles.subTabBtn,
+            ...(activeSubTab === 'macros' ? styles.subTabBtnActive : {}),
+          }}
+          onClick={() => {
+            setActiveSubTab('macros');
+            setPreviewRows(null);
+            setSearchQuery('');
+          }}
+        >
+          <Layers size={16} />
+          <span>1. {t('tabMacroCategories', language)}</span>
+          <span style={styles.countBadge}>{macroCategories.length}</span>
+        </button>
+
         <button
           style={{
             ...styles.subTabBtn,
@@ -370,7 +480,7 @@ export const SystemTablesScreen: React.FC = () => {
           }}
         >
           <FolderTree size={16} />
-          <span>1. {t('tabExpenseCategories', language)}</span>
+          <span>2. {t('tabExpenseCategories', language)}</span>
           <span style={styles.countBadge}>{expenseCategories.length}</span>
         </button>
 
@@ -386,7 +496,7 @@ export const SystemTablesScreen: React.FC = () => {
           }}
         >
           <Tag size={16} />
-          <span>2. {t('tabIncomeCategories', language)}</span>
+          <span>3. {t('tabIncomeCategories', language)}</span>
           <span style={styles.countBadge}>{incomeCategories.length}</span>
         </button>
 
@@ -402,7 +512,7 @@ export const SystemTablesScreen: React.FC = () => {
           }}
         >
           <ArrowRightLeft size={16} />
-          <span>3. {t('tabMerchantMappings', language)}</span>
+          <span>4. {t('tabMerchantMappings', language)}</span>
           <span style={styles.countBadge}>{businessMappings.length}</span>
         </button>
 
@@ -418,7 +528,7 @@ export const SystemTablesScreen: React.FC = () => {
           }}
         >
           <CreditCard size={16} />
-          <span>4. {t('tabCardMappings', language)}</span>
+          <span>5. {t('tabCardMappings', language)}</span>
           <span style={styles.countBadge}>{cardMappings.length}</span>
         </button>
       </div>
@@ -449,9 +559,8 @@ export const SystemTablesScreen: React.FC = () => {
                 accept=".xlsx,.xls,.csv"
                 style={{ display: 'none' }}
                 onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleFileUpload(e.target.files[0]);
-                  }
+                  const file = e.target.files?.[0];
+                  if (file) handleFileUpload(file);
                 }}
               />
             </label>
@@ -460,13 +569,19 @@ export const SystemTablesScreen: React.FC = () => {
 
         {uploadError && (
           <div style={styles.errorBanner}>
-            <AlertCircle size={16} color="var(--danger)" />
+            <AlertCircle size={16} />
             <span>{uploadError}</span>
+          </div>
+        )}
+
+        {isUploading && (
+          <div style={styles.uploadingNotice}>
+            <span>טוען ומנתח קובץ נתונים...</span>
           </div>
         )}
       </div>
 
-      {/* Preview Confirmation Box (When File is selected) */}
+      {/* Data Preview & Verification Modal */}
       {previewRows && (
         <div style={styles.previewContainer} className="animate-fade-in">
           <div style={styles.previewHeader}>
@@ -503,9 +618,17 @@ export const SystemTablesScreen: React.FC = () => {
               <thead>
                 <tr>
                   <th style={styles.th}>#</th>
-                  {activeSubTab === 'expenses' || activeSubTab === 'incomes' ? (
+                  {activeSubTab === 'macros' ? (
                     <>
                       <th style={styles.th}>{t('colCategoryName', language)}</th>
+                      <th style={styles.th}>{t('colType', language)}</th>
+                      <th style={styles.th}>{t('colColor', language)}</th>
+                      <th style={styles.th}>{t('colDisplayOrder', language)}</th>
+                    </>
+                  ) : activeSubTab === 'expenses' || activeSubTab === 'incomes' ? (
+                    <>
+                      <th style={styles.th}>{t('colCategoryName', language)}</th>
+                      <th style={styles.th}>{t('colMacroCategory', language)}</th>
                       <th style={styles.th}>{t('colColor', language)}</th>
                       <th style={styles.th}>{t('colIcon', language)}</th>
                     </>
@@ -527,9 +650,28 @@ export const SystemTablesScreen: React.FC = () => {
                 {previewRows.slice(0, 10).map((row, idx) => (
                   <tr key={idx} style={styles.tr}>
                     <td style={styles.td}>{idx + 1}</td>
-                    {activeSubTab === 'expenses' || activeSubTab === 'incomes' ? (
+                    {activeSubTab === 'macros' ? (
                       <>
                         <td style={{ ...styles.td, fontWeight: '700' }}>{row.name}</td>
+                        <td style={styles.td}>
+                          <span style={row.type === 'income' ? styles.incomeTag : styles.expenseTag}>
+                            {row.type === 'income' ? 'הכנסה' : 'הוצאה'}
+                          </span>
+                        </td>
+                        <td style={styles.td}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ ...styles.colorPreviewDot, backgroundColor: row.color }} />
+                            {row.color}
+                          </span>
+                        </td>
+                        <td style={styles.td}>{row.display_order}</td>
+                      </>
+                    ) : activeSubTab === 'expenses' || activeSubTab === 'incomes' ? (
+                      <>
+                        <td style={{ ...styles.td, fontWeight: '700' }}>{row.name}</td>
+                        <td style={styles.td}>
+                          <span style={styles.macroPill}>{row.macro_name}</span>
+                        </td>
                         <td style={styles.td}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ ...styles.colorPreviewDot, backgroundColor: row.color }} />
@@ -582,7 +724,9 @@ export const SystemTablesScreen: React.FC = () => {
           <button style={styles.addBtn} onClick={handleOpenAddModal}>
             <Plus size={16} />
             <span>
-              {activeSubTab === 'expenses'
+              {activeSubTab === 'macros'
+                ? t('btnAddMacroCat', language)
+                : activeSubTab === 'expenses'
                 ? t('btnAddExpenseCat', language)
                 : activeSubTab === 'incomes'
                 ? t('btnAddIncomeCat', language)
@@ -598,9 +742,19 @@ export const SystemTablesScreen: React.FC = () => {
           <table style={styles.table}>
             <thead>
               <tr>
-                {activeSubTab === 'expenses' || activeSubTab === 'incomes' ? (
+                {activeSubTab === 'macros' ? (
                   <>
                     <th style={styles.th}>{t('colCategoryName', language)}</th>
+                    <th style={styles.th}>{t('colType', language)}</th>
+                    <th style={styles.th}>{t('colColor', language)}</th>
+                    <th style={styles.th}>{t('colDisplayOrder', language)}</th>
+                    <th style={styles.th}>{t('colLinkedCategories', language)}</th>
+                    <th style={{ ...styles.th, textAlign: 'center' }}>{t('colActions', language)}</th>
+                  </>
+                ) : activeSubTab === 'expenses' || activeSubTab === 'incomes' ? (
+                  <>
+                    <th style={styles.th}>{t('colCategoryName', language)}</th>
+                    <th style={styles.th}>{t('colMacroCategory', language)}</th>
                     <th style={styles.th}>{t('colType', language)}</th>
                     <th style={styles.th}>{t('colColor', language)}</th>
                     <th style={{ ...styles.th, textAlign: 'center' }}>{t('colActions', language)}</th>
@@ -622,80 +776,179 @@ export const SystemTablesScreen: React.FC = () => {
               </tr>
             </thead>
             <tbody>
+              {/* 1. MACRO CATEGORIES TABLE */}
+              {activeSubTab === 'macros' &&
+                filteredMacros.map((macro) => {
+                  const linkedCount = categories.filter((c) => c.macro_category_id === macro.id).length;
+                  return (
+                    <tr key={macro.id} style={styles.tr}>
+                      <td style={styles.td}>
+                        <div style={styles.catCell}>
+                          <span style={{ ...styles.colorPreviewDot, backgroundColor: macro.color }} />
+                          <span style={styles.cellBold}>{macro.name}</span>
+                        </div>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={macro.type === 'income' ? styles.incomeTag : styles.expenseTag}>
+                          {macro.type === 'income' ? 'הכנסה' : 'הוצאה'}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>
+                          {macro.color}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={styles.orderBadge}>{macro.display_order || 1}</span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={styles.linkedCountBadge}>
+                          {linkedCount} {language === 'he' ? 'קטגוריות משויכות' : 'Categories'}
+                        </span>
+                      </td>
+                      <td style={{ ...styles.td, textAlign: 'center' }}>
+                        <div style={styles.actionButtons}>
+                          <button
+                            style={styles.editBtn}
+                            onClick={() => handleOpenEditModal(macro)}
+                            title="ערוך"
+                          >
+                            <Edit3 size={14} color="var(--primary)" />
+                          </button>
+                          <button
+                            style={styles.deleteBtn}
+                            onClick={() => handleDeleteItem(macro)}
+                            title="מחק"
+                          >
+                            <Trash2 size={14} color="var(--danger)" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+              {/* 2. EXPENSE CATEGORIES TABLE */}
               {activeSubTab === 'expenses' &&
-                filteredExpenses.map((cat) => (
-                  <tr key={cat.id} style={styles.tr}>
-                    <td style={styles.td}>
-                      <div style={styles.catCell}>
-                        <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
-                        <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
-                        {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
-                      </div>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={styles.expenseTag}>הוצאה</span>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{cat.color}</span>
-                    </td>
-                    <td style={{ ...styles.td, textAlign: 'center' }}>
-                      <div style={styles.actionButtons}>
-                        <button
-                          style={styles.editBtn}
-                          onClick={() => handleOpenEditModal(cat)}
-                          title="ערוך"
-                        >
-                          <Edit3 size={14} color="var(--primary)" />
-                        </button>
-                        <button
-                          style={styles.deleteBtn}
-                          onClick={() => handleDeleteItem(cat)}
-                          title="מחק"
-                        >
-                          <Trash2 size={14} color="var(--danger)" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                filteredExpenses.map((cat) => {
+                  const linkedMacro = macroCategories.find((m) => m.id === cat.macro_category_id);
+                  return (
+                    <tr key={cat.id} style={styles.tr}>
+                      <td style={styles.td}>
+                        <div style={styles.catCell}>
+                          <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
+                          <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
+                          {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
+                        </div>
+                      </td>
+                      <td style={styles.td}>
+                        {linkedMacro ? (
+                          <span
+                            style={{
+                              ...styles.macroPill,
+                              backgroundColor: `${linkedMacro.color}15`,
+                              borderColor: `${linkedMacro.color}40`,
+                              color: linkedMacro.color,
+                            }}
+                          >
+                            <span style={{ ...styles.colorPreviewDot, backgroundColor: linkedMacro.color }} />
+                            {linkedMacro.name}
+                          </span>
+                        ) : (
+                          <span style={styles.unassignedMacro}>
+                            {language === 'he' ? 'ללא שיוך (ברירת מחדל: משתנות)' : 'Unassigned (Variable)'}
+                          </span>
+                        )}
+                      </td>
+                      <td style={styles.td}>
+                        <span style={styles.expenseTag}>הוצאה</span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{cat.color}</span>
+                      </td>
+                      <td style={{ ...styles.td, textAlign: 'center' }}>
+                        <div style={styles.actionButtons}>
+                          <button
+                            style={styles.editBtn}
+                            onClick={() => handleOpenEditModal(cat)}
+                            title="ערוך"
+                          >
+                            <Edit3 size={14} color="var(--primary)" />
+                          </button>
+                          <button
+                            style={styles.deleteBtn}
+                            onClick={() => handleDeleteItem(cat)}
+                            title="מחק"
+                          >
+                            <Trash2 size={14} color="var(--danger)" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
+              {/* 3. INCOME CATEGORIES TABLE */}
               {activeSubTab === 'incomes' &&
-                filteredIncomes.map((cat) => (
-                  <tr key={cat.id} style={styles.tr}>
-                    <td style={styles.td}>
-                      <div style={styles.catCell}>
-                        <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
-                        <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
-                        {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
-                      </div>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={styles.incomeTag}>הכנסה</span>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{cat.color}</span>
-                    </td>
-                    <td style={{ ...styles.td, textAlign: 'center' }}>
-                      <div style={styles.actionButtons}>
-                        <button
-                          style={styles.editBtn}
-                          onClick={() => handleOpenEditModal(cat)}
-                          title="ערוך"
-                        >
-                          <Edit3 size={14} color="var(--primary)" />
-                        </button>
-                        <button
-                          style={styles.deleteBtn}
-                          onClick={() => handleDeleteItem(cat)}
-                          title="מחק"
-                        >
-                          <Trash2 size={14} color="var(--danger)" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                filteredIncomes.map((cat) => {
+                  const linkedMacro = macroCategories.find((m) => m.id === cat.macro_category_id);
+                  return (
+                    <tr key={cat.id} style={styles.tr}>
+                      <td style={styles.td}>
+                        <div style={styles.catCell}>
+                          <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
+                          <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
+                          {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
+                        </div>
+                      </td>
+                      <td style={styles.td}>
+                        {linkedMacro ? (
+                          <span
+                            style={{
+                              ...styles.macroPill,
+                              backgroundColor: `${linkedMacro.color}15`,
+                              borderColor: `${linkedMacro.color}40`,
+                              color: linkedMacro.color,
+                            }}
+                          >
+                            <span style={{ ...styles.colorPreviewDot, backgroundColor: linkedMacro.color }} />
+                            {linkedMacro.name}
+                          </span>
+                        ) : (
+                          <span style={styles.unassignedMacro}>
+                            {language === 'he' ? 'ללא שיוך' : 'Unassigned'}
+                          </span>
+                        )}
+                      </td>
+                      <td style={styles.td}>
+                        <span style={styles.incomeTag}>הכנסה</span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{cat.color}</span>
+                      </td>
+                      <td style={{ ...styles.td, textAlign: 'center' }}>
+                        <div style={styles.actionButtons}>
+                          <button
+                            style={styles.editBtn}
+                            onClick={() => handleOpenEditModal(cat)}
+                            title="ערוך"
+                          >
+                            <Edit3 size={14} color="var(--primary)" />
+                          </button>
+                          <button
+                            style={styles.deleteBtn}
+                            onClick={() => handleDeleteItem(cat)}
+                            title="מחק"
+                          >
+                            <Trash2 size={14} color="var(--danger)" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
 
+              {/* 4. MERCHANT MAPPING RULES TABLE */}
               {activeSubTab === 'merchants' &&
                 filteredMerchants.map((rule) => {
                   const cat = categories.find((c) => c.id === rule.category_id);
@@ -746,6 +999,7 @@ export const SystemTablesScreen: React.FC = () => {
                   );
                 })}
 
+              {/* 5. CREDIT CARDS & EXPENSE SOURCES TABLE */}
               {activeSubTab === 'cards' &&
                 filteredCards.map((card) => (
                   <tr key={card.id} style={styles.tr}>
@@ -759,7 +1013,11 @@ export const SystemTablesScreen: React.FC = () => {
                       </div>
                     </td>
                     <td style={styles.td}>
-                      <span style={styles.digitsBadge}>{card.card_last_digits ? `•••• ${card.card_last_digits}` : '—'}</span>
+                      {card.card_last_digits ? (
+                        <span style={styles.digitsBadge}>•••• {card.card_last_digits}</span>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      )}
                     </td>
                     <td style={{ ...styles.td, textAlign: 'center' }}>
                       <div style={styles.actionButtons}>
@@ -786,10 +1044,10 @@ export const SystemTablesScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Add / Edit Modal */}
+      {/* Manual Add / Edit Modal */}
       {isAddModalOpen && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalCard} className="animate-fade-in">
+        <div style={styles.modalOverlay} className="animate-fade-in">
+          <div style={styles.modalCard}>
             <div style={styles.modalHeader}>
               <h3 style={styles.modalTitle}>
                 {editingItem ? t('editItemTitle', language) : t('newItemTitle', language)}
@@ -800,7 +1058,65 @@ export const SystemTablesScreen: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveModal}>
-              {activeSubTab === 'expenses' || activeSubTab === 'incomes' ? (
+              {/* Form for MACROS */}
+              {activeSubTab === 'macros' ? (
+                <>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>{language === 'he' ? 'שם קבוצת על' : 'Macro Group Name'}</label>
+                    <input
+                      style={styles.input}
+                      type="text"
+                      placeholder="לדוגמה: הוצאות קבועות, הוצאות משתנות, הוצאות עונתיות"
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>{language === 'he' ? 'סוג קבוצה' : 'Group Type'}</label>
+                    <select
+                      style={styles.select}
+                      value={formMacroType}
+                      onChange={(e) => setFormMacroType(e.target.value as 'expense' | 'income')}
+                    >
+                      <option value="expense">{language === 'he' ? 'הוצאה' : 'Expense'}</option>
+                      <option value="income">{language === 'he' ? 'הכנסה' : 'Income'}</option>
+                    </select>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>{language === 'he' ? 'סדר תצוגה במסך הראשי' : 'Display Order'}</label>
+                    <input
+                      style={styles.input}
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={formDisplayOrder}
+                      onChange={(e) => setFormDisplayOrder(Number(e.target.value))}
+                      required
+                    />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>{t('colColor', language)}</label>
+                    <div style={styles.colorPickerRow}>
+                      {['#4F46E5', '#10B981', '#F59E0B', '#EC4899', '#EF4444', '#8B5CF6', '#06B6D4', '#64748B'].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          style={{
+                            ...styles.colorCircle,
+                            backgroundColor: c,
+                            outline: formColor === c ? '3px solid var(--text-primary)' : 'none',
+                          }}
+                          onClick={() => setFormColor(c)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : activeSubTab === 'expenses' || activeSubTab === 'incomes' ? (
                 <>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>{t('colCategoryName', language)}</label>
@@ -812,6 +1128,24 @@ export const SystemTablesScreen: React.FC = () => {
                       onChange={(e) => setFormName(e.target.value)}
                       required
                     />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>{t('colMacroCategory', language)}</label>
+                    <select
+                      style={styles.select}
+                      value={formMacroId}
+                      onChange={(e) => setFormMacroId(e.target.value)}
+                    >
+                      <option value="">{language === 'he' ? '— ללא שיוך (ברירת מחדל) —' : '— None (Default) —'}</option>
+                      {macroCategories
+                        .filter((m) => (activeSubTab === 'incomes' ? m.type === 'income' : m.type === 'expense'))
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                    </select>
                   </div>
 
                   <div style={styles.formGroup}>
@@ -945,6 +1279,52 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: 'var(--text-secondary)',
     marginTop: '4px',
   },
+  preferencesCard: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'var(--bg-surface)',
+    padding: '16px 20px',
+    borderRadius: 'var(--radius-lg)',
+    border: '1px solid var(--border-main)',
+    boxShadow: 'var(--shadow-sm)',
+    flexWrap: 'wrap',
+    gap: '16px',
+  },
+  prefLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+  },
+  prefIconWrap: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '8px',
+    backgroundColor: 'var(--primary-light)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  prefTitle: {
+    fontSize: '0.875rem',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
+  },
+  prefDesc: {
+    fontSize: '0.75rem',
+    color: 'var(--text-secondary)',
+    marginTop: '2px',
+  },
+  switchLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    cursor: 'pointer',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    padding: '8px 14px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border-main)',
+  },
   tabNav: {
     display: 'flex',
     gap: '10px',
@@ -1050,6 +1430,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+  },
+  uploadingNotice: {
+    marginTop: '12px',
+    fontSize: '0.8125rem',
+    color: 'var(--primary)',
+    fontWeight: '600',
   },
   previewContainer: {
     backgroundColor: 'var(--bg-surface)',
@@ -1203,6 +1589,40 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '4px',
     backgroundColor: 'var(--bg-surface-subtle)',
     color: 'var(--text-muted)',
+  },
+  orderBadge: {
+    display: 'inline-block',
+    padding: '2px 8px',
+    borderRadius: '6px',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    fontWeight: '700',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '0.75rem',
+  },
+  linkedCountBadge: {
+    display: 'inline-block',
+    padding: '3px 8px',
+    borderRadius: '6px',
+    backgroundColor: 'var(--primary-light)',
+    color: 'var(--primary)',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+  },
+  macroPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '4px 10px',
+    borderRadius: '6px',
+    border: '1px solid var(--border-main)',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+  },
+  unassignedMacro: {
+    color: 'var(--text-muted)',
+    fontSize: '0.75rem',
+    fontStyle: 'italic',
   },
   expenseTag: {
     fontSize: '0.75rem',
@@ -1398,51 +1818,5 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '700',
     border: 'none',
     cursor: 'pointer',
-  },
-  preferencesCard: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'var(--bg-surface)',
-    padding: '16px 20px',
-    borderRadius: 'var(--radius-lg)',
-    border: '1px solid var(--border-main)',
-    boxShadow: 'var(--shadow-sm)',
-    flexWrap: 'wrap',
-    gap: '16px',
-  },
-  prefLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '14px',
-  },
-  prefIconWrap: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '8px',
-    backgroundColor: 'var(--primary-light)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  prefTitle: {
-    fontSize: '0.875rem',
-    fontWeight: '700',
-    color: 'var(--text-primary)',
-  },
-  prefDesc: {
-    fontSize: '0.75rem',
-    color: 'var(--text-secondary)',
-    marginTop: '2px',
-  },
-  switchLabel: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    cursor: 'pointer',
-    backgroundColor: 'var(--bg-surface-subtle)',
-    padding: '8px 14px',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid var(--border-main)',
   },
 };

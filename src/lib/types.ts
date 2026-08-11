@@ -32,6 +32,18 @@ export interface HouseholdMember {
   profile?: Profile;
 }
 
+export interface MacroCategory {
+  id: string;
+  household_id: string;
+  name: string;
+  type: 'expense' | 'income';
+  color: string;
+  icon: string;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Category {
   id: string;
   household_id: string;
@@ -40,9 +52,11 @@ export interface Category {
   color: string;
   icon: string;
   parent_id?: string | null;
+  macro_category_id?: string | null;
   is_system?: boolean;
   created_at: string;
   updated_at: string;
+  macro_category?: MacroCategory;
 }
 
 export interface BusinessMapping {
@@ -224,6 +238,7 @@ export interface MacroGroup {
   name: string;
   hebrewName: string;
   type: 'expense' | 'income';
+  color?: string;
   icon: string;
   totalAmount: number;
   totalBudget: number;

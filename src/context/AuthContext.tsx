@@ -6,6 +6,7 @@ import {
   Category,
   BusinessMapping,
   CardMapping,
+  MacroCategory,
   Transaction,
   Budget,
   Savings,
@@ -14,6 +15,7 @@ import {
   mockProfile,
   mockHouseholds,
   mockCategories,
+  mockMacroCategories,
   mockBusinessMappings,
   mockCardMappings,
   mockTransactions,
@@ -27,6 +29,7 @@ interface AuthContextType {
   user: Profile | null;
   households: Household[];
   activeHousehold: Household | null;
+  macroCategories: MacroCategory[];
   categories: Category[];
   businessMappings: BusinessMapping[];
   cardMappings: CardMapping[];
@@ -73,8 +76,12 @@ interface AuthContextType {
   addTransaction: (tx: Partial<Transaction>) => void;
   addBatchTransactions: (txs: Transaction[]) => void;
   addHousehold: (name: string, currency?: string) => void;
-  addCategory: (name: string, type: 'expense' | 'income', color?: string, icon?: string) => void;
-  updateCategory: (id: string, name: string, color?: string, icon?: string) => void;
+  addMacroCategory: (name: string, type: 'expense' | 'income', color?: string, icon?: string, displayOrder?: number) => void;
+  updateMacroCategory: (id: string, name: string, color?: string, icon?: string, displayOrder?: number) => void;
+  deleteMacroCategory: (id: string) => void;
+  batchAddMacroCategories: (macros: Partial<MacroCategory>[]) => void;
+  addCategory: (name: string, type: 'expense' | 'income', color?: string, icon?: string, macroCategoryId?: string | null) => void;
+  updateCategory: (id: string, name: string, color?: string, icon?: string, macroCategoryId?: string | null) => void;
   deleteCategory: (id: string) => void;
   batchAddCategories: (cats: Partial<Category>[]) => void;
   addBusinessMapping: (pattern: string, categoryId: string) => void;
@@ -95,6 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<Profile | null>(null);
   const [households, setHouseholds] = useState<Household[]>([]);
   const [activeHousehold, setActiveHousehold] = useState<Household | null>(null);
+  const [macroCategories, setMacroCategories] = useState<MacroCategory[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [businessMappings, setBusinessMappings] = useState<BusinessMapping[]>([]);
   const [cardMappings, setCardMappings] = useState<CardMapping[]>([]);
@@ -215,6 +223,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   async function loadHouseholdDetails(householdId: string) {
     try {
+      // Fetch Macro Categories
+      const { data: mcs } = await supabase
+        .from('macro_categories')
+        .select('*')
+        .eq('household_id', householdId)
+        .order('display_order', { ascending: true });
+      if (mcs) setMacroCategories(mcs);
+
       // Fetch Categories
       const { data: cats } = await supabase
         .from('categories')
@@ -228,6 +244,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .select('*')
         .eq('household_id', householdId);
       if (bms) setBusinessMappings(bms);
+
+      // Fetch Payment Method Mappings
+      const { data: pms } = await supabase
+        .from('payment_method_mappings')
+        .select('*')
+        .eq('household_id', householdId);
+      if (pms) setCardMappings(pms);
 
       // Fetch Transactions
       const { data: txs } = await supabase
@@ -281,6 +304,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser({ ...mockProfile, full_name: userName });
     setHouseholds(mockHouseholds);
     setActiveHousehold(mockHouseholds[0]);
+    setMacroCategories(mockMacroCategories);
     setCategories(mockCategories);
     setBusinessMappings(mockBusinessMappings);
     setCardMappings(mockCardMappings);
@@ -298,6 +322,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setHouseholds([]);
     setActiveHousehold(null);
+    setMacroCategories([]);
     setCategories([]);
     setBusinessMappings([]);
     setCardMappings([]);
@@ -428,8 +453,112 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Macro Category Management
+  const addMacroCategory = (
+    name: string,
+    type: 'expense' | 'income',
+    color?: string,
+    icon?: string,
+    displayOrder?: number
+  ) => {
+    if (!activeHousehold) return;
+    const newMacro: MacroCategory = {
+      id: `mc-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      household_id: activeHousehold.id,
+      name: name.trim(),
+      type,
+      color: color || (type === 'income' ? '#10B981' : '#4F46E5'),
+      icon: icon || (type === 'income' ? 'Briefcase' : 'ShoppingBag'),
+      display_order: displayOrder ?? (macroCategories.length + 1),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setMacroCategories((prev) => [...prev, newMacro]);
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('macro_categories').insert(newMacro).then();
+    }
+  };
+
+  const updateMacroCategory = (
+    id: string,
+    name: string,
+    color?: string,
+    icon?: string,
+    displayOrder?: number
+  ) => {
+    setMacroCategories((prev) =>
+      prev.map((mc) =>
+        mc.id === id
+          ? {
+              ...mc,
+              name: name.trim(),
+              ...(color ? { color } : {}),
+              ...(icon ? { icon } : {}),
+              ...(displayOrder !== undefined ? { display_order: displayOrder } : {}),
+              updated_at: new Date().toISOString(),
+            }
+          : mc
+      )
+    );
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase
+        .from('macro_categories')
+        .update({
+          name: name.trim(),
+          ...(color ? { color } : {}),
+          ...(icon ? { icon } : {}),
+          ...(displayOrder !== undefined ? { display_order: displayOrder } : {}),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .then();
+    }
+  };
+
+  const deleteMacroCategory = (id: string) => {
+    setMacroCategories((prev) => prev.filter((mc) => mc.id !== id));
+
+    // Clear macro_category_id reference on any categories that had it
+    setCategories((prev) =>
+      prev.map((c) => (c.macro_category_id === id ? { ...c, macro_category_id: null } : c))
+    );
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('macro_categories').delete().eq('id', id).then();
+    }
+  };
+
+  const batchAddMacroCategories = (macros: Partial<MacroCategory>[]) => {
+    if (!activeHousehold) return;
+    const newMacros: MacroCategory[] = macros.map((m, i) => ({
+      id: `mc-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+      household_id: activeHousehold.id,
+      name: (m.name || '').trim(),
+      type: m.type || 'expense',
+      color: m.color || (m.type === 'income' ? '#10B981' : '#4F46E5'),
+      icon: m.icon || (m.type === 'income' ? 'Briefcase' : 'ShoppingBag'),
+      display_order: m.display_order ?? (macroCategories.length + i + 1),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+
+    setMacroCategories((prev) => [...prev, ...newMacros]);
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase.from('macro_categories').insert(newMacros).then();
+    }
+  };
+
   // Category Management
-  const addCategory = (name: string, type: 'expense' | 'income', color?: string, icon?: string) => {
+  const addCategory = (
+    name: string,
+    type: 'expense' | 'income',
+    color?: string,
+    icon?: string,
+    macroCategoryId?: string | null
+  ) => {
     if (!activeHousehold) return;
     const newCat: Category = {
       id: `cat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -438,6 +567,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       type,
       color: color || (type === 'income' ? '#10B981' : '#4F46E5'),
       icon: icon || (type === 'income' ? 'briefcase' : 'tag'),
+      macro_category_id: macroCategoryId || null,
       is_system: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -449,7 +579,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateCategory = (id: string, name: string, color?: string, icon?: string) => {
+  const updateCategory = (
+    id: string,
+    name: string,
+    color?: string,
+    icon?: string,
+    macroCategoryId?: string | null
+  ) => {
     setCategories((prev) =>
       prev.map((c) =>
         c.id === id
@@ -458,6 +594,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               name: name.trim(),
               ...(color ? { color } : {}),
               ...(icon ? { icon } : {}),
+              macro_category_id: macroCategoryId !== undefined ? macroCategoryId : c.macro_category_id,
               updated_at: new Date().toISOString(),
             }
           : c
@@ -471,6 +608,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: name.trim(),
           ...(color ? { color } : {}),
           ...(icon ? { icon } : {}),
+          ...(macroCategoryId !== undefined ? { macro_category_id: macroCategoryId } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
@@ -495,6 +633,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       type: c.type || 'expense',
       color: c.color || (c.type === 'income' ? '#10B981' : '#4F46E5'),
       icon: c.icon || (c.type === 'income' ? 'briefcase' : 'tag'),
+      macro_category_id: c.macro_category_id || null,
       is_system: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -681,6 +820,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         households,
         activeHousehold,
+        macroCategories,
         categories,
         businessMappings,
         cardMappings,
@@ -703,6 +843,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addTransaction,
         addBatchTransactions,
         addHousehold,
+        addMacroCategory,
+        updateMacroCategory,
+        deleteMacroCategory,
+        batchAddMacroCategories,
         addCategory,
         updateCategory,
         deleteCategory,

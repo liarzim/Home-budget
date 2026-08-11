@@ -82,7 +82,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
     {
       groupTitle: language === 'he' ? 'בנקאות והגדרות מערכת' : 'Banking & System Tables',
       items: [
-        { id: 'system-tables', label: t('navSystemTables', language), icon: TableProperties, badge: language === 'he' ? '4 טבלאות' : '4 Tables' },
+        { id: 'system-tables', label: t('navSystemTables', language), icon: TableProperties, badge: language === 'he' ? '5 טבלאות' : '5 Tables' },
         { id: 'bank-accounts', label: t('navBankSync', language), icon: Landmark, badge: 'Open Banking' },
         { id: 'migration', label: t('navMigration', language), icon: FileSpreadsheet, badge: language === 'he' ? 'שנתי' : 'Yearly' },
       ],

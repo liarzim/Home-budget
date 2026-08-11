@@ -60,7 +60,27 @@ CREATE INDEX IF NOT EXISTS idx_household_members_user ON public.household_member
 CREATE INDEX IF NOT EXISTS idx_household_members_household ON public.household_members(household_id);
 
 -- ============================================================================
--- 4. CATEGORIES (Expense and Income Categories)
+-- 4. MACRO_CATEGORIES (Top-Level Budget Groups: Fixed, Variable, Seasonal, etc.)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.macro_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'expense' CHECK (type IN ('expense', 'income')),
+    color TEXT NOT NULL DEFAULT '#4F46E5',
+    icon TEXT NOT NULL DEFAULT 'ShoppingBag',
+    display_order INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.macro_categories ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_macro_categories_household ON public.macro_categories(household_id);
+CREATE INDEX IF NOT EXISTS idx_macro_categories_type ON public.macro_categories(type);
+
+-- ============================================================================
+-- 5. CATEGORIES (Expense and Income Categories)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS public.categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -69,6 +89,7 @@ CREATE TABLE IF NOT EXISTS public.categories (
     type TEXT NOT NULL CHECK (type IN ('expense', 'income')),
     color TEXT DEFAULT '#4F46E5',
     icon TEXT DEFAULT 'tag',
+    macro_category_id UUID REFERENCES public.macro_categories(id) ON DELETE SET NULL,
     parent_id UUID REFERENCES public.categories(id) ON DELETE CASCADE,
     is_system BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
@@ -79,9 +100,31 @@ CREATE TABLE IF NOT EXISTS public.categories (
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX IF NOT EXISTS idx_categories_household ON public.categories(household_id);
+CREATE INDEX IF NOT EXISTS idx_categories_macro_cat ON public.categories(macro_category_id);
 
 -- ============================================================================
--- 5. BUSINESS_MAPPING (Auto-Categorization Rules for Merchant Names)
+-- 6. PAYMENT_METHOD_MAPPINGS (Credit Cards & Payment Alias Rules)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.payment_method_mappings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    raw_pattern TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    card_last_digits TEXT,
+    payment_type TEXT NOT NULL DEFAULT 'credit_card' CHECK (payment_type IN ('credit_card', 'bank_transfer', 'cash', 'standing_order', 'check', 'other')),
+    color TEXT DEFAULT '#4F46E5',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.payment_method_mappings ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_payment_mappings_household ON public.payment_method_mappings(household_id);
+CREATE INDEX IF NOT EXISTS idx_payment_mappings_pattern ON public.payment_method_mappings(raw_pattern);
+
+-- ============================================================================
+-- 7. BUSINESS_MAPPING (Auto-Categorization Rules for Merchant Names)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS public.business_mapping (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -99,7 +142,7 @@ ALTER TABLE public.business_mapping ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_business_mapping_household ON public.business_mapping(household_id);
 
 -- ============================================================================
--- 6. TRANSACTIONS (Centralized Ledger with Soft-Delete is_hidden)
+-- 8. TRANSACTIONS (Centralized Ledger with Soft-Delete is_hidden)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS public.transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

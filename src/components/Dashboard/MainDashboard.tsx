@@ -32,6 +32,7 @@ const HEBREW_MONTHS_LIST = [
 export const MainDashboard: React.FC = () => {
   const {
     activeHousehold,
+    macroCategories,
     categories,
     transactions: contextTransactions,
     isDemoMode,
@@ -70,7 +71,7 @@ export const MainDashboard: React.FC = () => {
     const year = parseInt(selectedMonth.split('-')[0], 10);
 
     Promise.all([
-      fetchMonthlyDashboardData(activeHousehold.id, selectedMonth, categories, isDemoMode),
+      fetchMonthlyDashboardData(activeHousehold.id, selectedMonth, categories, isDemoMode, macroCategories),
       fetchYearlySavingsData(activeHousehold.id, year, isDemoMode),
     ])
       .then(([mResult, sResult]) => {
@@ -80,7 +81,7 @@ export const MainDashboard: React.FC = () => {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [activeHousehold?.id, selectedMonth, categories, contextTransactions, isDemoMode]);
+  }, [activeHousehold?.id, selectedMonth, categories, macroCategories, contextTransactions, isDemoMode]);
 
   // Month navigation helpers
   const handlePrevMonth = () => {
@@ -130,7 +131,7 @@ export const MainDashboard: React.FC = () => {
   const handleTransactionUpdated = (_updatedTx: Transaction) => {
     // Re-fetch dashboard data
     if (activeHousehold?.id && selectedMonth) {
-      fetchMonthlyDashboardData(activeHousehold.id, selectedMonth, categories, isDemoMode).then(
+      fetchMonthlyDashboardData(activeHousehold.id, selectedMonth, categories, isDemoMode, macroCategories).then(
         (mResult) => {
           setDashboardData(mResult);
         }

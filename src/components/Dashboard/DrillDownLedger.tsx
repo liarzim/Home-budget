@@ -38,12 +38,7 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
   const { language } = useAuth();
 
   // State for expanded Level 1 (Macro Groups)
-  const [expandedMacroIds, setExpandedMacroIds] = useState<Record<string, boolean>>({
-    fixed_expenses: true,
-    variable_expenses: true,
-    income_salary: true,
-    income_other: false,
-  });
+  const [expandedMacroIds, setExpandedMacroIds] = useState<Record<string, boolean>>({});
 
   // State for expanded Level 2 (Categories)
   const [expandedCategoryIds, setExpandedCategoryIds] = useState<Record<string, boolean>>({});
@@ -52,7 +47,10 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const toggleMacro = (id: string) => {
-    setExpandedMacroIds((prev) => ({ ...prev, [id]: !prev[id] }));
+    setExpandedMacroIds((prev) => ({
+      ...prev,
+      [id]: prev[id] === undefined ? false : !prev[id],
+    }));
   };
 
   const toggleCategory = (id: string) => {
@@ -62,6 +60,7 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
   // Helper for macro group names in Hebrew
   const formatMacroName = (group: MacroGroup) => {
     if (language === 'he') {
+      if (group.hebrewName) return group.hebrewName;
       if (group.id === 'fixed_expenses') return 'הוצאות קבועות (דיור, רכב, ביטוח)';
       if (group.id === 'variable_expenses') return 'הוצאות משתנות (מזון, בילויים, קניות)';
       if (group.id === 'income_salary') return 'משכורות והכנסות עיקריות';
@@ -81,6 +80,8 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
         return <Briefcase size={18} color={color} />;
       case 'Gift':
         return <Gift size={18} color={color} />;
+      case 'Calendar':
+        return <Sparkles size={18} color={color} />;
       default:
         return <ShoppingBag size={18} color={color} />;
     }
@@ -103,13 +104,9 @@ export const DrillDownLedger: React.FC<DrillDownLedgerProps> = ({
 
       <div style={styles.macroList}>
         {macroGroups.map((group) => {
-          const isExpanded = Boolean(expandedMacroIds[group.id]);
+          const isExpanded = expandedMacroIds[group.id] ?? true;
           const isExpense = group.type === 'expense';
-          const iconColor = isExpense
-            ? group.id === 'fixed_expenses'
-              ? 'var(--primary)'
-              : '#F59E0B'
-            : 'var(--success)';
+          const iconColor = group.color || (isExpense ? 'var(--primary)' : 'var(--success)');
 
           return (
             <div key={group.id} style={styles.macroCard} className="animate-fade-in">
