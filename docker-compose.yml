@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # Production Environment
+  home-budget-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-http://<YOUR_NAS_IP>:8000}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-your-local-supabase-anon-key}
+    container_name: home-budget-prod
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - NODE_ENV=production
+
+  # Staging / Dev Environment (Optional second screen/port on same NAS)
+  home-budget-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_DEV_URL:-http://<YOUR_NAS_IP>:8000}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_DEV_ANON_KEY:-your-local-supabase-anon-key}
+    container_name: home-budget-dev
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      - NODE_ENV=development
