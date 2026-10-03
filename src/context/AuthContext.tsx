@@ -460,7 +460,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCategories(mockCategories);
     setBusinessMappings(mockBusinessMappings);
     setCardMappings(mockCardMappings);
-    setTransactions(mockTransactions);
+
+    const savedDemoTxs = localStorage.getItem('demo_transactions');
+    if (savedDemoTxs) {
+      try {
+        setTransactions(JSON.parse(savedDemoTxs));
+      } catch (e) {
+        setTransactions(mockTransactions);
+      }
+    } else {
+      setTransactions(mockTransactions);
+    }
+
     setBudgets(mockBudgets);
     setSavings(mockSavings);
     setIsLoading(false);
@@ -504,10 +515,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!target) return false;
     const newHiddenState = !target.is_hidden;
     const previousTransactions = [...transactions];
+    const updatedTxs = transactions.map((tx) => (tx.id === id ? { ...tx, is_hidden: newHiddenState } : tx));
 
-    setTransactions((prev) =>
-      prev.map((tx) => (tx.id === id ? { ...tx, is_hidden: newHiddenState } : tx))
-    );
+    setTransactions(updatedTxs);
+
+    if (isDemoMode) {
+      localStorage.setItem('demo_transactions', JSON.stringify(updatedTxs));
+      return true;
+    }
 
     if (isSupabaseConfigured && !isDemoMode) {
       try {
@@ -535,18 +550,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateTransaction = async (id: string, updates: Partial<Transaction>): Promise<boolean> => {
     const nowIso = new Date().toISOString();
     const previousTransactions = [...transactions];
-
-    setTransactions((prev) =>
-      prev.map((tx) =>
-        tx.id === id
-          ? {
-              ...tx,
-              ...updates,
-              updated_at: nowIso,
-            }
-          : tx
-      )
+    const updatedTxs = transactions.map((tx) =>
+      tx.id === id ? { ...tx, ...updates, updated_at: nowIso } : tx
     );
+
+    setTransactions(updatedTxs);
+
+    if (isDemoMode) {
+      localStorage.setItem('demo_transactions', JSON.stringify(updatedTxs));
+      return true;
+    }
 
     if (isSupabaseConfigured && !isDemoMode) {
       try {
@@ -579,7 +592,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteTransaction = async (id: string): Promise<boolean> => {
     const previousTransactions = [...transactions];
-    setTransactions((prev) => prev.filter((tx) => tx.id !== id));
+    const updatedTxs = transactions.filter((tx) => tx.id !== id);
+
+    setTransactions(updatedTxs);
+
+    if (isDemoMode) {
+      localStorage.setItem('demo_transactions', JSON.stringify(updatedTxs));
+      return true;
+    }
 
     if (isSupabaseConfigured && !isDemoMode) {
       try {
@@ -627,7 +647,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const previousTransactions = [...transactions];
-    setTransactions((prev) => [newTx, ...prev]);
+    const updatedTxs = [newTx, ...transactions];
+
+    setTransactions(updatedTxs);
+
+    if (isDemoMode) {
+      localStorage.setItem('demo_transactions', JSON.stringify(updatedTxs));
+      return true;
+    }
 
     if (isSupabaseConfigured && !isDemoMode) {
       try {
