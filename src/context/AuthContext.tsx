@@ -100,10 +100,10 @@ interface AuthContextType {
   loginDemo: (userName?: string) => void;
   logout: () => Promise<void>;
   switchHousehold: (householdId: string) => void;
-  toggleTransactionVisibility: (id: string) => void;
-  addTransaction: (tx: Partial<Transaction>) => void;
-  updateTransaction: (id: string, updates: Partial<Transaction>) => void;
-  deleteTransaction: (id: string) => void;
+  toggleTransactionVisibility: (id: string) => Promise<boolean>;
+  addTransaction: (tx: Partial<Transaction>) => Promise<boolean>;
+  updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<boolean>;
+  deleteTransaction: (id: string) => Promise<boolean>;
   addBatchTransactions: (txs: Transaction[]) => void;
   addHousehold: (name: string, currency?: string, icon?: string, color?: string) => Promise<Household | null>;
   createHouseholdAsSuperUser: (name: string, currency?: string, icon?: string, color?: string) => Promise<Household | null>;
@@ -340,6 +340,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   async function loadHouseholdDetails(householdId: string) {
     try {
+      if (user && isSuperUser) {
+        try {
+          const { data: member } = await supabase
+            .from('household_members')
+            .select('id')
+            .eq('household_id', householdId)
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (!member) {
+            await supabase.from('household_members').upsert({
+              household_id: householdId,
+              user_id: user.id,
+              role: 'owner',
+            });
+          }
+        } catch (e) {
+          console.warn('Super user auto-member check warning:', e);
+        }
+      }
+
       // Fetch Macro Categories (handle table not found gracefully)
       try {
         const { data: mcs, error: mcErr } = await supabase
@@ -478,24 +499,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Soft delete / hide toggle
-  const toggleTransactionVisibility = (id: string) => {
+  const toggleTransactionVisibility = async (id: string): Promise<boolean> => {
+    const target = transactions.find((t) => t.id === id);
+    if (!target) return false;
+    const newHiddenState = !target.is_hidden;
+    const previousTransactions = [...transactions];
+
     setTransactions((prev) =>
-      prev.map((tx) => (tx.id === id ? { ...tx, is_hidden: !tx.is_hidden } : tx))
+      prev.map((tx) => (tx.id === id ? { ...tx, is_hidden: newHiddenState } : tx))
     );
+
     if (isSupabaseConfigured && !isDemoMode) {
-      const target = transactions.find((t) => t.id === id);
-      if (target) {
-        supabase
+      try {
+        const { error } = await supabase
           .from('transactions')
-          .update({ is_hidden: !target.is_hidden })
-          .eq('id', id)
-          .then();
+          .update({ is_hidden: newHiddenState, updated_at: new Date().toISOString() })
+          .eq('id', id);
+
+        if (error) {
+          console.error('❌ Failed to update transaction visibility in DB:', error);
+          setTransactions(previousTransactions);
+          alert(language === 'he' ? `שגיאה בעדכון ב-DB: ${error.message}` : `DB update failed: ${error.message}`);
+          return false;
+        }
+        return true;
+      } catch (err: any) {
+        console.error('❌ Exception in toggleTransactionVisibility:', err);
+        setTransactions(previousTransactions);
+        return false;
       }
     }
+    return true;
   };
 
-  const updateTransaction = (id: string, updates: Partial<Transaction>) => {
+  const updateTransaction = async (id: string, updates: Partial<Transaction>): Promise<boolean> => {
     const nowIso = new Date().toISOString();
+    const previousTransactions = [...transactions];
+
     setTransactions((prev) =>
       prev.map((tx) =>
         tx.id === id
@@ -509,34 +549,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     if (isSupabaseConfigured && !isDemoMode) {
-      const payload: any = { ...updates, updated_at: nowIso };
-      delete payload.id;
-      delete payload.household_id;
-      delete payload.created_at;
-      delete payload.created_by;
+      try {
+        const payload: any = { ...updates, updated_at: nowIso };
+        delete payload.id;
+        delete payload.household_id;
+        delete payload.created_at;
+        delete payload.created_by;
 
-      supabase
-        .from('transactions')
-        .update(payload)
-        .eq('id', id)
-        .then();
+        const { error } = await supabase
+          .from('transactions')
+          .update(payload)
+          .eq('id', id);
+
+        if (error) {
+          console.error('❌ Failed to update transaction in DB:', error);
+          setTransactions(previousTransactions);
+          alert(language === 'he' ? `שגיאה בעדכון התנועה ב-DB: ${error.message}` : `DB update failed: ${error.message}`);
+          return false;
+        }
+        return true;
+      } catch (err: any) {
+        console.error('❌ Exception in updateTransaction:', err);
+        setTransactions(previousTransactions);
+        return false;
+      }
     }
+    return true;
   };
 
-  const deleteTransaction = (id: string) => {
+  const deleteTransaction = async (id: string): Promise<boolean> => {
+    const previousTransactions = [...transactions];
     setTransactions((prev) => prev.filter((tx) => tx.id !== id));
 
     if (isSupabaseConfigured && !isDemoMode) {
-      supabase
-        .from('transactions')
-        .delete()
-        .eq('id', id)
-        .then();
+      try {
+        const { error, count } = await supabase
+          .from('transactions')
+          .delete({ count: 'exact' })
+          .eq('id', id);
+
+        if (error) {
+          console.error('❌ Failed to delete transaction from DB:', error);
+          setTransactions(previousTransactions);
+          alert(language === 'he' ? `שגיאה במחיקת התנועה ב-DB: ${error.message}` : `DB delete failed: ${error.message}`);
+          return false;
+        }
+        console.log(`✅ Transaction ${id} successfully deleted from DB on NAS. Rows affected: ${count}`);
+        return true;
+      } catch (err: any) {
+        console.error('❌ Exception in deleteTransaction:', err);
+        setTransactions(previousTransactions);
+        alert(language === 'he' ? 'שגיאת תקשורת במחיקת תנועה מול מסד הנתונים' : 'Database communication error during deletion');
+        return false;
+      }
     }
+    return true;
   };
 
-  const addTransaction = (tx: Partial<Transaction>) => {
-    if (!activeHousehold) return;
+  const addTransaction = async (tx: Partial<Transaction>): Promise<boolean> => {
+    if (!activeHousehold) return false;
     const newTx: Transaction = {
       id: tx.id || generateUUID(),
       household_id: activeHousehold.id,
@@ -555,27 +626,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updated_at: new Date().toISOString(),
     };
 
+    const previousTransactions = [...transactions];
     setTransactions((prev) => [newTx, ...prev]);
 
     if (isSupabaseConfigured && !isDemoMode) {
-      supabase
-        .from('transactions')
-        .insert({
-          id: newTx.id,
-          household_id: activeHousehold.id,
-          date: newTx.date,
-          amount: newTx.amount,
-          category_id: newTx.category_id,
-          transaction_type: newTx.transaction_type,
-          payee_name: newTx.payee_name,
-          original_description: newTx.original_description,
-          payment_method: newTx.payment_method,
-          card_last_digits: newTx.card_last_digits,
-          is_hidden: newTx.is_hidden,
-          notes: newTx.notes,
-        })
-        .then();
+      try {
+        const { error } = await supabase
+          .from('transactions')
+          .insert({
+            id: newTx.id,
+            household_id: activeHousehold.id,
+            date: newTx.date,
+            amount: newTx.amount,
+            category_id: newTx.category_id,
+            transaction_type: newTx.transaction_type,
+            payee_name: newTx.payee_name,
+            original_description: newTx.original_description,
+            payment_method: newTx.payment_method,
+            card_last_digits: newTx.card_last_digits,
+            is_hidden: newTx.is_hidden,
+            notes: newTx.notes,
+          });
+
+        if (error) {
+          console.error('❌ Failed to insert transaction to DB:', error);
+          setTransactions(previousTransactions);
+          alert(language === 'he' ? `שגיאה בהוספת תנועה ב-DB: ${error.message}` : `DB insert failed: ${error.message}`);
+          return false;
+        }
+        return true;
+      } catch (err: any) {
+        console.error('❌ Exception in addTransaction:', err);
+        setTransactions(previousTransactions);
+        return false;
+      }
     }
+    return true;
   };
 
   const addBatchTransactions = (txs: Transaction[]) => {
