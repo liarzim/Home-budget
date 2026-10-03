@@ -211,23 +211,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     async function initAuth() {
       try {
+        const isExplicitLogout = sessionStorage.getItem('explicit_logout') === 'true';
+
         if (!isSupabaseConfigured) {
-          // If keys are not configured, auto-load mock demo data
-          loginDemo();
+          if (!isExplicitLogout) {
+            loginDemo();
+          } else {
+            setUser(null);
+            setIsDemoMode(false);
+          }
           return;
         }
 
         // Check active session from Supabase
         const { data: { session } } = await supabase.auth.getSession();
         if (session && session.user) {
+          sessionStorage.removeItem('explicit_logout');
           await loadSupabaseUserData(session.user.id, session.user.email);
         } else {
-          // Default to demo mode if not authenticated
-          loginDemo();
+          // If no active session, stay logged out so LandingHero is rendered
+          setUser(null);
+          setIsDemoMode(false);
         }
       } catch (err) {
         console.error('Auth initialization error:', err);
-        loginDemo();
+        setUser(null);
+        setIsDemoMode(false);
       } finally {
         setIsLoading(false);
       }
@@ -450,6 +459,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const loginDemo = (userName: string = 'Micha') => {
+    sessionStorage.removeItem('explicit_logout');
     setIsDemoMode(true);
     setUser({ ...mockProfile, full_name: userName, email: 'michael.liarzi@gmail.com' });
     setHouseholds(mockHouseholds);
@@ -479,6 +489,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     setIsLoading(true);
+    sessionStorage.setItem('explicit_logout', 'true');
     if (isSupabaseConfigured) {
       await signOutUser();
     }
