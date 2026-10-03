@@ -102,6 +102,8 @@ interface AuthContextType {
   switchHousehold: (householdId: string) => void;
   toggleTransactionVisibility: (id: string) => void;
   addTransaction: (tx: Partial<Transaction>) => void;
+  updateTransaction: (id: string, updates: Partial<Transaction>) => void;
+  deleteTransaction: (id: string) => void;
   addBatchTransactions: (txs: Transaction[]) => void;
   addHousehold: (name: string, currency?: string, icon?: string, color?: string) => Promise<Household | null>;
   createHouseholdAsSuperUser: (name: string, currency?: string, icon?: string, color?: string) => Promise<Household | null>;
@@ -489,6 +491,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .eq('id', id)
           .then();
       }
+    }
+  };
+
+  const updateTransaction = (id: string, updates: Partial<Transaction>) => {
+    const nowIso = new Date().toISOString();
+    setTransactions((prev) =>
+      prev.map((tx) =>
+        tx.id === id
+          ? {
+              ...tx,
+              ...updates,
+              updated_at: nowIso,
+            }
+          : tx
+      )
+    );
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      const payload: any = { ...updates, updated_at: nowIso };
+      delete payload.id;
+      delete payload.household_id;
+      delete payload.created_at;
+      delete payload.created_by;
+
+      supabase
+        .from('transactions')
+        .update(payload)
+        .eq('id', id)
+        .then();
+    }
+  };
+
+  const deleteTransaction = (id: string) => {
+    setTransactions((prev) => prev.filter((tx) => tx.id !== id));
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id)
+        .then();
     }
   };
 
@@ -1356,6 +1399,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         switchHousehold,
         toggleTransactionVisibility,
         addTransaction,
+        updateTransaction,
+        deleteTransaction,
         addBatchTransactions,
         addHousehold,
         createHouseholdAsSuperUser,

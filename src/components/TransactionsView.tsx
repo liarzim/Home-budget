@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { t, formatCategoryName, formatDate } from '../lib/i18n';
-import { TransactionType } from '../lib/types';
+import { Transaction, TransactionType } from '../lib/types';
 import {
   Plus,
   Search,
@@ -15,6 +15,8 @@ import {
   PiggyBank,
   TrendingDown,
   TrendingUp,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 
 export const TransactionsView: React.FC = () => {
@@ -27,6 +29,8 @@ export const TransactionsView: React.FC = () => {
     setActiveTab,
     toggleTransactionVisibility,
     addTransaction,
+    updateTransaction,
+    deleteTransaction,
     showHiddenNotice,
     canDeleteRecords,
     canImportFiles,
@@ -43,6 +47,19 @@ export const TransactionsView: React.FC = () => {
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'expense' | 'income'>('all');
   const [showHidden, setShowHidden] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // Edit Transaction Modal State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [editPayee, setEditPayee] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editType, setEditType] = useState<'expense' | 'income' | 'savings'>('expense');
+  const [editCategoryId, setEditCategoryId] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState('credit_card');
+  const [editCardDigits, setEditCardDigits] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editIsHidden, setEditIsHidden] = useState(false);
 
   // New Transaction Form State
   const [newPayee, setNewPayee] = useState('');
@@ -138,6 +155,54 @@ export const TransactionsView: React.FC = () => {
     setNewNotes('');
     setNewIsHidden(false);
     setIsAddModalOpen(false);
+  };
+
+  const handleOpenEditModal = (tx: Transaction) => {
+    setEditingTxId(tx.id);
+    setEditPayee(tx.payee_name);
+    setEditAmount(tx.amount.toString());
+    setEditType(tx.transaction_type === 'income' ? 'income' : 'expense');
+    setEditCategoryId(tx.category_id || '');
+    setEditDate(tx.date);
+    setEditPaymentMethod(tx.payment_method || 'credit_card');
+    setEditCardDigits(tx.card_last_digits || '');
+    setEditNotes(tx.notes || '');
+    setEditIsHidden(tx.is_hidden ?? false);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEditTransaction = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTxId || !editPayee.trim() || !editAmount) return;
+    const parsedAmount = parseFloat(editAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) return;
+
+    const effectiveType: TransactionType = editType === 'income' ? 'income' : 'expense';
+
+    updateTransaction(editingTxId, {
+      payee_name: editPayee.trim(),
+      amount: parsedAmount,
+      transaction_type: effectiveType,
+      category_id: editCategoryId || null,
+      date: editDate,
+      payment_method: editPaymentMethod,
+      card_last_digits: editCardDigits || null,
+      is_hidden: editIsHidden,
+      notes: editNotes || undefined,
+    });
+
+    setIsEditModalOpen(false);
+    setEditingTxId(null);
+  };
+
+  const handleDeleteTransaction = (id: string, payeeName: string) => {
+    const msg =
+      language === 'he'
+        ? `האם אתה בטוח שברצונך למחוק לצמיתות את העסקה "${payeeName}"?`
+        : `Are you sure you want to permanently delete transaction "${payeeName}"?`;
+    if (window.confirm(msg)) {
+      deleteTransaction(id);
+    }
   };
 
   // Filter transactions
@@ -259,8 +324,8 @@ export const TransactionsView: React.FC = () => {
           <div style={{ flex: 2.2 }}>{t('colCategory', language)}</div>
           <div style={{ flex: 1.8 }}>{t('colMethod', language)}</div>
           <div style={{ flex: 1.8, textAlign: 'right' }}>{t('colAmount', language)}</div>
-          {showHiddenNotice && canDeleteRecords && (
-            <div style={{ width: '80px', textAlign: 'center' }}>{t('colActions', language)}</div>
+          {(canEditRecords || canDeleteRecords || (showHiddenNotice && canDeleteRecords)) && (
+            <div style={{ width: '130px', textAlign: 'center' }}>{t('colActions', language)}</div>
           )}
         </div>
 
@@ -346,23 +411,47 @@ export const TransactionsView: React.FC = () => {
                     {Number(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </div>
 
-                  {/* Actions (Only shown if showHiddenNotice is enabled in settings AND user has delete permission) */}
-                  {showHiddenNotice && canDeleteRecords && (
-                    <div style={{ width: '80px', display: 'flex', justifyContent: 'center' }}>
-                      <button
-                        style={{
-                          ...styles.hideBtn,
-                          ...(tx.is_hidden ? styles.hideBtnHidden : {}),
-                        }}
-                        onClick={() => toggleTransactionVisibility(tx.id)}
-                        title={tx.is_hidden ? 'Restore Transaction (is_hidden = false)' : 'Hide Transaction (is_hidden = true)'}
-                      >
-                        {tx.is_hidden ? (
-                          <EyeOff size={14} color="var(--danger)" />
-                        ) : (
-                          <Eye size={14} color="var(--text-secondary)" />
-                        )}
-                      </button>
+                  {/* Actions Column (Edit, Soft Delete, Hard Delete) */}
+                  {(canEditRecords || canDeleteRecords || (showHiddenNotice && canDeleteRecords)) && (
+                    <div style={{ width: '130px', display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                      {canEditRecords && (
+                        <button
+                          style={styles.actionBtn}
+                          onClick={() => handleOpenEditModal(tx)}
+                          title={language === 'he' ? 'ערוך עסקה' : 'Edit Transaction'}
+                        >
+                          <Pencil size={14} color="var(--primary)" />
+                        </button>
+                      )}
+                      {showHiddenNotice && canDeleteRecords && (
+                        <button
+                          style={{
+                            ...styles.actionBtn,
+                            ...(tx.is_hidden ? styles.hideBtnHidden : {}),
+                          }}
+                          onClick={() => toggleTransactionVisibility(tx.id)}
+                          title={
+                            tx.is_hidden
+                              ? language === 'he' ? 'שחזר עסקה' : 'Restore Transaction'
+                              : language === 'he' ? 'הסתר עסקה (מחיקה רכה)' : 'Hide Transaction'
+                          }
+                        >
+                          {tx.is_hidden ? (
+                            <EyeOff size={14} color="var(--danger)" />
+                          ) : (
+                            <Eye size={14} color="var(--text-secondary)" />
+                          )}
+                        </button>
+                      )}
+                      {canDeleteRecords && (
+                        <button
+                          style={styles.actionBtnDanger}
+                          onClick={() => handleDeleteTransaction(tx.id, tx.payee_name)}
+                          title={language === 'he' ? 'מחק עסקה לצמיתות' : 'Permanently Delete Transaction'}
+                        >
+                          <Trash2 size={14} color="var(--danger)" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -421,20 +510,41 @@ export const TransactionsView: React.FC = () => {
                       )}
                     </div>
 
-                    {showHiddenNotice && canDeleteRecords && (
-                      <button
-                        style={{
-                          ...styles.hideBtn,
-                          ...(tx.is_hidden ? styles.hideBtnHidden : {}),
-                        }}
-                        onClick={() => toggleTransactionVisibility(tx.id)}
-                      >
-                        {tx.is_hidden ? (
-                          <EyeOff size={14} color="var(--danger)" />
-                        ) : (
-                          <Eye size={14} color="var(--text-secondary)" />
+                    {(canEditRecords || canDeleteRecords || (showHiddenNotice && canDeleteRecords)) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {canEditRecords && (
+                          <button
+                            style={styles.actionBtn}
+                            onClick={() => handleOpenEditModal(tx)}
+                            title={language === 'he' ? 'ערוך עסקה' : 'Edit Transaction'}
+                          >
+                            <Pencil size={14} color="var(--primary)" />
+                          </button>
                         )}
-                      </button>
+                        {showHiddenNotice && canDeleteRecords && (
+                          <button
+                            style={{
+                              ...styles.actionBtn,
+                              ...(tx.is_hidden ? styles.hideBtnHidden : {}),
+                            }}
+                            onClick={() => toggleTransactionVisibility(tx.id)}
+                          >
+                            {tx.is_hidden ? (
+                              <EyeOff size={14} color="var(--danger)" />
+                            ) : (
+                              <Eye size={14} color="var(--text-secondary)" />
+                            )}
+                          </button>
+                        )}
+                        {canDeleteRecords && (
+                          <button
+                            style={styles.actionBtnDanger}
+                            onClick={() => handleDeleteTransaction(tx.id, tx.payee_name)}
+                          >
+                            <Trash2 size={14} color="var(--danger)" />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -832,6 +942,244 @@ export const TransactionsView: React.FC = () => {
 
                 <button type="submit" style={styles.submitBtn}>
                   {language === 'he' ? 'שמור תנועה' : 'Save Transaction'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Transaction Modal */}
+      {isEditModalOpen && (
+        <div style={styles.modalOverlay} dir={dir}>
+          <div style={styles.modalCard} className="animate-fade-in">
+            <h3 style={styles.modalTitle}>
+              {language === 'he' ? 'עריכת תנועה' : 'Edit Transaction'}
+            </h3>
+            <p style={styles.modalSubtitle}>
+              {language === 'he'
+                ? 'עדכן את פרטי התנועה. השינויים יישמרו במסד הנתונים.'
+                : 'Update transaction details. Changes will be saved to database.'}
+            </p>
+
+            <form onSubmit={handleSaveEditTransaction}>
+              {/* 1. Type Switcher */}
+              <div style={styles.typeSelectorRow}>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.typeOptionBtn,
+                    ...(editType === 'expense' ? styles.typeOptionBtnActiveExpense : {}),
+                  }}
+                  onClick={() => {
+                    setEditType('expense');
+                    if (editPaymentMethod === 'bank_transfer') {
+                      setEditPaymentMethod('credit_card');
+                    }
+                  }}
+                >
+                  <TrendingDown size={15} />
+                  <span>{language === 'he' ? 'הוצאה' : 'Expense'}</span>
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.typeOptionBtn,
+                    ...(editType === 'income' ? styles.typeOptionBtnActiveIncome : {}),
+                  }}
+                  onClick={() => {
+                    setEditType('income');
+                    if (editPaymentMethod === 'credit_card') {
+                      setEditPaymentMethod('bank_transfer');
+                    }
+                    setEditCardDigits('');
+                  }}
+                >
+                  <TrendingUp size={15} />
+                  <span>{language === 'he' ? 'הכנסה' : 'Income'}</span>
+                </button>
+              </div>
+
+              {/* 2. Payee Name */}
+              <div style={styles.formGroup}>
+                <label style={styles.inputLabel}>
+                  {language === 'he' ? 'שם בית עסק / מוטב' : 'Payee / Merchant Name'}
+                </label>
+                <input
+                  style={styles.textInput}
+                  type="text"
+                  value={editPayee}
+                  onChange={(e) => setEditPayee(e.target.value)}
+                  required
+                />
+              </div>
+
+              {/* 3. Amount & Date */}
+              <div style={styles.twoColumnRow}>
+                <div style={{ ...styles.formGroup, flex: 1 }}>
+                  <label style={styles.inputLabel}>
+                    {language === 'he' ? `סכום (${currency})` : `Amount (${currency})`}
+                  </label>
+                  <input
+                    style={styles.textInput}
+                    type="number"
+                    step="0.01"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div style={{ ...styles.formGroup, flex: 1 }}>
+                  <label style={styles.inputLabel}>
+                    {language === 'he' ? 'תאריך' : 'Date'}
+                  </label>
+                  <input
+                    style={styles.textInput}
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* 4. Category Picker */}
+              <div style={styles.formGroup}>
+                <label style={styles.inputLabel}>
+                  {language === 'he' ? 'קטגוריה' : 'Category'}
+                </label>
+                <div style={styles.catPickerScroll}>
+                  {categories
+                    .filter((c) => (editType === 'income' ? c.type === 'income' : c.type === 'expense'))
+                    .map((cat) => {
+                      const isSelected = editCategoryId === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          style={{
+                            ...styles.catPill,
+                            ...(isSelected
+                              ? {
+                                  backgroundColor: cat.color || 'var(--primary)',
+                                  borderColor: cat.color || 'var(--primary)',
+                                  color: '#FFFFFF',
+                                  fontWeight: '700',
+                                }
+                              : {}),
+                          }}
+                          onClick={() => setEditCategoryId(cat.id)}
+                        >
+                          {formatCategoryName(cat.name, language)}
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* 5. Payment Method & Optional Card Digits */}
+              <div style={editType === 'income' || editPaymentMethod !== 'credit_card' ? { marginBottom: '14px' } : styles.twoColumnRow}>
+                <div style={{ ...styles.formGroup, flex: 1, marginBottom: 0 }}>
+                  <label style={styles.inputLabel}>
+                    {language === 'he'
+                      ? editType === 'income' ? 'אופן קבלת התשלום' : 'אמצעי תשלום'
+                      : editType === 'income' ? 'Receiving Method' : 'Payment Method'}
+                  </label>
+                  <select
+                    style={styles.textInput}
+                    value={editPaymentMethod}
+                    onChange={(e) => setEditPaymentMethod(e.target.value)}
+                  >
+                    {editType === 'income' ? (
+                      <>
+                        <option value="bank_transfer">{language === 'he' ? '🏦 העברה לחשבון בנק' : '🏦 Bank Transfer'}</option>
+                        <option value="bit">{language === 'he' ? '📱 Bit / Paybox' : '📱 Bit / Paybox'}</option>
+                        <option value="check">{language === 'he' ? '📑 המחאה (צ\'ק)' : '📑 Check'}</option>
+                        <option value="cash">{language === 'he' ? '💵 מזומן' : '💵 Cash'}</option>
+                        <option value="other">{language === 'he' ? '🔘 אחר' : '🔘 Other'}</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="credit_card">{language === 'he' ? '💳 כרטיס אשראי' : '💳 Credit Card'}</option>
+                        {cardMappings && cardMappings.length > 0 && cardMappings.map((cm) => (
+                          <option key={cm.id} value={cm.raw_pattern || cm.display_name}>
+                            {cm.display_name} {cm.card_last_digits ? `(•••• ${cm.card_last_digits})` : ''}
+                          </option>
+                        ))}
+                        <option value="bank_transfer">{language === 'he' ? '🏦 העברה בנקאית' : '🏦 Bank Transfer'}</option>
+                        <option value="standing_order">{language === 'he' ? '🔄 הוראת קבע' : '🔄 Standing Order'}</option>
+                        <option value="cash">{language === 'he' ? '💵 מזומן' : '💵 Cash'}</option>
+                        <option value="check">{language === 'he' ? '📑 המחאה (צ\'ק)' : '📑 Check'}</option>
+                        <option value="bit">{language === 'he' ? '📱 Bit / אפליקציה' : '📱 Bit / App'}</option>
+                        <option value="other">{language === 'he' ? '🔘 אחר' : '🔘 Other'}</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                {editType !== 'income' && editPaymentMethod === 'credit_card' && (
+                  <div style={{ ...styles.formGroup, flex: 1, marginBottom: 0 }}>
+                    <label style={styles.inputLabel}>
+                      {language === 'he' ? '4 ספרות כרטיס אחרונות' : 'Card Last 4 Digits'}
+                    </label>
+                    <input
+                      style={styles.textInput}
+                      type="text"
+                      maxLength={4}
+                      value={editCardDigits}
+                      onChange={(e) => setEditCardDigits(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 6. Notes */}
+              <div style={styles.formGroup}>
+                <label style={styles.inputLabel}>
+                  {language === 'he' ? 'הערות (אופציונלי)' : 'Notes (Optional)'}
+                </label>
+                <input
+                  style={styles.textInput}
+                  type="text"
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                />
+              </div>
+
+              {/* 7. Soft-Delete / Hide Checkbox */}
+              {showHiddenNotice && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={editIsHidden}
+                      onChange={(e) => setEditIsHidden(e.target.checked)}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                      {language === 'he'
+                        ? 'סמן כתנועה מוסתרת (Soft-Delete)'
+                        : 'Mark as Hidden (Soft-Delete)'}
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              <div style={styles.modalActionRow}>
+                <button
+                  type="button"
+                  style={styles.cancelBtn}
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setEditingTxId(null);
+                  }}
+                >
+                  {language === 'he' ? 'ביטול' : 'Cancel'}
+                </button>
+
+                <button type="submit" style={styles.submitBtn}>
+                  {language === 'he' ? 'עדכן תנועה' : 'Update Transaction'}
                 </button>
               </div>
             </form>
@@ -1252,5 +1600,27 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '700',
     border: 'none',
     cursor: 'pointer',
+  },
+  actionBtn: {
+    padding: '6px 10px',
+    borderRadius: '6px',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    border: '1px solid var(--border-main)',
+    transition: 'all 0.15s ease',
+  },
+  actionBtnDanger: {
+    padding: '6px 10px',
+    borderRadius: '6px',
+    backgroundColor: 'var(--danger-light)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    border: '1px solid #FECACA',
+    transition: 'all 0.15s ease',
   },
 };
