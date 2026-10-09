@@ -516,8 +516,8 @@ export async function fetchYearlySavingsData(
     }
   }
 
-  // Fallback defaults if no savings exist yet
-  if (records.length === 0) {
+  // Fallback defaults if in demo mode and no savings exist yet
+  if (records.length === 0 && isDemoMode) {
     records = [
       {
         id: 's-1',

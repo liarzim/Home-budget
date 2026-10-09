@@ -34,3 +34,9 @@ pnpm-debug.log*
 android/.gradle
 android/build
 android/app/build
+
+# Local NAS config and scratch
+nas-setup/
+scratch/
+generate_cmd.js
+

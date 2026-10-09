@@ -94,49 +94,61 @@ export const SavingsVisualizer: React.FC<SavingsVisualizerProps> = ({
         {/* SVG Donut Chart */}
         <div style={styles.donutContainer}>
           <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={styles.svgChart}>
-            {summary.items.map((item, index) => {
-              const strokeDasharray = `${(item.percentage / 100) * circumference} ${circumference}`;
-              const strokeDashoffset = -cumulativeAngle;
-              cumulativeAngle += (item.percentage / 100) * circumference;
+            {summary.items.length === 0 ? (
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="transparent"
+                stroke="var(--border-main)"
+                strokeWidth={strokeWidth}
+                strokeDasharray="6 6"
+              />
+            ) : (
+              summary.items.map((item, index) => {
+                const strokeDasharray = `${(item.percentage / 100) * circumference} ${circumference}`;
+                const strokeDashoffset = -cumulativeAngle;
+                cumulativeAngle += (item.percentage / 100) * circumference;
 
-              const isHovered = hoveredIndex === index;
+                const isHovered = hoveredIndex === index;
 
-              return (
-                <circle
-                  key={item.type}
-                  cx={size / 2}
-                  cy={size / 2}
-                  r={radius}
-                  fill="transparent"
-                  stroke={item.color}
-                  strokeWidth={isHovered ? strokeWidth + 4 : strokeWidth}
-                  strokeDasharray={strokeDasharray}
-                  strokeDashoffset={strokeDashoffset}
-                  strokeLinecap="butt"
-                  style={{
-                    transition: 'all 0.2s ease',
-                    cursor: 'pointer',
-                    transformOrigin: 'center',
-                  }}
-                  onMouseEnter={() => setHoveredIndex(index)}
-                  onMouseLeave={() => setHoveredIndex(null)}
-                />
-              );
-            })}
+                return (
+                  <circle
+                    key={item.type}
+                    cx={size / 2}
+                    cy={size / 2}
+                    r={radius}
+                    fill="transparent"
+                    stroke={item.color}
+                    strokeWidth={isHovered ? strokeWidth + 4 : strokeWidth}
+                    strokeDasharray={strokeDasharray}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="butt"
+                    style={{
+                      transition: 'all 0.2s ease',
+                      cursor: 'pointer',
+                      transformOrigin: 'center',
+                    }}
+                    onMouseEnter={() => setHoveredIndex(index)}
+                    onMouseLeave={() => setHoveredIndex(null)}
+                  />
+                );
+              })
+            )}
           </svg>
 
           {/* Central Donut Text */}
           <div style={styles.donutCenterText}>
             <span style={styles.centerLabel}>
-              {hoveredIndex !== null ? summary.items[hoveredIndex].label.split(' ')[0] : 'Total Assets'}
+              {hoveredIndex !== null && summary.items[hoveredIndex] ? summary.items[hoveredIndex].label.split(' ')[0] : 'Total Assets'}
             </span>
             <span style={styles.centerValue}>
               {currencySymbol}{' '}
-              {hoveredIndex !== null
+              {hoveredIndex !== null && summary.items[hoveredIndex]
                 ? summary.items[hoveredIndex].amount.toLocaleString('en-US', { maximumFractionDigits: 0 })
                 : summary.currentTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </span>
-            {hoveredIndex !== null && (
+            {hoveredIndex !== null && summary.items[hoveredIndex] && (
               <span style={styles.centerSub}>
                 {summary.items[hoveredIndex].percentage.toFixed(1)}% of total
               </span>
@@ -146,7 +158,12 @@ export const SavingsVisualizer: React.FC<SavingsVisualizerProps> = ({
 
         {/* Legend List */}
         <div style={styles.legendContainer}>
-          {summary.items.map((item, index) => {
+          {summary.items.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              טרם הוזנו חסכונות או השקעות עבור שנה זו.
+            </div>
+          ) : (
+            summary.items.map((item, index) => {
             const isHovered = hoveredIndex === index;
 
             return (
@@ -179,7 +196,8 @@ export const SavingsVisualizer: React.FC<SavingsVisualizerProps> = ({
                 </div>
               </div>
             );
-          })}
+          })
+        )}
         </div>
       </div>
     </div>
