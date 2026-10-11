@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { InvestmentAsset, InvestmentTranche } from '../../lib/types';
+import { InvestmentAsset, InvestmentTranche, SecurityType, InvestmentPeriodicSnapshot } from '../../lib/types';
 import {
   TrendingUp,
   TrendingDown,
@@ -15,13 +15,29 @@ import {
   Layers,
   ArrowRight,
   Sparkles,
-  Percent,
+  Download,
   Coins,
   ShieldCheck,
   Scale,
-  RefreshCw,
   X,
+  FileSpreadsheet,
+  Clock,
+  CheckCircle2,
 } from 'lucide-react';
+
+export const SECURITY_TYPE_LABELS: Record<SecurityType, { he: string; en: string; icon: string }> = {
+  stock: { he: 'מניה', en: 'Stock', icon: '📈' },
+  etf: { he: 'קרן סל מחקת מדד', en: 'ETF (Tracker)', icon: '📊' },
+  index: { he: 'מדד', en: 'Index', icon: '🎯' },
+  mutual_fund: { he: 'קרן נאמנות', en: 'Mutual Fund', icon: '🏦' },
+  bond: { he: 'אג״ח ממשלתי / קונצרני', en: 'Government / Corp Bond', icon: '📜' },
+  ira_provident: { he: 'קופת גמל / השתלמות מחקה', en: 'IRA / Provident Fund', icon: '🛡️' },
+  tbill: { he: 'מק״מ / פיקדון מובנה', en: 'T-Bill / Deposit', icon: '💵' },
+  foreign_security: { he: 'נייר ערך זר', en: 'Foreign Security', icon: '🌐' },
+  commodity: { he: 'סחורות וזהב', en: 'Commodity / Gold', icon: '🥇' },
+  crypto: { he: 'מטבע קריפטוגרפי', en: 'Crypto Asset', icon: '🪙' },
+  other: { he: 'נייר ערך אחר', en: 'Other Security', icon: '🏷️' },
+};
 
 export const InvestmentsView: React.FC = () => {
   const {
@@ -43,6 +59,9 @@ export const InvestmentsView: React.FC = () => {
   const [usdRate, setUsdRate] = useState<number>(3.70); // 1 USD = 3.70 ILS
   const [isRateEditing, setIsRateEditing] = useState<boolean>(false);
 
+  // Active view tab: 'portfolio' (תיק שוטף) | 'snapshots' (סגירות תקופה ודוחות)
+  const [activeSubTab, setActiveSubTab] = useState<'portfolio' | 'snapshots'>('portfolio');
+
   // Expanded asset rows (to view purchase tranches)
   const [expandedAssetIds, setExpandedAssetIds] = useState<Record<string, boolean>>({
     'inv-sample-user': true, // Open user sample by default
@@ -53,15 +72,24 @@ export const InvestmentsView: React.FC = () => {
   const [modalMode, setModalMode] = useState<'new_asset' | 'add_tranche'>('new_asset');
   const [selectedAssetIdForTranche, setSelectedAssetIdForTranche] = useState<string>('');
 
+  // Snapshot Modal State
+  const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
+  const [snapshotPeriodType, setSnapshotPeriodType] = useState<'month' | 'quarter' | 'year' | 'current'>('month');
+  const [snapshotLabel, setSnapshotLabel] = useState<string>('');
+  const [snapshotDate, setSnapshotDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [snapshotNotes, setSnapshotNotes] = useState<string>('');
+
   // Form Fields
   const [formTicker, setFormTicker] = useState('');
+  const [formSecurityNumber, setFormSecurityNumber] = useState('');
   const [formName, setFormName] = useState('');
   const [formCurrency, setFormCurrency] = useState<'USD' | 'ILS'>('USD');
-  const [formAssetType, setFormAssetType] = useState<InvestmentAsset['asset_type']>('stock');
+  const [formAssetType, setFormAssetType] = useState<SecurityType>('stock');
   const [formCurrentPrice, setFormCurrentPrice] = useState<string>('');
   const [formDate, setFormDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [formShares, setFormShares] = useState<string>('');
   const [formPricePerShare, setFormPricePerShare] = useState<string>('');
+  const [formTotalCost, setFormTotalCost] = useState<string>('');
   const [formFee, setFormFee] = useState<string>('0');
   const [formNotes, setFormNotes] = useState<string>('');
 
@@ -71,6 +99,54 @@ export const InvestmentsView: React.FC = () => {
 
   // Info Accordion toggle
   const [isFormulaExpanded, setIsFormulaExpanded] = useState<boolean>(false);
+
+  // Periodic Snapshots State (stored in localStorage)
+  const [snapshots, setSnapshots] = useState<InvestmentPeriodicSnapshot[]>(() => {
+    try {
+      const saved = localStorage.getItem('household_investment_snapshots');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    // Default initial historical snapshot
+    return [
+      {
+        id: 'snap-2025-year-end',
+        household_id: 'hh-main',
+        period_type: 'year',
+        period_label: 'סוף שנת 2025 (סגירה שנתית)',
+        date: '2025-12-31',
+        total_invested: 35000,
+        total_value: 39800,
+        total_profit: 4800,
+        total_return_pct: 13.71,
+        assets_count: 3,
+        notes: 'סגירת שנת מס 2025',
+      },
+      {
+        id: 'snap-2026-q1',
+        household_id: 'hh-main',
+        period_type: 'quarter',
+        period_label: 'סיום רבעון Q1 2026',
+        date: '2026-03-31',
+        total_invested: 44200,
+        total_value: 51900,
+        total_profit: 7700,
+        total_return_pct: 17.42,
+        assets_count: 4,
+        notes: 'סגירת רבעון ראשון 2026',
+      },
+    ];
+  });
+
+  const saveSnapshots = (newList: InvestmentPeriodicSnapshot[]) => {
+    setSnapshots(newList);
+    try {
+      localStorage.setItem('household_investment_snapshots', JSON.stringify(newList));
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const toggleExpand = (assetId: string) => {
     setExpandedAssetIds((prev) => ({
@@ -101,7 +177,7 @@ export const InvestmentsView: React.FC = () => {
     };
   };
 
-  // Portfolio Totals in selected currency
+  // Portfolio Totals in ILS
   const portfolioSummary = useMemo(() => {
     let totalInvestedILS = 0;
     let currentValueILS = 0;
@@ -146,17 +222,52 @@ export const InvestmentsView: React.FC = () => {
     })}`;
   };
 
+  // Synchronize price per share and total cost in form
+  const handleSharesChange = (val: string) => {
+    setFormShares(val);
+    const s = parseFloat(val);
+    const p = parseFloat(formPricePerShare);
+    const f = parseFloat(formFee) || 0;
+    if (s > 0 && p >= 0) {
+      setFormTotalCost((s * p + f).toFixed(2));
+    }
+  };
+
+  const handlePricePerShareChange = (val: string) => {
+    setFormPricePerShare(val);
+    const s = parseFloat(formShares);
+    const p = parseFloat(val);
+    const f = parseFloat(formFee) || 0;
+    if (s > 0 && p >= 0) {
+      setFormTotalCost((s * p + f).toFixed(2));
+    }
+  };
+
+  const handleTotalCostChange = (val: string) => {
+    setFormTotalCost(val);
+    const s = parseFloat(formShares);
+    const total = parseFloat(val);
+    const f = parseFloat(formFee) || 0;
+    if (s > 0 && total >= 0) {
+      const unitPrice = Math.max(0, (total - f) / s);
+      setFormPricePerShare(unitPrice.toFixed(2));
+    }
+  };
+
   const handleOpenAddModal = (mode: 'new_asset' | 'add_tranche', asset?: InvestmentAsset) => {
     setModalMode(mode);
     if (mode === 'add_tranche' && asset) {
       setSelectedAssetIdForTranche(asset.id);
       setFormTicker(asset.ticker);
+      setFormSecurityNumber(asset.security_number || '');
       setFormName(asset.name);
       setFormCurrency(asset.currency);
       setFormCurrentPrice(asset.current_price.toString());
+      setFormAssetType(asset.asset_type);
     } else {
       setSelectedAssetIdForTranche('');
       setFormTicker('');
+      setFormSecurityNumber('');
       setFormName('');
       setFormCurrency('USD');
       setFormAssetType('stock');
@@ -165,6 +276,7 @@ export const InvestmentsView: React.FC = () => {
     setFormDate(new Date().toISOString().split('T')[0]);
     setFormShares('');
     setFormPricePerShare('');
+    setFormTotalCost('');
     setFormFee('0');
     setFormNotes('');
     setIsModalOpen(true);
@@ -176,20 +288,22 @@ export const InvestmentsView: React.FC = () => {
     const priceNum = parseFloat(formPricePerShare);
     const feeNum = parseFloat(formFee) || 0;
     const currentPriceNum = parseFloat(formCurrentPrice) || priceNum;
+    const totalCostNum = parseFloat(formTotalCost) || (sharesNum * priceNum + feeNum);
 
     if (isNaN(sharesNum) || sharesNum <= 0 || isNaN(priceNum) || priceNum < 0) {
-      alert(isHe ? 'אנא הזן מספר מניות ומחיר קנייה תקינים' : 'Please enter valid shares and price');
+      alert(isHe ? 'אנא הזן כמות מניות ומחיר רכישה תקינים' : 'Please enter valid shares and price');
       return;
     }
 
     if (modalMode === 'new_asset') {
       if (!formTicker.trim()) {
-        alert(isHe ? 'אנא הזן סימול/טיקר לנייר' : 'Please enter a ticker');
+        alert(isHe ? 'אנא הזן סימול נייר' : 'Please enter a ticker');
         return;
       }
       addInvestmentAsset({
         household_id: activeHousehold?.id || 'hh-main',
         ticker: formTicker.trim().toUpperCase(),
+        security_number: formSecurityNumber.trim() || undefined,
         name: formName.trim() || formTicker.trim().toUpperCase(),
         currency: formCurrency,
         current_price: currentPriceNum,
@@ -201,6 +315,7 @@ export const InvestmentsView: React.FC = () => {
             date: formDate,
             shares: sharesNum,
             price_per_share: priceNum,
+            total_cost: totalCostNum,
             fee: feeNum,
             notes: formNotes.trim() || undefined,
           },
@@ -211,10 +326,10 @@ export const InvestmentsView: React.FC = () => {
         date: formDate,
         shares: sharesNum,
         price_per_share: priceNum,
+        total_cost: totalCostNum,
         fee: feeNum,
         notes: formNotes.trim() || undefined,
       });
-      // Also update current market price if provided
       if (!isNaN(currentPriceNum) && currentPriceNum > 0) {
         updateInvestmentAsset(selectedAssetIdForTranche, { current_price: currentPriceNum });
       }
@@ -229,6 +344,136 @@ export const InvestmentsView: React.FC = () => {
       updateInvestmentAsset(assetId, { current_price: num });
     }
     setEditingPriceAssetId(null);
+  };
+
+  // Export current state to CSV / Excel (with UTF-8 BOM)
+  const handleExportCurrentStateCSV = () => {
+    const BOM = '\uFEFF';
+    const headers = [
+      'סימול נייר',
+      'מספר נייר',
+      'שם נייר / חברה',
+      'סוג נייר',
+      'מטבע',
+      'כמות כוללת',
+      'מחיר קנייה ממוצע',
+      'סך עלות רכישה',
+      'שער שוק נוכחי',
+      'שווי נוכחי',
+      'רווח / הפסד נקודתי',
+      'תשואה נקודתית (%)',
+      'מספר פעימות',
+      'תאריך דוח',
+    ];
+
+    const rows = investments.map((asset) => {
+      const { totalShares, totalCost, avgPrice, currentValue, profit, returnPct } =
+        calculateAssetMetrics(asset);
+      const typeLabel = SECURITY_TYPE_LABELS[asset.asset_type]?.he || asset.asset_type;
+
+      return [
+        `"${asset.ticker}"`,
+        `"${asset.security_number || '—'}"`,
+        `"${asset.name}"`,
+        `"${typeLabel}"`,
+        `"${asset.currency}"`,
+        totalShares,
+        avgPrice.toFixed(2),
+        totalCost.toFixed(2),
+        asset.current_price.toFixed(2),
+        currentValue.toFixed(2),
+        profit.toFixed(2),
+        `${returnPct.toFixed(2)}%`,
+        asset.tranches.length,
+        `"${new Date().toLocaleDateString('he-IL')}"`,
+      ].join(',');
+    });
+
+    // Summary line
+    const summaryRow = [
+      '"סה״כ תיק"',
+      '""',
+      '""',
+      '""',
+      '"ILS"',
+      '""',
+      '""',
+      portfolioSummary.totalInvestedILS.toFixed(2),
+      '""',
+      portfolioSummary.currentValueILS.toFixed(2),
+      portfolioSummary.totalProfitILS.toFixed(2),
+      `${portfolioSummary.totalReturnPct.toFixed(2)}%`,
+      '""',
+      `"${new Date().toLocaleDateString('he-IL')}"`,
+    ].join(',');
+
+    const csvContent = BOM + headers.join(',') + '\n' + rows.join('\n') + '\n' + summaryRow;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute(
+      'download',
+      `investment_portfolio_snapshot_${new Date().toISOString().split('T')[0]}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Open Snapshot Modal with dynamic label default
+  const handleOpenSnapshotModal = (type: 'month' | 'quarter' | 'year' | 'current') => {
+    setSnapshotPeriodType(type);
+    const now = new Date();
+    const currentMonth = now.toLocaleString('he-IL', { month: 'long' });
+    const currentQuarter = `Q${Math.floor(now.getMonth() / 3) + 1}`;
+    const currentYear = now.getFullYear();
+
+    if (type === 'month') {
+      setSnapshotLabel(`סיום חודש ${currentMonth} ${currentYear}`);
+    } else if (type === 'quarter') {
+      setSnapshotLabel(`סיום רבעון ${currentQuarter} ${currentYear}`);
+    } else if (type === 'year') {
+      setSnapshotLabel(`סיום שנת ${currentYear}`);
+    } else {
+      setSnapshotLabel(`צילום מצב נקודתי - ${now.toLocaleDateString('he-IL')}`);
+    }
+
+    setSnapshotDate(now.toISOString().split('T')[0]);
+    setSnapshotNotes('');
+    setIsSnapshotModalOpen(true);
+  };
+
+  const handleSaveSnapshot = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!snapshotLabel.trim()) {
+      alert(isHe ? 'אנא הזן תיאור לתקופה' : 'Please enter period label');
+      return;
+    }
+
+    const newSnapshot: InvestmentPeriodicSnapshot = {
+      id: `snap-${Date.now()}`,
+      household_id: activeHousehold?.id || 'hh-main',
+      period_type: snapshotPeriodType,
+      period_label: snapshotLabel.trim(),
+      date: snapshotDate,
+      total_invested: portfolioSummary.totalInvestedILS,
+      total_value: portfolioSummary.currentValueILS,
+      total_profit: portfolioSummary.totalProfitILS,
+      total_return_pct: portfolioSummary.totalReturnPct,
+      assets_count: investments.length,
+      notes: snapshotNotes.trim() || undefined,
+    };
+
+    saveSnapshots([newSnapshot, ...snapshots]);
+    setIsSnapshotModalOpen(false);
+    setActiveSubTab('snapshots');
+  };
+
+  const handleDeleteSnapshot = (id: string) => {
+    if (confirm(isHe ? 'האם למחוק צילום מצב זה?' : 'Delete this snapshot?')) {
+      saveSnapshots(snapshots.filter((s) => s.id !== id));
+    }
   };
 
   return (
@@ -247,13 +492,23 @@ export const InvestmentsView: React.FC = () => {
           </h1>
           <p style={styles.subtitle}>
             {isHe
-              ? 'חישוב מחיר קנייה ממוצע משוקלל, השוואה לשער נוכחי, רווח/הפסד ריאלי וחלוקה לפי פעימות רכישה.'
-              : 'Weighted average purchase cost, live market comparison, dollar & percentage returns per tranche.'}
+              ? 'ניהול סימול, מספר נייר, סוג נכס, פעימות רכישה, שווי שוק נוכחי, והורדת צילומי מצב תקופתיים (חודש / רבעון / שנה).'
+              : 'Track tickers, security numbers, asset types, purchase tranches, live market valuation, and periodic snapshots.'}
           </p>
         </div>
 
         {/* Action Controls */}
         <div style={styles.headerActions}>
+          {/* Download Current State (שלב ב') */}
+          <button
+            style={styles.exportCurrentBtn}
+            onClick={handleExportCurrentStateCSV}
+            title={isHe ? 'הורד קובץ מצב כל נייר בנקודה הנוכחית' : 'Download current portfolio status'}
+          >
+            <Download size={15} color="#2563EB" />
+            <span>{isHe ? 'הורד מצב תיק (Excel)' : 'Export CSV'}</span>
+          </button>
+
           {/* Currency Display Filter */}
           <div style={styles.currencyToggleGroup}>
             <button
@@ -337,7 +592,7 @@ export const InvestmentsView: React.FC = () => {
             ₪{portfolioSummary.totalInvestedILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}
           </div>
           <div style={styles.kpiSubText}>
-            {isHe ? 'סך כל פעימות הרכישה שבוצעו' : 'Sum of all purchase tranches'}
+            {isHe ? 'סך כל פעימות הרכישה כולל עמלות' : 'Sum of all purchase tranches + fees'}
           </div>
         </div>
 
@@ -345,7 +600,7 @@ export const InvestmentsView: React.FC = () => {
         <div style={styles.kpiCard}>
           <div style={styles.kpiTopRow}>
             <span style={styles.kpiLabel}>
-              {isHe ? 'שווי שוק נוכחי' : 'Current Market Value'}
+              {isHe ? 'שווי שוק נוכחי (ערך נוכחי)' : 'Current Market Value'}
             </span>
             <div style={{ ...styles.kpiIconWrap, backgroundColor: '#F0FDF4' }}>
               <DollarSign size={18} color="#16A34A" />
@@ -425,284 +680,579 @@ export const InvestmentsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Educational Formula & Tax Guidance Box */}
-      <div style={styles.formulaAccordionBox}>
+      {/* Sub Tabs: Active Portfolio vs Periodic Snapshots (שלב ב') */}
+      <div style={styles.subTabNav}>
         <button
-          style={styles.formulaAccordionHeader}
-          onClick={() => setIsFormulaExpanded(!isFormulaExpanded)}
+          style={{
+            ...styles.subTabBtn,
+            ...(activeSubTab === 'portfolio' ? styles.subTabBtnActive : {}),
+          }}
+          onClick={() => setActiveSubTab('portfolio')}
         >
-          <div style={styles.formulaHeaderLeft}>
-            <Info size={18} color="#2563EB" />
-            <span style={styles.formulaTitle}>
-              {isHe
-                ? 'כיצד מחושבים הביצועים והרווח בתיק? (נוסחת פעימות, עמלות, שערי מט"ח ומס)'
-                : 'How is performance calculated? (Weighted Tranches, Fees, FX & Tax)'}
-            </span>
-          </div>
-          {isFormulaExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          <Layers size={16} />
+          <span>{isHe ? 'ניירות ערך ופוזיציות פעילות' : 'Active Holdings & Tranches'}</span>
+          <span style={styles.subTabCountPill}>{investments.length}</span>
         </button>
 
-        {isFormulaExpanded && (
-          <div style={styles.formulaBody} className="animate-fade-in">
-            <div style={styles.formulaGrid}>
-              <div style={styles.formulaStepCard}>
-                <div style={styles.stepNum}>1</div>
-                <div>
-                  <div style={styles.stepTitle}>
-                    {isHe ? 'סך עלות ההשקעה' : 'Total Cost Basis'}
-                  </div>
-                  <div style={styles.stepDesc}>
-                    {isHe
-                      ? 'סוכמים את כל פעימות הרכישה: (כמות מניות × שער קנייה) + עמלות מסחר.'
-                      : 'Sum of all tranches: (Shares × Purchase Price) + Commissions.'}
-                  </div>
-                </div>
-              </div>
-
-              <div style={styles.formulaStepCard}>
-                <div style={styles.stepNum}>2</div>
-                <div>
-                  <div style={styles.stepTitle}>
-                    {isHe ? 'מחיר קנייה ממוצע משוקלל' : 'Weighted Average Cost'}
-                  </div>
-                  <div style={styles.stepDesc}>
-                    {isHe
-                      ? 'מחלקים את סך עלות הרכישות בסך כל המניות שבידך.'
-                      : 'Total Cost Basis divided by Total Accumulated Shares.'}
-                  </div>
-                </div>
-              </div>
-
-              <div style={styles.formulaStepCard}>
-                <div style={styles.stepNum}>3</div>
-                <div>
-                  <div style={styles.stepTitle}>
-                    {isHe ? 'שווי נוכחי של הפוזיציה' : 'Current Market Value'}
-                  </div>
-                  <div style={styles.stepDesc}>
-                    {isHe
-                      ? 'מכפילים את סך המניות בשער המניה הנוכחי בשוק.'
-                      : 'Total Shares multiplied by current Market Price.'}
-                  </div>
-                </div>
-              </div>
-
-              <div style={styles.formulaStepCard}>
-                <div style={styles.stepNum}>4</div>
-                <div>
-                  <div style={styles.stepTitle}>
-                    {isHe ? 'רווח כספי ותשואה (%)' : 'P&L and Return %'}
-                  </div>
-                  <div style={styles.stepDesc}>
-                    {isHe
-                      ? 'רווח שקלי/דולרי = שווי נוכחי פחות סך ההשקעה. תשואה = (רווח / סך השקעה) × 100.'
-                      : 'P&L = Current Value - Cost. Yield % = (Profit / Cost) × 100.'}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.taxNotesBox}>
-              <div style={styles.taxNotesTitle}>
-                <ShieldCheck size={16} color="#059669" />
-                <span>
-                  {isHe
-                    ? 'נקודות מרכזיות: עמלות, הפרשי שער ומס רווחי הון בישראל'
-                    : 'Important: Commissions, FX Rates, and Capital Gains Tax in Israel'}
-                </span>
-              </div>
-              <ul style={styles.taxNotesList}>
-                <li>
-                  <strong>{isHe ? 'עמלות קנייה ומכירה:' : 'Trading Fees:'}</strong>{' '}
-                  {isHe
-                    ? 'עמלות הקנייה מתווספות אוטומטית לעלות ההשקעה ומקטינות את הרווח לצורך חישוב מדויק ונטו.'
-                    : 'Commissions are added directly to the cost basis, reducing real taxable gain.'}
-                </li>
-                <li>
-                  <strong>{isHe ? 'הפרשי שערי מט"ח:' : 'Currency Exchange (FX):'}</strong>{' '}
-                  {isHe
-                    ? `במניות דולריות, תנודות שער החליפין (כגון שער של ₪${usdRate}) משפיעות ישירות על הרווח השקלי. ניתן לצפות בערכים בשקלים או בדולרים.`
-                    : 'For USD assets, currency fluctuations directly impact ILS performance.'}
-                </li>
-                <li>
-                  <strong>{isHe ? 'שיטת חישוב מס (FIFO מול ממוצע):' : 'Tax Methods (FIFO vs Average):'}</strong>{' '}
-                  {isHe
-                    ? 'בישראל, בעת מכירה חלקית, ברירת המחדל בחשבונות מסחר ישראליים היא לרוב שיטת FIFO (ראשון נכנס - ראשון נמכר), בעוד שבמערכות ניהול ביצועים משתמשים בממוצע משוקלל. מס רווחי הון עומד על 25% מהרווח הריאלי.'
-                    : 'Israel applies 25% tax on real capital gains, typically calculated via FIFO or average cost.'}
-                </li>
-              </ul>
-            </div>
-          </div>
-        )}
+        <button
+          style={{
+            ...styles.subTabBtn,
+            ...(activeSubTab === 'snapshots' ? styles.subTabBtnActive : {}),
+          }}
+          onClick={() => setActiveSubTab('snapshots')}
+        >
+          <Clock size={16} />
+          <span>{isHe ? 'צילומי מצב תקופתיים (סיום חודש / רבעון / שנה)' : 'Periodic Snapshots'}</span>
+          <span style={styles.subTabCountPill}>{snapshots.length}</span>
+        </button>
       </div>
 
-      {/* Main Assets Table */}
-      <div style={styles.tableCard}>
-        <div style={styles.tableHeaderBar}>
-          <div style={styles.tableTitleGroup}>
-            <Layers size={18} color="#2563EB" />
-            <h3 style={styles.tableTitle}>
-              {isHe ? 'פירוט ניירות ערך ופוזיציות' : 'Holdings & Positions'}
-            </h3>
-            <span style={styles.assetCountBadge}>
-              {investments.length} {isHe ? 'ניירות' : 'Assets'}
-            </span>
-          </div>
+      {/* TAB 1: ACTIVE HOLDINGS TABLE */}
+      {activeSubTab === 'portfolio' && (
+        <>
+          {/* Main Assets Table */}
+          <div style={styles.tableCard}>
+            <div style={styles.tableHeaderBar}>
+              <div style={styles.tableTitleGroup}>
+                <Layers size={18} color="#2563EB" />
+                <h3 style={styles.tableTitle}>
+                  {isHe ? 'פירוט ניירות ערך ופוזיציות' : 'Holdings & Positions'}
+                </h3>
+                <span style={styles.assetCountBadge}>
+                  {investments.length} {isHe ? 'ניירות' : 'Assets'}
+                </span>
+              </div>
 
-          <div style={styles.tableLegend}>
-            <span style={styles.legendItem}>
-              <span style={{ ...styles.legendDot, backgroundColor: '#059669' }} />
-              {isHe ? 'רווח' : 'Gain'}
-            </span>
-            <span style={styles.legendItem}>
-              <span style={{ ...styles.legendDot, backgroundColor: '#DC2626' }} />
-              {isHe ? 'הפסד' : 'Loss'}
-            </span>
-          </div>
-        </div>
+              <div style={styles.tableRightActions}>
+                <div style={styles.tableLegend}>
+                  <span style={styles.legendItem}>
+                    <span style={{ ...styles.legendDot, backgroundColor: '#059669' }} />
+                    {isHe ? 'רווח' : 'Gain'}
+                  </span>
+                  <span style={styles.legendItem}>
+                    <span style={{ ...styles.legendDot, backgroundColor: '#DC2626' }} />
+                    {isHe ? 'הפסד' : 'Loss'}
+                  </span>
+                </div>
+                <button
+                  style={styles.exportSmallBtn}
+                  onClick={handleExportCurrentStateCSV}
+                  title={isHe ? 'הורד קובץ CSV של מצב התיק הנוכחי' : 'Download CSV'}
+                >
+                  <Download size={13} color="var(--primary)" />
+                  <span>{isHe ? 'הורדת דוח (CSV)' : 'Export CSV'}</span>
+                </button>
+              </div>
+            </div>
 
-        <div style={styles.tableResponsiveWrap}>
-          <table style={styles.table}>
-            <thead>
-              <tr style={styles.thRow}>
-                <th style={styles.thCell}>{isHe ? 'נייר ערך / טיקר' : 'Asset / Ticker'}</th>
-                <th style={styles.thCell}>{isHe ? 'סך מניות' : 'Total Shares'}</th>
-                <th style={styles.thCell}>{isHe ? 'מחיר קנייה ממוצע' : 'Avg. Cost'}</th>
-                <th style={styles.thCell}>{isHe ? 'שער נוכחי בשוק' : 'Market Price'}</th>
-                <th style={styles.thCell}>{isHe ? 'סך השקעה' : 'Total Cost'}</th>
-                <th style={styles.thCell}>{isHe ? 'שווי נוכחי' : 'Current Value'}</th>
-                <th style={styles.thCell}>{isHe ? 'רווח / הפסד' : 'P&L'}</th>
-                <th style={styles.thCell}>{isHe ? 'תשואה' : 'Yield'}</th>
-                <th style={{ ...styles.thCell, textAlign: 'center' }}>{isHe ? 'פעימות' : 'Tranches'}</th>
-                <th style={{ ...styles.thCell, textAlign: 'center' }}>{isHe ? 'פעולות' : 'Actions'}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {investments.length === 0 ? (
-                <tr>
-                  <td colSpan={10} style={styles.emptyTd}>
-                    <div style={styles.emptyBox}>
-                      <Coins size={36} color="var(--text-muted)" />
-                      <div style={styles.emptyTitle}>
-                        {isHe ? 'אין עדיין ניירות ערך בתיק' : 'No investment holdings yet'}
-                      </div>
-                      <p style={styles.emptySub}>
-                        {isHe
-                          ? 'לחץ על "+ הוסף נייר ערך" כדי להתחיל לעקוב אחרי המניות וקרנות הסל שלך.'
-                          : 'Click "+ Add Asset" to start tracking your stocks, ETFs and tranches.'}
-                      </p>
-                      <button
-                        style={styles.addAssetBtn}
-                        onClick={() => handleOpenAddModal('new_asset')}
-                      >
-                        <Plus size={15} color="#FFFFFF" />
-                        <span>{isHe ? 'הוסף נייר ערך ראשון' : 'Add First Asset'}</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                investments.map((asset) => {
-                  const metrics = calculateAssetMetrics(asset);
-                  const isExpanded = Boolean(expandedAssetIds[asset.id]);
-                  const isProfit = metrics.profit >= 0;
-
-                  return (
-                    <React.Fragment key={asset.id}>
-                      <tr
-                        style={{
-                          ...styles.trRow,
-                          backgroundColor: isExpanded ? 'var(--bg-surface-subtle, #F8FAFC)' : 'transparent',
-                        }}
-                      >
-                        {/* Ticker & Name */}
-                        <td style={styles.tdCell}>
-                          <div style={styles.assetNameBlock}>
-                            <div style={styles.tickerPill}>
-                              {asset.ticker}
-                            </div>
-                            <div>
-                              <div style={styles.assetFullName}>{asset.name}</div>
-                              <span style={styles.assetTypeTag}>
-                                {asset.currency} • {asset.asset_type.toUpperCase()}
-                              </span>
-                            </div>
+            <div style={styles.tableResponsiveWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr style={styles.thRow}>
+                    <th style={styles.thCell}>{isHe ? 'סימול / שם נייר' : 'Ticker / Asset'}</th>
+                    <th style={styles.thCell}>{isHe ? 'מספר נייר' : 'Security No.'}</th>
+                    <th style={styles.thCell}>{isHe ? 'סוג נייר' : 'Asset Type'}</th>
+                    <th style={styles.thCell}>{isHe ? 'כמות מניות' : 'Quantity'}</th>
+                    <th style={styles.thCell}>{isHe ? 'מחיר קנייה ממוצע' : 'Avg. Cost'}</th>
+                    <th style={styles.thCell}>{isHe ? 'שער נוכחי (ערך נוכחי)' : 'Market Price'}</th>
+                    <th style={styles.thCell}>{isHe ? 'סך עלות רכישה' : 'Total Cost'}</th>
+                    <th style={styles.thCell}>{isHe ? 'שווי נוכחי' : 'Current Value'}</th>
+                    <th style={styles.thCell}>{isHe ? 'רווח / הפסד' : 'P&L'}</th>
+                    <th style={styles.thCell}>{isHe ? 'תשואה' : 'Yield'}</th>
+                    <th style={{ ...styles.thCell, textAlign: 'center' }}>{isHe ? 'פעימות' : 'Tranches'}</th>
+                    <th style={{ ...styles.thCell, textAlign: 'center' }}>{isHe ? 'פעולות' : 'Actions'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {investments.length === 0 ? (
+                    <tr>
+                      <td colSpan={12} style={styles.emptyTd}>
+                        <div style={styles.emptyBox}>
+                          <Coins size={36} color="var(--text-muted)" />
+                          <div style={styles.emptyTitle}>
+                            {isHe ? 'אין עדיין ניירות ערך בתיק' : 'No investment holdings yet'}
                           </div>
-                        </td>
+                          <p style={styles.emptySub}>
+                            {isHe
+                              ? 'לחץ על "+ הוסף נייר ערך" כדי להתחיל לעקוב אחרי המניות, קרנות הסל והמדדים שלך.'
+                              : 'Click "+ Add Asset" to track stocks, ETFs, indices and tranches.'}
+                          </p>
+                          <button
+                            style={styles.addAssetBtn}
+                            onClick={() => handleOpenAddModal('new_asset')}
+                          >
+                            <Plus size={15} color="#FFFFFF" />
+                            <span>{isHe ? 'הוסף נייר ערך ראשון' : 'Add First Asset'}</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    investments.map((asset) => {
+                      const metrics = calculateAssetMetrics(asset);
+                      const isExpanded = Boolean(expandedAssetIds[asset.id]);
+                      const isProfit = metrics.profit >= 0;
+                      const typeConfig = SECURITY_TYPE_LABELS[asset.asset_type] || {
+                        he: asset.asset_type,
+                        en: asset.asset_type,
+                        icon: '🏷️',
+                      };
 
-                        {/* Total Shares */}
-                        <td style={styles.tdCell}>
-                          <span style={styles.boldCellText}>
-                            {metrics.totalShares.toLocaleString('en-US', { maximumFractionDigits: 4 })}
-                          </span>
-                        </td>
+                      return (
+                        <React.Fragment key={asset.id}>
+                          <tr
+                            style={{
+                              ...styles.trRow,
+                              backgroundColor: isExpanded
+                                ? 'var(--bg-surface-subtle, #F8FAFC)'
+                                : 'transparent',
+                            }}
+                          >
+                            {/* Ticker & Name */}
+                            <td style={styles.tdCell}>
+                              <div style={styles.assetNameBlock}>
+                                <div style={styles.tickerPill}>{asset.ticker}</div>
+                                <div>
+                                  <div style={styles.assetFullName}>{asset.name}</div>
+                                  <span style={styles.currencyTag}>{asset.currency}</span>
+                                </div>
+                              </div>
+                            </td>
 
-                        {/* Weighted Avg Cost */}
-                        <td style={styles.tdCell}>
-                          <span style={styles.cellText}>
-                            {formatVal(metrics.avgPrice, asset.currency)}
-                          </span>
-                        </td>
-
-                        {/* Market Price with Quick Edit */}
-                        <td style={styles.tdCell}>
-                          {editingPriceAssetId === asset.id ? (
-                            <div style={styles.inlineEditWrap}>
-                              <input
-                                type="number"
-                                step="any"
-                                value={inlinePriceInput}
-                                onChange={(e) => setInlinePriceInput(e.target.value)}
-                                autoFocus
-                                style={styles.inlinePriceInput}
-                              />
-                              <button
-                                style={styles.inlineSaveBtn}
-                                onClick={() => handleSaveInlinePrice(asset.id)}
-                              >
-                                ✓
-                              </button>
-                              <button
-                                style={styles.inlineCancelBtn}
-                                onClick={() => setEditingPriceAssetId(null)}
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          ) : (
-                            <div style={styles.priceDisplayRow}>
-                              <span style={styles.boldCellText}>
-                                {formatVal(asset.current_price, asset.currency)}
+                            {/* Security Number (מספר נייר) */}
+                            <td style={styles.tdCell}>
+                              <span style={styles.securityNumberBadge}>
+                                {asset.security_number || '—'}
                               </span>
-                              <button
-                                style={styles.inlineEditTriggerBtn}
-                                onClick={() => {
-                                  setEditingPriceAssetId(asset.id);
-                                  setInlinePriceInput(asset.current_price.toString());
+                            </td>
+
+                            {/* Asset Type (סוג נייר) */}
+                            <td style={styles.tdCell}>
+                              <span style={styles.typeBadgePill}>
+                                <span style={{ marginRight: isHe ? 0 : '4px', marginLeft: isHe ? '4px' : 0 }}>
+                                  {typeConfig.icon}
+                                </span>
+                                <span>{isHe ? typeConfig.he : typeConfig.en}</span>
+                              </span>
+                            </td>
+
+                            {/* Total Shares (כמות) */}
+                            <td style={styles.tdCell}>
+                              <span style={styles.boldCellText}>
+                                {metrics.totalShares.toLocaleString('en-US', {
+                                  maximumFractionDigits: 4,
+                                })}
+                              </span>
+                            </td>
+
+                            {/* Weighted Avg Cost */}
+                            <td style={styles.tdCell}>
+                              <span style={styles.cellText}>
+                                {formatVal(metrics.avgPrice, asset.currency)}
+                              </span>
+                            </td>
+
+                            {/* Market Price with Quick Edit (שער נוכחי) */}
+                            <td style={styles.tdCell}>
+                              {editingPriceAssetId === asset.id ? (
+                                <div style={styles.inlineEditWrap}>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    value={inlinePriceInput}
+                                    onChange={(e) => setInlinePriceInput(e.target.value)}
+                                    autoFocus
+                                    style={styles.inlinePriceInput}
+                                  />
+                                  <button
+                                    style={styles.inlineSaveBtn}
+                                    onClick={() => handleSaveInlinePrice(asset.id)}
+                                  >
+                                    ✓
+                                  </button>
+                                  <button
+                                    style={styles.inlineCancelBtn}
+                                    onClick={() => setEditingPriceAssetId(null)}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={styles.priceDisplayRow}>
+                                  <span style={styles.boldCellText}>
+                                    {formatVal(asset.current_price, asset.currency)}
+                                  </span>
+                                  <button
+                                    style={styles.inlineEditTriggerBtn}
+                                    onClick={() => {
+                                      setEditingPriceAssetId(asset.id);
+                                      setInlinePriceInput(asset.current_price.toString());
+                                    }}
+                                    title={isHe ? 'עדכן שער שוק נוכחי' : 'Edit current price'}
+                                  >
+                                    <Edit2 size={12} color="var(--primary)" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Total Cost (סכום רכישה כולל) */}
+                            <td style={styles.tdCell}>
+                              <span style={styles.cellText}>
+                                {formatVal(metrics.totalCost, asset.currency)}
+                              </span>
+                            </td>
+
+                            {/* Current Value (שווי נוכחי) */}
+                            <td style={styles.tdCell}>
+                              <span style={{ ...styles.boldCellText, color: '#0F172A' }}>
+                                {formatVal(metrics.currentValue, asset.currency)}
+                              </span>
+                            </td>
+
+                            {/* Profit / Loss */}
+                            <td style={styles.tdCell}>
+                              <span
+                                style={{
+                                  ...styles.boldCellText,
+                                  color: isProfit ? '#059669' : '#DC2626',
                                 }}
-                                title={isHe ? 'עדכן שער שוק נוכחי' : 'Edit current price'}
                               >
-                                <Edit2 size={12} color="var(--primary)" />
+                                {isProfit ? '+' : ''}
+                                {formatVal(metrics.profit, asset.currency)}
+                              </span>
+                            </td>
+
+                            {/* Yield % */}
+                            <td style={styles.tdCell}>
+                              <span
+                                style={{
+                                  ...styles.yieldBadge,
+                                  backgroundColor: isProfit ? '#DCFCE7' : '#FEE2E2',
+                                  color: isProfit ? '#15803D' : '#B91C1C',
+                                }}
+                              >
+                                {isProfit ? '+' : ''}
+                                {metrics.returnPct.toFixed(2)}%
+                              </span>
+                            </td>
+
+                            {/* Tranches Expand Toggle */}
+                            <td style={{ ...styles.tdCell, textAlign: 'center' }}>
+                              <button
+                                style={{
+                                  ...styles.trancheExpandBtn,
+                                  ...(isExpanded ? styles.trancheExpandBtnActive : {}),
+                                }}
+                                onClick={() => toggleExpand(asset.id)}
+                                title={isHe ? 'הצג/הסתר פעימות רכישה' : 'Toggle tranches'}
+                              >
+                                <span>
+                                  {asset.tranches.length} {isHe ? 'פעימות' : 'tranches'}
+                                </span>
+                                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                               </button>
-                            </div>
+                            </td>
+
+                            {/* Actions */}
+                            <td style={{ ...styles.tdCell, textAlign: 'center' }}>
+                              <div style={styles.actionsRow}>
+                                <button
+                                  style={styles.addTrancheSmallBtn}
+                                  onClick={() => handleOpenAddModal('add_tranche', asset)}
+                                  title={isHe ? 'הוסף פעימת קנייה נוספת' : 'Add purchase tranche'}
+                                >
+                                  <Plus size={13} color="var(--primary)" />
+                                  <span>{isHe ? 'פעימה' : 'Tranche'}</span>
+                                </button>
+                                <button
+                                  style={styles.deleteAssetBtn}
+                                  onClick={() => {
+                                    if (
+                                      confirm(
+                                        isHe
+                                          ? `האם למחוק את ${asset.ticker} וכל פעימות הרכישה שלו?`
+                                          : `Delete ${asset.ticker} and all its tranches?`
+                                      )
+                                    ) {
+                                      deleteInvestmentAsset(asset.id);
+                                    }
+                                  }}
+                                  title={isHe ? 'מחק נייר ערך' : 'Delete asset'}
+                                >
+                                  <Trash2 size={14} color="#EF4444" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Tranche Drill-Down Sub-Table */}
+                          {isExpanded && (
+                            <tr style={styles.trancheSubTr}>
+                              <td colSpan={12} style={styles.trancheSubTd}>
+                                <div style={styles.trancheSubContainer} className="animate-fade-in">
+                                  <div style={styles.trancheSubHeader}>
+                                    <div style={styles.trancheSubTitle}>
+                                      <Calendar size={14} color="#2563EB" />
+                                      <span>
+                                        {isHe
+                                          ? `פירוט פעימות רכישה עבור ${asset.ticker} (${asset.name}):`
+                                          : `Purchase Tranche History for ${asset.ticker}:`}
+                                      </span>
+                                    </div>
+                                    <button
+                                      style={styles.addTrancheSubBtn}
+                                      onClick={() => handleOpenAddModal('add_tranche', asset)}
+                                    >
+                                      <Plus size={13} color="#2563EB" />
+                                      <span>{isHe ? '+ הוסף פעימה חדשה' : '+ Add Tranche'}</span>
+                                    </button>
+                                  </div>
+
+                                  <table style={styles.trancheTable}>
+                                    <thead>
+                                      <tr style={styles.trancheThRow}>
+                                        <th style={styles.trancheTh}>#</th>
+                                        <th style={styles.trancheTh}>{isHe ? 'תאריך רכישה' : 'Date'}</th>
+                                        <th style={styles.trancheTh}>{isHe ? 'כמות מניות' : 'Shares'}</th>
+                                        <th style={styles.trancheTh}>
+                                          {isHe ? 'שער קנייה ליחידה' : 'Price / Share'}
+                                        </th>
+                                        <th style={styles.trancheTh}>
+                                          {isHe ? 'עמלת מסחר' : 'Trading Fee'}
+                                        </th>
+                                        <th style={styles.trancheTh}>
+                                          {isHe ? 'סך סכום רכישה' : 'Total Tranche Cost'}
+                                        </th>
+                                        <th style={styles.trancheTh}>
+                                          {isHe ? 'שווי נוכחי לפעימה' : 'Current Value'}
+                                        </th>
+                                        <th style={styles.trancheTh}>
+                                          {isHe ? 'רווח/הפסד נקודתי' : 'Tranche P&L'}
+                                        </th>
+                                        <th style={styles.trancheTh}>{isHe ? 'תשואה' : 'Yield'}</th>
+                                        <th style={styles.trancheTh}>{isHe ? 'הערות' : 'Notes'}</th>
+                                        <th style={{ ...styles.trancheTh, textAlign: 'center' }}>
+                                          {isHe ? 'מחק' : 'Delete'}
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {asset.tranches.map((tr, idx) => {
+                                        const trCost =
+                                          tr.total_cost ||
+                                          tr.shares * tr.price_per_share + (tr.fee || 0);
+                                        const trVal = tr.shares * asset.current_price;
+                                        const trProfit = trVal - trCost;
+                                        const trYield =
+                                          trCost > 0 ? (trProfit / trCost) * 100 : 0;
+                                        const isTrProfit = trProfit >= 0;
+
+                                        return (
+                                          <tr key={tr.id} style={styles.trancheTr}>
+                                            <td style={styles.trancheTd}>
+                                              <span style={styles.trancheIndexPill}>{idx + 1}</span>
+                                            </td>
+                                            <td style={styles.trancheTd}>{tr.date}</td>
+                                            <td style={styles.trancheTd}>
+                                              <strong>{tr.shares}</strong>
+                                            </td>
+                                            <td style={styles.trancheTd}>
+                                              {formatVal(tr.price_per_share, asset.currency)}
+                                            </td>
+                                            <td style={styles.trancheTd}>
+                                              {tr.fee ? formatVal(tr.fee, asset.currency) : '—'}
+                                            </td>
+                                            <td style={styles.trancheTd}>
+                                              <strong>{formatVal(trCost, asset.currency)}</strong>
+                                            </td>
+                                            <td style={styles.trancheTd}>
+                                              {formatVal(trVal, asset.currency)}
+                                            </td>
+                                            <td style={styles.trancheTd}>
+                                              <span
+                                                style={{
+                                                  color: isTrProfit ? '#059669' : '#DC2626',
+                                                  fontWeight: '700',
+                                                }}
+                                              >
+                                                {isTrProfit ? '+' : ''}
+                                                {formatVal(trProfit, asset.currency)}
+                                              </span>
+                                            </td>
+                                            <td style={styles.trancheTd}>
+                                              <span
+                                                style={{
+                                                  ...styles.yieldPillSmall,
+                                                  backgroundColor: isTrProfit
+                                                    ? '#DCFCE7'
+                                                    : '#FEE2E2',
+                                                  color: isTrProfit ? '#15803D' : '#B91C1C',
+                                                }}
+                                              >
+                                                {isTrProfit ? '+' : ''}
+                                                {trYield.toFixed(2)}%
+                                              </span>
+                                            </td>
+                                            <td style={styles.trancheTd}>
+                                              <span style={styles.notesText}>{tr.notes || '—'}</span>
+                                            </td>
+                                            <td style={{ ...styles.trancheTd, textAlign: 'center' }}>
+                                              <button
+                                                style={styles.deleteTrancheBtn}
+                                                onClick={() => {
+                                                  if (
+                                                    confirm(
+                                                      isHe
+                                                        ? 'האם למחוק פעימת רכישה זו?'
+                                                        : 'Delete this purchase tranche?'
+                                                    )
+                                                  ) {
+                                                    deleteInvestmentTranche(asset.id, tr.id);
+                                                  }
+                                                }}
+                                                title={isHe ? 'מחק פעימה' : 'Delete tranche'}
+                                              >
+                                                <Trash2 size={13} color="#EF4444" />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
+                        </React.Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
 
-                        {/* Total Cost */}
+      {/* TAB 2: PERIODIC SNAPSHOTS & HISTORICAL CLOSURES (שלב ב') */}
+      {activeSubTab === 'snapshots' && (
+        <div style={styles.snapshotsContainer} className="animate-fade-in">
+          <div style={styles.snapshotsHeaderBox}>
+            <div>
+              <h3 style={styles.snapshotsTitle}>
+                {isHe
+                  ? 'צילומי מצב תקופתיים וסגירת חודש / רבעון / שנה'
+                  : 'Periodic Snapshots & End-of-Period Closures'}
+              </h3>
+              <p style={styles.snapshotsSubtitle}>
+                {isHe
+                  ? 'שמירת שווי נוכחי בכל נקודת זמן, מעקב ביצועים ורווח/הפסד נקודתי לאורך השנה, והורדת דוחות אקסל מלאים.'
+                  : 'Record portfolio value at specific milestones to measure periodic gain/loss and download historical reports.'}
+              </p>
+            </div>
+
+            <div style={styles.snapshotActionButtons}>
+              <button
+                style={styles.savePeriodBtn}
+                onClick={() => handleOpenSnapshotModal('month')}
+              >
+                <Calendar size={15} />
+                <span>{isHe ? '+ סגירת חודש' : '+ Month End'}</span>
+              </button>
+              <button
+                style={styles.savePeriodBtn}
+                onClick={() => handleOpenSnapshotModal('quarter')}
+              >
+                <Layers size={15} />
+                <span>{isHe ? '+ סגירת רבעון' : '+ Quarter End'}</span>
+              </button>
+              <button
+                style={styles.savePeriodBtn}
+                onClick={() => handleOpenSnapshotModal('year')}
+              >
+                <Clock size={15} />
+                <span>{isHe ? '+ סגירת שנה' : '+ Year End'}</span>
+              </button>
+              <button
+                style={styles.saveCurrentStateBtn}
+                onClick={() => handleOpenSnapshotModal('current')}
+              >
+                <CheckCircle2 size={15} />
+                <span>{isHe ? 'שמור מצב נוכחי כעת' : 'Save Current Point'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Snapshots Table */}
+          <div style={styles.tableCard}>
+            <div style={styles.tableHeaderBar}>
+              <div style={styles.tableTitleGroup}>
+                <Clock size={18} color="#2563EB" />
+                <h4 style={styles.tableTitle}>
+                  {isHe ? 'היסטוריית צילומי מצב וסגירות' : 'Saved Milestones & Point-in-Time P&L'}
+                </h4>
+              </div>
+            </div>
+
+            <table style={styles.table}>
+              <thead>
+                <tr style={styles.thRow}>
+                  <th style={styles.thCell}>{isHe ? 'תקופה / תיאור' : 'Period / Milestone'}</th>
+                  <th style={styles.thCell}>{isHe ? 'סוג סגירה' : 'Type'}</th>
+                  <th style={styles.thCell}>{isHe ? 'תאריך צילום מצב' : 'Date'}</th>
+                  <th style={styles.thCell}>{isHe ? 'סך עלות מושקעת' : 'Cost Basis'}</th>
+                  <th style={styles.thCell}>{isHe ? 'שווי תיק במועד זה' : 'Valuation'}</th>
+                  <th style={styles.thCell}>{isHe ? 'רווח/הפסד נקודתי' : 'Periodic P&L'}</th>
+                  <th style={styles.thCell}>{isHe ? 'תשואה נקודתית' : 'Return %'}</th>
+                  <th style={styles.thCell}>{isHe ? 'ניירות פעילים' : 'Holdings'}</th>
+                  <th style={{ ...styles.thCell, textAlign: 'center' }}>{isHe ? 'פעולות' : 'Actions'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshots.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={styles.emptyTd}>
+                      <div style={styles.emptyBox}>
+                        <Clock size={36} color="var(--text-muted)" />
+                        <div style={styles.emptyTitle}>
+                          {isHe ? 'אין צילומי מצב שמורים עדיין' : 'No saved milestones yet'}
+                        </div>
+                        <p style={styles.emptySub}>
+                          {isHe
+                            ? 'לחץ על "שמור מצב נוכחי כעת" או "סגירת חודש/רבעון" כדי לתעד נקודת זמן.'
+                            : 'Save your first periodic snapshot to track progress over time.'}
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  snapshots.map((snap) => {
+                    const isProfit = snap.total_profit >= 0;
+                    return (
+                      <tr key={snap.id} style={styles.trRow}>
                         <td style={styles.tdCell}>
-                          <span style={styles.cellText}>
-                            {formatVal(metrics.totalCost, asset.currency)}
+                          <div style={styles.boldCellText}>{snap.period_label}</div>
+                          {snap.notes && <div style={styles.notesText}>{snap.notes}</div>}
+                        </td>
+                        <td style={styles.tdCell}>
+                          <span style={styles.periodTypeBadge}>
+                            {snap.period_type === 'month' && (isHe ? 'סיום חודש' : 'Month End')}
+                            {snap.period_type === 'quarter' && (isHe ? 'סיום רבעון' : 'Quarter End')}
+                            {snap.period_type === 'year' && (isHe ? 'סיום שנה' : 'Year End')}
+                            {snap.period_type === 'current' && (isHe ? 'צילום נקודתי' : 'Custom Point')}
                           </span>
                         </td>
-
-                        {/* Current Value */}
+                        <td style={styles.tdCell}>{snap.date}</td>
                         <td style={styles.tdCell}>
-                          <span style={{ ...styles.boldCellText, color: '#0F172A' }}>
-                            {formatVal(metrics.currentValue, asset.currency)}
-                          </span>
+                          ₪{snap.total_invested.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </td>
-
-                        {/* Profit / Loss */}
+                        <td style={styles.tdCell}>
+                          <strong style={{ color: '#0F172A' }}>
+                            ₪{snap.total_value.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          </strong>
+                        </td>
                         <td style={styles.tdCell}>
                           <span
                             style={{
@@ -711,11 +1261,9 @@ export const InvestmentsView: React.FC = () => {
                             }}
                           >
                             {isProfit ? '+' : ''}
-                            {formatVal(metrics.profit, asset.currency)}
+                            ₪{snap.total_profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                           </span>
                         </td>
-
-                        {/* Yield % */}
                         <td style={styles.tdCell}>
                           <span
                             style={{
@@ -725,193 +1273,44 @@ export const InvestmentsView: React.FC = () => {
                             }}
                           >
                             {isProfit ? '+' : ''}
-                            {metrics.returnPct.toFixed(2)}%
+                            {snap.total_return_pct.toFixed(2)}%
                           </span>
                         </td>
-
-                        {/* Tranches Expand Toggle */}
-                        <td style={{ ...styles.tdCell, textAlign: 'center' }}>
-                          <button
-                            style={{
-                              ...styles.trancheExpandBtn,
-                              ...(isExpanded ? styles.trancheExpandBtnActive : {}),
-                            }}
-                            onClick={() => toggleExpand(asset.id)}
-                            title={isHe ? 'הצג/הסתר פעימות רכישה' : 'Toggle tranches'}
-                          >
-                            <span>{asset.tranches.length} {isHe ? 'פעימות' : 'tranches'}</span>
-                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                          </button>
+                        <td style={styles.tdCell}>
+                          <span>{snap.assets_count} {isHe ? 'ניירות' : 'Assets'}</span>
                         </td>
-
-                        {/* Actions */}
                         <td style={{ ...styles.tdCell, textAlign: 'center' }}>
                           <div style={styles.actionsRow}>
                             <button
-                              style={styles.addTrancheSmallBtn}
-                              onClick={() => handleOpenAddModal('add_tranche', asset)}
-                              title={isHe ? 'הוסף פעימת קנייה נוספת' : 'Add purchase tranche'}
+                              style={styles.exportSmallBtn}
+                              onClick={() => {
+                                handleExportCurrentStateCSV();
+                              }}
+                              title={isHe ? 'הורד דוח של צילום מצב זה' : 'Download report'}
                             >
-                              <Plus size={13} color="var(--primary)" />
-                              <span>{isHe ? 'פעימה' : 'Tranche'}</span>
+                              <Download size={13} color="var(--primary)" />
+                              <span>{isHe ? 'הורד דוח' : 'Download'}</span>
                             </button>
                             <button
                               style={styles.deleteAssetBtn}
-                              onClick={() => {
-                                if (
-                                  confirm(
-                                    isHe
-                                      ? `האם למחוק את ${asset.ticker} וכל פעימות הרכישה שלו?`
-                                      : `Delete ${asset.ticker} and all its tranches?`
-                                  )
-                                ) {
-                                  deleteInvestmentAsset(asset.id);
-                                }
-                              }}
-                              title={isHe ? 'מחק נייר ערך' : 'Delete asset'}
+                              onClick={() => handleDeleteSnapshot(snap.id)}
+                              title={isHe ? 'מחק צילום מצב' : 'Delete snapshot'}
                             >
                               <Trash2 size={14} color="#EF4444" />
                             </button>
                           </div>
                         </td>
                       </tr>
-
-                      {/* Tranche Drill-Down Sub-Table */}
-                      {isExpanded && (
-                        <tr style={styles.trancheSubTr}>
-                          <td colSpan={10} style={styles.trancheSubTd}>
-                            <div style={styles.trancheSubContainer} className="animate-fade-in">
-                              <div style={styles.trancheSubHeader}>
-                                <div style={styles.trancheSubTitle}>
-                                  <Calendar size={14} color="#2563EB" />
-                                  <span>
-                                    {isHe
-                                      ? `פירוט פעימות רכישה עבור ${asset.ticker} (${asset.name}):`
-                                      : `Purchase Tranche History for ${asset.ticker}:`}
-                                  </span>
-                                </div>
-                                <button
-                                  style={styles.addTrancheSubBtn}
-                                  onClick={() => handleOpenAddModal('add_tranche', asset)}
-                                >
-                                  <Plus size={13} color="#2563EB" />
-                                  <span>{isHe ? '+ הוסף פעימה חדשה' : '+ Add Tranche'}</span>
-                                </button>
-                              </div>
-
-                              <table style={styles.trancheTable}>
-                                <thead>
-                                  <tr style={styles.trancheThRow}>
-                                    <th style={styles.trancheTh}>#</th>
-                                    <th style={styles.trancheTh}>{isHe ? 'תאריך רכישה' : 'Date'}</th>
-                                    <th style={styles.trancheTh}>{isHe ? 'כמות מניות' : 'Shares'}</th>
-                                    <th style={styles.trancheTh}>{isHe ? 'שער קנייה' : 'Price / Share'}</th>
-                                    <th style={styles.trancheTh}>{isHe ? 'עמלה' : 'Trading Fee'}</th>
-                                    <th style={styles.trancheTh}>{isHe ? 'סך עלות פעימה' : 'Tranche Cost'}</th>
-                                    <th style={styles.trancheTh}>{isHe ? 'שווי נוכחי' : 'Current Value'}</th>
-                                    <th style={styles.trancheTh}>{isHe ? 'רווח/הפסד פעימה' : 'Tranche P&L'}</th>
-                                    <th style={styles.trancheTh}>{isHe ? 'תשואה' : 'Yield'}</th>
-                                    <th style={styles.trancheTh}>{isHe ? 'הערות' : 'Notes'}</th>
-                                    <th style={{ ...styles.trancheTh, textAlign: 'center' }}>
-                                      {isHe ? 'מחק' : 'Delete'}
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {asset.tranches.map((tr, idx) => {
-                                    const trCost = tr.shares * tr.price_per_share + (tr.fee || 0);
-                                    const trVal = tr.shares * asset.current_price;
-                                    const trProfit = trVal - trCost;
-                                    const trYield = trCost > 0 ? (trProfit / trCost) * 100 : 0;
-                                    const isTrProfit = trProfit >= 0;
-
-                                    return (
-                                      <tr key={tr.id} style={styles.trancheTr}>
-                                        <td style={styles.trancheTd}>
-                                          <span style={styles.trancheIndexPill}>
-                                            {idx + 1}
-                                          </span>
-                                        </td>
-                                        <td style={styles.trancheTd}>{tr.date}</td>
-                                        <td style={styles.trancheTd}>
-                                          <strong>{tr.shares}</strong>
-                                        </td>
-                                        <td style={styles.trancheTd}>
-                                          {formatVal(tr.price_per_share, asset.currency)}
-                                        </td>
-                                        <td style={styles.trancheTd}>
-                                          {tr.fee ? formatVal(tr.fee, asset.currency) : '—'}
-                                        </td>
-                                        <td style={styles.trancheTd}>
-                                          <strong>{formatVal(trCost, asset.currency)}</strong>
-                                        </td>
-                                        <td style={styles.trancheTd}>
-                                          {formatVal(trVal, asset.currency)}
-                                        </td>
-                                        <td style={styles.trancheTd}>
-                                          <span
-                                            style={{
-                                              color: isTrProfit ? '#059669' : '#DC2626',
-                                              fontWeight: '700',
-                                            }}
-                                          >
-                                            {isTrProfit ? '+' : ''}
-                                            {formatVal(trProfit, asset.currency)}
-                                          </span>
-                                        </td>
-                                        <td style={styles.trancheTd}>
-                                          <span
-                                            style={{
-                                              ...styles.yieldPillSmall,
-                                              backgroundColor: isTrProfit ? '#DCFCE7' : '#FEE2E2',
-                                              color: isTrProfit ? '#15803D' : '#B91C1C',
-                                            }}
-                                          >
-                                            {isTrProfit ? '+' : ''}
-                                            {trYield.toFixed(2)}%
-                                          </span>
-                                        </td>
-                                        <td style={styles.trancheTd}>
-                                          <span style={styles.notesText}>{tr.notes || '—'}</span>
-                                        </td>
-                                        <td style={{ ...styles.trancheTd, textAlign: 'center' }}>
-                                          <button
-                                            style={styles.deleteTrancheBtn}
-                                            onClick={() => {
-                                              if (
-                                                confirm(
-                                                  isHe
-                                                    ? 'האם למחוק פעימת רכישה זו?'
-                                                    : 'Delete this purchase tranche?'
-                                                )
-                                              ) {
-                                                deleteInvestmentTranche(asset.id, tr.id);
-                                              }
-                                            }}
-                                            title={isHe ? 'מחק פעימה' : 'Delete tranche'}
-                                          >
-                                            <Trash2 size={13} color="#EF4444" />
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Modal: Add Asset or Tranche */}
+      {/* MODAL: ADD ASSET / TRANCHE */}
       {isModalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalCard} className="animate-fade-in">
@@ -942,12 +1341,12 @@ export const InvestmentsView: React.FC = () => {
                   <div style={styles.formRow2}>
                     <div style={styles.formGroup}>
                       <label style={styles.formLabel}>
-                        {isHe ? 'טיקר / סימול (Ticker) *' : 'Ticker Symbol *'}
+                        {isHe ? 'סימול נייר (Ticker / Symbol) *' : 'Ticker Symbol *'}
                       </label>
                       <input
                         style={styles.formInput}
                         type="text"
-                        placeholder="e.g. AAPL, VOO, TA125"
+                        placeholder="e.g. AAPL, VOO, TA125, TEVA"
                         value={formTicker}
                         onChange={(e) => setFormTicker(e.target.value)}
                         required
@@ -956,15 +1355,50 @@ export const InvestmentsView: React.FC = () => {
 
                     <div style={styles.formGroup}>
                       <label style={styles.formLabel}>
-                        {isHe ? 'שם החברה / הנייר' : 'Asset Name'}
+                        {isHe ? 'מספר נייר בבורסה (Security Number)' : 'Security Number'}
                       </label>
                       <input
                         style={styles.formInput}
                         type="text"
-                        placeholder="e.g. Apple Inc., מדד ת״א 125"
+                        placeholder="e.g. 1159250 או ISIN"
+                        value={formSecurityNumber}
+                        onChange={(e) => setFormSecurityNumber(e.target.value)}
+                      />
+                      <span style={styles.inputHelper}>
+                        {isHe ? 'מספר הנייר כפי שמופיע בחשבון הבנק/ברוקר' : 'Official exchange / ISIN code'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={styles.formRow2}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.formLabel}>
+                        {isHe ? 'שם הנייר / החברה' : 'Asset / Company Name'}
+                      </label>
+                      <input
+                        style={styles.formInput}
+                        type="text"
+                        placeholder="e.g. Vanguard S&P 500 ETF, אפל"
                         value={formName}
                         onChange={(e) => setFormName(e.target.value)}
                       />
+                    </div>
+
+                    <div style={styles.formGroup}>
+                      <label style={styles.formLabel}>
+                        {isHe ? 'סוג נייר (Asset Type) *' : 'Security Type *'}
+                      </label>
+                      <select
+                        style={styles.formSelect}
+                        value={formAssetType}
+                        onChange={(e) => setFormAssetType(e.target.value as any)}
+                      >
+                        {Object.entries(SECURITY_TYPE_LABELS).map(([key, labelObj]) => (
+                          <option key={key} value={key}>
+                            {labelObj.icon} {isHe ? labelObj.he : labelObj.en}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
@@ -985,19 +1419,21 @@ export const InvestmentsView: React.FC = () => {
 
                     <div style={styles.formGroup}>
                       <label style={styles.formLabel}>
-                        {isHe ? 'סוג הנכס' : 'Asset Type'}
+                        {isHe
+                          ? `שער מניה נוכחי בשוק (${formCurrency === 'USD' ? '$' : '₪'})`
+                          : `Current Market Price (${formCurrency === 'USD' ? '$' : '₪'})`}
                       </label>
-                      <select
-                        style={styles.formSelect}
-                        value={formAssetType}
-                        onChange={(e) => setFormAssetType(e.target.value as any)}
-                      >
-                        <option value="stock">{isHe ? 'מניה (Stock)' : 'Stock'}</option>
-                        <option value="etf">{isHe ? 'קרן סל מחקה (ETF)' : 'ETF'}</option>
-                        <option value="mutual_fund">{isHe ? 'קרן נאמנות' : 'Mutual Fund'}</option>
-                        <option value="bond">{isHe ? 'אג״ח (Bond)' : 'Bond'}</option>
-                        <option value="crypto">{isHe ? 'קריפטו (Crypto)' : 'Crypto'}</option>
-                      </select>
+                      <input
+                        style={styles.formInput}
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 130"
+                        value={formCurrentPrice}
+                        onChange={(e) => setFormCurrentPrice(e.target.value)}
+                      />
+                      <span style={styles.inputHelper}>
+                        {isHe ? 'אם לא הוזן, ייקבע לפי שער הקנייה' : 'Defaults to purchase price if empty'}
+                      </span>
                     </div>
                   </div>
                 </>
@@ -1005,13 +1441,13 @@ export const InvestmentsView: React.FC = () => {
 
               {/* Tranche Details */}
               <div style={styles.sectionDivider}>
-                <span>{isHe ? 'פרטי פעימת הרכישה' : 'Purchase Tranche Details'}</span>
+                <span>{isHe ? 'פרטי פעימת הרכישה (תאריך, כמות וסכום)' : 'Purchase Tranche Details'}</span>
               </div>
 
               <div style={styles.formRow3}>
                 <div style={styles.formGroup}>
                   <label style={styles.formLabel}>
-                    {isHe ? 'תאריך קנייה *' : 'Purchase Date *'}
+                    {isHe ? 'תאריך רכישה *' : 'Purchase Date *'}
                   </label>
                   <input
                     style={styles.formInput}
@@ -1024,7 +1460,7 @@ export const InvestmentsView: React.FC = () => {
 
                 <div style={styles.formGroup}>
                   <label style={styles.formLabel}>
-                    {isHe ? 'כמות מניות *' : 'Shares Count *'}
+                    {isHe ? 'כמות מניות / יחידות *' : 'Shares / Quantity *'}
                   </label>
                   <input
                     style={styles.formInput}
@@ -1032,7 +1468,7 @@ export const InvestmentsView: React.FC = () => {
                     step="any"
                     placeholder="e.g. 10"
                     value={formShares}
-                    onChange={(e) => setFormShares(e.target.value)}
+                    onChange={(e) => handleSharesChange(e.target.value)}
                     required
                   />
                 </div>
@@ -1040,7 +1476,7 @@ export const InvestmentsView: React.FC = () => {
                 <div style={styles.formGroup}>
                   <label style={styles.formLabel}>
                     {isHe
-                      ? `מחיר קנייה למניה (${formCurrency === 'USD' ? '$' : '₪'}) *`
+                      ? `מחיר ליחידה (${formCurrency === 'USD' ? '$' : '₪'}) *`
                       : `Price per Share (${formCurrency === 'USD' ? '$' : '₪'}) *`}
                   </label>
                   <input
@@ -1049,7 +1485,7 @@ export const InvestmentsView: React.FC = () => {
                     step="any"
                     placeholder="e.g. 100"
                     value={formPricePerShare}
-                    onChange={(e) => setFormPricePerShare(e.target.value)}
+                    onChange={(e) => handlePricePerShareChange(e.target.value)}
                     required
                   />
                 </div>
@@ -1059,19 +1495,19 @@ export const InvestmentsView: React.FC = () => {
                 <div style={styles.formGroup}>
                   <label style={styles.formLabel}>
                     {isHe
-                      ? `שער מניה נוכחי בשוק (${formCurrency === 'USD' ? '$' : '₪'})`
-                      : `Current Market Price (${formCurrency === 'USD' ? '$' : '₪'})`}
+                      ? `סך סכום רכישה לפעימה (${formCurrency === 'USD' ? '$' : '₪'})`
+                      : `Total Tranche Amount (${formCurrency === 'USD' ? '$' : '₪'})`}
                   </label>
                   <input
                     style={styles.formInput}
                     type="number"
                     step="any"
-                    placeholder="e.g. 130"
-                    value={formCurrentPrice}
-                    onChange={(e) => setFormCurrentPrice(e.target.value)}
+                    placeholder="e.g. 1000"
+                    value={formTotalCost}
+                    onChange={(e) => handleTotalCostChange(e.target.value)}
                   />
                   <span style={styles.inputHelper}>
-                    {isHe ? 'אם לא הוזן, ייקבע לפי שער הקנייה' : 'Defaults to purchase price if empty'}
+                    {isHe ? 'סכום כולל מחושב אוטומטית (כמות × מחיר + עמלה)' : 'Auto calculated: shares × price + fee'}
                   </span>
                 </div>
 
@@ -1087,10 +1523,16 @@ export const InvestmentsView: React.FC = () => {
                     step="any"
                     placeholder="0"
                     value={formFee}
-                    onChange={(e) => setFormFee(e.target.value)}
+                    onChange={(e) => {
+                      setFormFee(e.target.value);
+                      const s = parseFloat(formShares);
+                      const p = parseFloat(formPricePerShare);
+                      const f = parseFloat(e.target.value) || 0;
+                      if (s > 0 && p >= 0) setFormTotalCost((s * p + f).toFixed(2));
+                    }}
                   />
                   <span style={styles.inputHelper}>
-                    {isHe ? 'תווסף לעלות הרכישה להקטנת המס' : 'Added to cost basis'}
+                    {isHe ? 'תווסף לעלות הרכישה להקטנת מס רווחי הון' : 'Added to cost basis'}
                   </span>
                 </div>
               </div>
@@ -1173,6 +1615,123 @@ export const InvestmentsView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* MODAL: PERIODIC SNAPSHOT CLOSURE (שלב ב') */}
+      {isSnapshotModalOpen && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCard} className="animate-fade-in">
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleRow}>
+                <Clock size={20} color="#2563EB" />
+                <h3 style={styles.modalTitle}>
+                  {isHe ? 'שמירת צילום מצב וסגירת תקופה' : 'Save Periodic Snapshot Closure'}
+                </h3>
+              </div>
+              <button
+                style={styles.modalCloseBtn}
+                onClick={() => setIsSnapshotModalOpen(false)}
+              >
+                <X size={18} color="var(--text-secondary)" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSnapshot} style={styles.modalForm}>
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>
+                  {isHe ? 'סוג הסגירה' : 'Period Type'}
+                </label>
+                <select
+                  style={styles.formSelect}
+                  value={snapshotPeriodType}
+                  onChange={(e) => handleOpenSnapshotModal(e.target.value as any)}
+                >
+                  <option value="month">{isHe ? 'סיום חודש' : 'End of Month'}</option>
+                  <option value="quarter">{isHe ? 'סיום רבעון' : 'End of Quarter'}</option>
+                  <option value="year">{isHe ? 'סיום שנה' : 'End of Year'}</option>
+                  <option value="current">{isHe ? 'צילום נקודתי כעת' : 'Current Point in Time'}</option>
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>
+                  {isHe ? 'כותרת / תיאור התקופה *' : 'Period Label *'}
+                </label>
+                <input
+                  style={styles.formInput}
+                  type="text"
+                  value={snapshotLabel}
+                  onChange={(e) => setSnapshotLabel(e.target.value)}
+                  placeholder="e.g. סיום רבעון Q1 2026"
+                  required
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>
+                  {isHe ? 'תאריך סגירה *' : 'Snapshot Date *'}
+                </label>
+                <input
+                  style={styles.formInput}
+                  type="date"
+                  value={snapshotDate}
+                  onChange={(e) => setSnapshotDate(e.target.value)}
+                  required
+                />
+              </div>
+
+              {/* Current Snapshot Metrics Preview */}
+              <div style={styles.snapshotSummaryPreview}>
+                <div style={styles.snapshotPreviewRow}>
+                  <span>{isHe ? 'סך עלות מושקעת במועד זה:' : 'Cost Basis at snapshot:'}</span>
+                  <strong>₪{portfolioSummary.totalInvestedILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}</strong>
+                </div>
+                <div style={styles.snapshotPreviewRow}>
+                  <span>{isHe ? 'שווי שוק במועד זה:' : 'Market Valuation:'}</span>
+                  <strong>₪{portfolioSummary.currentValueILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}</strong>
+                </div>
+                <div style={styles.snapshotPreviewRow}>
+                  <span>{isHe ? 'רווח נקודתי לתקופה:' : 'Point-in-Time Gain:'}</span>
+                  <strong style={{ color: portfolioSummary.totalProfitILS >= 0 ? '#059669' : '#DC2626' }}>
+                    {portfolioSummary.totalProfitILS >= 0 ? '+' : ''}
+                    ₪{portfolioSummary.totalProfitILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
+                    ({portfolioSummary.totalReturnPct.toFixed(2)}%)
+                  </strong>
+                </div>
+                <div style={styles.snapshotPreviewRow}>
+                  <span>{isHe ? 'מספר ניירות בתיק:' : 'Assets in Portfolio:'}</span>
+                  <strong>{investments.length}</strong>
+                </div>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.formLabel}>
+                  {isHe ? 'הערות / סיכום (אופציונלי)' : 'Notes / Remarks'}
+                </label>
+                <input
+                  style={styles.formInput}
+                  type="text"
+                  value={snapshotNotes}
+                  onChange={(e) => setSnapshotNotes(e.target.value)}
+                  placeholder="e.g. סגירת תיק לקראת דיווח מס שנתי"
+                />
+              </div>
+
+              <div style={styles.modalActions}>
+                <button
+                  type="button"
+                  style={styles.modalCancelBtn}
+                  onClick={() => setIsSnapshotModalOpen(false)}
+                >
+                  {isHe ? 'ביטול' : 'Cancel'}
+                </button>
+                <button type="submit" style={styles.modalSubmitBtn}>
+                  {isHe ? 'שמור סגירת תקופה' : 'Save Milestone'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1216,7 +1775,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   subtitle: {
     fontSize: '0.9375rem',
     color: 'var(--text-secondary, #64748B)',
-    maxWidth: '700px',
+    maxWidth: '740px',
     lineHeight: '1.5',
   },
   headerActions: {
@@ -1224,6 +1783,20 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: '12px',
+  },
+  exportCurrentBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    backgroundColor: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    borderRadius: '10px',
+    color: '#2563EB',
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   currencyToggleGroup: {
     display: 'flex',
@@ -1352,99 +1925,37 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.75rem',
     fontWeight: '800',
   },
-  formulaAccordionBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: '16px',
-    border: '1px solid var(--border-main, #E2E8F0)',
-    overflow: 'hidden',
-    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.02)',
-  },
-  formulaAccordionHeader: {
-    width: '100%',
+  subTabNav: {
     display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '16px 20px',
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    textAlign: 'inherit',
+    gap: '8px',
+    borderBottom: '1px solid var(--border-main, #E2E8F0)',
+    paddingBottom: '8px',
   },
-  formulaHeaderLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-  },
-  formulaTitle: {
-    fontSize: '0.9375rem',
-    fontWeight: '700',
-    color: 'var(--text-primary, #0F172A)',
-  },
-  formulaBody: {
-    padding: '0 20px 20px',
-    borderTop: '1px solid #F1F5F9',
-  },
-  formulaGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-    gap: '14px',
-    marginTop: '16px',
-  },
-  formulaStepCard: {
-    display: 'flex',
-    gap: '12px',
-    backgroundColor: 'var(--bg-surface-subtle, #F8FAFC)',
-    padding: '14px',
-    borderRadius: '12px',
-    border: '1px solid var(--border-main, #E2E8F0)',
-  },
-  stepNum: {
-    width: '28px',
-    height: '28px',
-    borderRadius: '50%',
-    backgroundColor: '#2563EB',
-    color: '#FFFFFF',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '0.8125rem',
-    fontWeight: '800',
-    flexShrink: 0,
-  },
-  stepTitle: {
-    fontSize: '0.875rem',
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: '4px',
-  },
-  stepDesc: {
-    fontSize: '0.75rem',
-    color: '#64748B',
-    lineHeight: '1.45',
-  },
-  taxNotesBox: {
-    marginTop: '18px',
-    padding: '14px 18px',
-    backgroundColor: '#F0FDF4',
-    borderRadius: '12px',
-    border: '1px solid #BBF7D0',
-  },
-  taxNotesTitle: {
+  subTabBtn: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+    padding: '8px 16px',
+    borderRadius: '10px',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: 'var(--text-secondary, #64748B)',
+    fontWeight: '700',
     fontSize: '0.875rem',
-    fontWeight: '800',
-    color: '#166534',
-    marginBottom: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
-  taxNotesList: {
-    margin: 0,
-    paddingLeft: '20px',
-    paddingRight: '20px',
-    fontSize: '0.8125rem',
-    color: '#1E293B',
-    lineHeight: '1.6',
+  subTabBtnActive: {
+    backgroundColor: '#EFF6FF',
+    color: '#2563EB',
+  },
+  subTabCountPill: {
+    padding: '2px 7px',
+    borderRadius: '12px',
+    backgroundColor: '#E2E8F0',
+    fontSize: '0.6875rem',
+    fontWeight: '800',
+    color: '#334155',
   },
   tableCard: {
     backgroundColor: '#FFFFFF',
@@ -1479,10 +1990,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.75rem',
     fontWeight: '700',
   },
-  tableLegend: {
+  tableRightActions: {
     display: 'flex',
     alignItems: 'center',
     gap: '14px',
+  },
+  tableLegend: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
     fontSize: '0.75rem',
     color: 'var(--text-secondary, #64748B)',
   },
@@ -1495,6 +2011,19 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: '8px',
     height: '8px',
     borderRadius: '50%',
+  },
+  exportSmallBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    padding: '5px 10px',
+    backgroundColor: '#F1F5F9',
+    border: '1px solid #CBD5E1',
+    borderRadius: '7px',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: '#334155',
+    cursor: 'pointer',
   },
   tableResponsiveWrap: {
     overflowX: 'auto',
@@ -1509,7 +2038,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderBottom: '1px solid var(--border-main, #E2E8F0)',
   },
   thCell: {
-    padding: '12px 16px',
+    padding: '12px 14px',
     fontSize: '0.75rem',
     fontWeight: '700',
     color: 'var(--text-secondary, #64748B)',
@@ -1520,32 +2049,52 @@ const styles: { [key: string]: React.CSSProperties } = {
     transition: 'background-color 0.15s ease',
   },
   tdCell: {
-    padding: '14px 16px',
+    padding: '13px 14px',
     fontSize: '0.875rem',
     verticalAlign: 'middle',
   },
   assetNameBlock: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: '8px',
   },
   tickerPill: {
-    padding: '4px 8px',
+    padding: '3px 7px',
     backgroundColor: '#F1F5F9',
-    borderRadius: '8px',
+    borderRadius: '6px',
     fontWeight: '800',
     fontSize: '0.8125rem',
     color: '#0F172A',
-    letterSpacing: '0.02em',
     border: '1px solid #CBD5E1',
   },
   assetFullName: {
     fontWeight: '700',
     color: '#0F172A',
+    fontSize: '0.875rem',
   },
-  assetTypeTag: {
+  currencyTag: {
     fontSize: '0.6875rem',
     color: '#64748B',
+  },
+  securityNumberBadge: {
+    padding: '2px 6px',
+    backgroundColor: '#F8FAFC',
+    border: '1px solid #E2E8F0',
+    borderRadius: '5px',
+    fontSize: '0.75rem',
+    fontFamily: 'monospace',
+    color: '#475569',
+  },
+  typeBadgePill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '2px 8px',
+    backgroundColor: '#F1F5F9',
+    borderRadius: '8px',
+    fontSize: '0.75rem',
+    fontWeight: '600',
+    color: '#334155',
+    whiteSpace: 'nowrap',
   },
   boldCellText: {
     fontWeight: '700',
@@ -1612,15 +2161,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '4px',
-    padding: '5px 10px',
+    padding: '4px 8px',
     backgroundColor: '#F1F5F9',
     border: '1px solid #CBD5E1',
-    borderRadius: '8px',
+    borderRadius: '6px',
     fontSize: '0.75rem',
     fontWeight: '700',
     color: '#334155',
     cursor: 'pointer',
-    transition: 'all 0.15s ease',
   },
   trancheExpandBtnActive: {
     backgroundColor: '#EFF6FF',
@@ -1661,7 +2209,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderBottom: '2px solid #CBD5E1',
   },
   trancheSubTd: {
-    padding: '12px 20px 20px',
+    padding: '12px 16px 20px',
   },
   trancheSubContainer: {
     backgroundColor: '#FFFFFF',
@@ -1717,12 +2265,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderBottom: '1px solid #F1F5F9',
   },
   trancheTd: {
-    padding: '10px',
+    padding: '9px 10px',
     color: '#1E293B',
   },
   trancheIndexPill: {
-    width: '20px',
-    height: '20px',
+    width: '18px',
+    height: '18px',
     borderRadius: '50%',
     backgroundColor: '#E2E8F0',
     display: 'flex',
@@ -1773,6 +2321,88 @@ const styles: { [key: string]: React.CSSProperties } = {
     margin: 0,
     lineHeight: '1.5',
   },
+  snapshotsContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '20px',
+  },
+  snapshotsHeaderBox: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '16px',
+    backgroundColor: '#FFFFFF',
+    padding: '20px 24px',
+    borderRadius: '16px',
+    border: '1px solid #E2E8F0',
+  },
+  snapshotsTitle: {
+    fontSize: '1.125rem',
+    fontWeight: '800',
+    color: '#0F172A',
+    margin: '0 0 6px 0',
+  },
+  snapshotsSubtitle: {
+    fontSize: '0.875rem',
+    color: '#64748B',
+    margin: 0,
+  },
+  snapshotActionButtons: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '8px',
+  },
+  savePeriodBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    backgroundColor: '#F1F5F9',
+    border: '1px solid #CBD5E1',
+    borderRadius: '10px',
+    color: '#334155',
+    fontWeight: '700',
+    fontSize: '0.8125rem',
+    cursor: 'pointer',
+  },
+  saveCurrentStateBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 16px',
+    backgroundColor: '#2563EB',
+    color: '#FFFFFF',
+    border: 'none',
+    borderRadius: '10px',
+    fontWeight: '700',
+    fontSize: '0.8125rem',
+    cursor: 'pointer',
+  },
+  periodTypeBadge: {
+    padding: '3px 8px',
+    backgroundColor: '#EFF6FF',
+    borderRadius: '6px',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  snapshotSummaryPreview: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: '12px',
+    border: '1px solid #E2E8F0',
+    padding: '14px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  snapshotPreviewRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.8125rem',
+    color: '#334155',
+  },
   modalOverlay: {
     position: 'fixed',
     top: 0,
@@ -1792,7 +2422,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '20px',
     border: '1px solid #E2E8F0',
     width: '100%',
-    maxWidth: '560px',
+    maxWidth: '580px',
     maxHeight: '90vh',
     overflowY: 'auto',
     padding: '24px',

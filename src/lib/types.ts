@@ -344,27 +344,56 @@ export interface HistoricalImportResult {
 // CAPITAL MARKET & INVESTMENT PORTFOLIO TYPES
 // ==========================================
 
+export type SecurityType =
+  | 'stock' // מניה
+  | 'etf' // קרן סל מחקת מדד
+  | 'index' // מדד
+  | 'mutual_fund' // קרן נאמנות
+  | 'bond' // אג״ח ממשלתי / קונצרני
+  | 'ira_provident' // קופת גמל / קרן השתלמות מחקה
+  | 'tbill' // מק״מ / פיקדון מובנה
+  | 'foreign_security' // נייר ערך זר
+  | 'commodity' // סחורות / זהב
+  | 'crypto' // מטבע קריפטוגרפי
+  | 'other'; // נייר ערך אחר
+
 export interface InvestmentTranche {
   id: string;
-  date: string; // YYYY-MM-DD
-  shares: number; // Quantity of shares purchased in this tranche
-  price_per_share: number; // Purchase price per share
-  fee: number; // Commission / Trading fee
+  date: string; // תאריך רכישה (YYYY-MM-DD)
+  shares: number; // כמות מניות
+  price_per_share: number; // מחיר קנייה למניה / יחידה
+  total_cost?: number; // סכום רכישה כולל (אופציונלי)
+  fee: number; // עמלת מסחר
   notes?: string;
 }
 
 export interface InvestmentAsset {
   id: string;
   household_id: string;
-  ticker: string; // e.g. VOO, AAPL, NVDA, TA125
-  name: string; // e.g. Vanguard S&P 500 ETF, Apple Inc.
+  ticker: string; // סימול נייר (AAPL, VOO, TEVA...)
+  security_number?: string; // מספר נייר בבורסה (למשל 1159250 או ISIN)
+  name: string; // שם הנייר / החברה
   currency: 'USD' | 'ILS';
-  current_price: number; // Current market price per share
-  asset_type: 'stock' | 'etf' | 'mutual_fund' | 'crypto' | 'bond';
+  current_price: number; // שער מניה נוכחי בשוק (ערך נוכחי)
+  asset_type: SecurityType; // סוג נייר
   target_allocation_pct?: number;
   tranches: InvestmentTranche[];
   created_at: string;
   updated_at: string;
+}
+
+export interface InvestmentPeriodicSnapshot {
+  id: string;
+  household_id: string;
+  period_type: 'month' | 'quarter' | 'year' | 'current';
+  period_label: string; // e.g. "מרץ 2026", "רבעון Q1 2026", "שנת 2025"
+  date: string; // ISO date of snapshot
+  total_invested: number;
+  total_value: number;
+  total_profit: number;
+  total_return_pct: number;
+  assets_count: number;
+  notes?: string;
 }
 
 

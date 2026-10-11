@@ -5,6 +5,7 @@ import {
   Plus,
   UploadCloud,
   PieChart,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { t } from '../lib/i18n';
@@ -72,25 +73,25 @@ export const MobileBottomNav: React.FC = () => {
         </button>
       </div>
 
-      {/* 4. Import Wizard */}
+      {/* 4. Investments & Capital Market */}
       <button
         style={{
           ...styles.navTab,
-          ...(activeTab === 'import' ? styles.navTabActive : {}),
+          ...(activeTab === 'investments' ? styles.navTabActive : {}),
         }}
-        onClick={() => setActiveTab('import')}
+        onClick={() => setActiveTab('investments')}
       >
-        <UploadCloud
+        <TrendingUp
           size={20}
-          color={activeTab === 'import' ? 'var(--primary)' : 'var(--text-muted)'}
+          color={activeTab === 'investments' ? 'var(--primary)' : 'var(--text-muted)'}
         />
         <span
           style={{
             ...styles.tabLabel,
-            ...(activeTab === 'import' ? styles.tabLabelActive : {}),
+            ...(activeTab === 'investments' ? styles.tabLabelActive : {}),
           }}
         >
-          {t('tabImport', language)}
+          {t('tabInvestments', language)}
         </span>
       </button>
 

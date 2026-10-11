@@ -28,6 +28,7 @@ export const translations = {
     tabAdd: 'הוסף',
     tabImport: 'ייבוא',
     tabBudgets: 'תקציבים',
+    tabInvestments: 'השקעות',
 
     // Main Dashboard
     kpiTotalIncome: 'סה"כ הכנסות',
@@ -197,6 +198,7 @@ export const translations = {
     tabAdd: 'Add',
     tabImport: 'Import',
     tabBudgets: 'Budgets',
+    tabInvestments: 'Investments',
 
     // Main Dashboard
     kpiTotalIncome: 'Total Income',
