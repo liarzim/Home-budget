@@ -45,17 +45,33 @@ export async function fetchMonthlyDashboardData(
   let rawBudgets: Budget[] = [];
 
   if (isDemoMode || !isSupabaseConfigured) {
-    // Demo mode: Filter in-memory mock transactions strictly where is_hidden is false and date in range
-    rawTransactions = mockTransactions.filter(
-      (tx) =>
-        (tx.household_id === householdId || tx.household_id === 'hh-main') &&
-        !tx.is_hidden &&
-        tx.date >= startDate &&
-        tx.date <= endDate
-    );
-    rawBudgets = mockBudgets.filter(
-      (b) => b.household_id === householdId || b.household_id === 'hh-main'
-    );
+    const isCleared = typeof window !== 'undefined' && localStorage.getItem('demo_data_cleared') === 'true';
+    if (isCleared) {
+      const savedTxs = typeof window !== 'undefined' ? localStorage.getItem('demo_transactions') : null;
+      const allTxs: Transaction[] = savedTxs ? JSON.parse(savedTxs) : [];
+      rawTransactions = allTxs.filter(
+        (tx) =>
+          (tx.household_id === householdId || tx.household_id === 'hh-main') &&
+          !tx.is_hidden &&
+          tx.date >= startDate &&
+          tx.date <= endDate
+      );
+      const savedBgs = typeof window !== 'undefined' ? localStorage.getItem('demo_budgets') : null;
+      rawBudgets = savedBgs ? JSON.parse(savedBgs) : [];
+    } else {
+      const savedTxs = typeof window !== 'undefined' ? localStorage.getItem('demo_transactions') : null;
+      const allTxs: Transaction[] = savedTxs ? JSON.parse(savedTxs) : mockTransactions;
+      rawTransactions = allTxs.filter(
+        (tx) =>
+          (tx.household_id === householdId || tx.household_id === 'hh-main') &&
+          !tx.is_hidden &&
+          tx.date >= startDate &&
+          tx.date <= endDate
+      );
+      rawBudgets = mockBudgets.filter(
+        (b) => b.household_id === householdId || b.household_id === 'hh-main'
+      );
+    }
   } else {
     try {
       // Supabase query with strict is_hidden = false filter
@@ -493,10 +509,20 @@ export async function fetchYearlySavingsData(
 ): Promise<SavingsYearlySummary> {
   let records: Savings[] = [];
 
+  const isCleared = typeof window !== 'undefined' && localStorage.getItem('demo_data_cleared') === 'true';
+
   if (isDemoMode || !isSupabaseConfigured) {
-    records = mockSavings.filter(
-      (s) => (s.household_id === householdId || s.household_id === 'hh-main') && s.year === year
-    );
+    if (isCleared) {
+      const savedSavings = typeof window !== 'undefined' ? localStorage.getItem('demo_savings') : null;
+      const allSavings: Savings[] = savedSavings ? JSON.parse(savedSavings) : [];
+      records = allSavings.filter(
+        (s) => (s.household_id === householdId || s.household_id === 'hh-main') && s.year === year
+      );
+    } else {
+      records = mockSavings.filter(
+        (s) => (s.household_id === householdId || s.household_id === 'hh-main') && s.year === year
+      );
+    }
   } else {
     try {
       const { data, error } = await supabase
@@ -516,8 +542,8 @@ export async function fetchYearlySavingsData(
     }
   }
 
-  // Fallback defaults if in demo mode and no savings exist yet
-  if (records.length === 0 && isDemoMode) {
+  // Fallback defaults if in demo mode and no savings exist yet (only if not explicitly cleared)
+  if (records.length === 0 && isDemoMode && !isCleared) {
     records = [
       {
         id: 's-1',
@@ -617,6 +643,20 @@ export async function fetchAvailableMonths(
   const currentMonthStr = new Date().toISOString().substring(0, 7); // e.g. "2026-08"
 
   if (isDemoMode || !isSupabaseConfigured) {
+    const isCleared = typeof window !== 'undefined' && localStorage.getItem('demo_data_cleared') === 'true';
+    if (isCleared) {
+      const savedTxs = typeof window !== 'undefined' ? localStorage.getItem('demo_transactions') : null;
+      const txs: Transaction[] = savedTxs ? JSON.parse(savedTxs) : [];
+      const monthsSet = new Set<string>();
+      monthsSet.add(currentMonthStr);
+      txs.forEach((tx) => {
+        if (tx.date && tx.date.length >= 7) {
+          monthsSet.add(tx.date.substring(0, 7));
+        }
+      });
+      return Array.from(monthsSet).sort().reverse();
+    }
+
     const monthsSet = new Set<string>();
     monthsSet.add('2026-08');
     monthsSet.add('2026-07');

@@ -18,6 +18,8 @@ import {
   Landmark,
   Globe,
   Menu,
+  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import { t } from '../lib/i18n';
 import { SidebarDrawer } from './Navigation/SidebarDrawer';
@@ -40,6 +42,9 @@ export const Header: React.FC = () => {
     switchHousehold,
     logout,
     addHousehold,
+    clearDemoData,
+    restoreDemoData,
+    isDemoDataCleared,
   } = useAuth();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -209,9 +214,47 @@ export const Header: React.FC = () => {
           </button>
 
           {isDemoMode && (
-            <div style={styles.demoBadge}>
-              <Sparkles size={12} color="var(--warning-text)" />
-              <span>{language === 'he' ? 'מצב הדגמה' : 'Demo Mode'}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={styles.demoBadge}>
+                <Sparkles size={12} color="var(--warning-text)" />
+                <span>{language === 'he' ? 'מצב הדגמה' : 'Demo Mode'}</span>
+              </div>
+              <button
+                style={{
+                  ...styles.clearDemoNavBtn,
+                  backgroundColor: isDemoDataCleared ? '#EFF6FF' : '#FEF2F2',
+                  color: isDemoDataCleared ? '#2563EB' : '#DC2626',
+                  borderColor: isDemoDataCleared ? '#BFDBFE' : '#FECACA',
+                }}
+                onClick={() => {
+                  if (isDemoDataCleared) {
+                    if (confirm(language === 'he' ? 'האם לשחזר נתוני דמו לדוגמה?' : 'Restore demo data?')) {
+                      restoreDemoData();
+                    }
+                  } else {
+                    if (confirm(language === 'he' ? 'האם לנקות את כל נתוני הדמו מהמערכת (עסקאות, השקעות, תקציבים, חסכונות) ולהתחיל מלוח חלק ונקי?' : 'Clear all demo data and start with a clean slate?')) {
+                      clearDemoData();
+                    }
+                  }
+                }}
+                title={
+                  isDemoDataCleared
+                    ? (language === 'he' ? 'שחזר נתוני דמו לדוגמה' : 'Restore demo data')
+                    : (language === 'he' ? 'נקה את כל נתוני הדמו מהמערכת' : 'Clear demo data')
+                }
+              >
+                {isDemoDataCleared ? (
+                  <>
+                    <RotateCcw size={12} />
+                    <span>{language === 'he' ? 'שחזר דמו' : 'Restore Demo'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={12} />
+                    <span>{language === 'he' ? 'נקה דמו' : 'Clear Demo'}</span>
+                  </>
+                )}
+              </button>
             </div>
           )}
 
@@ -513,6 +556,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.75rem',
     fontWeight: '700',
     color: 'var(--warning-text)',
+  },
+  clearDemoNavBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 10px',
+    borderRadius: '12px',
+    border: '1px solid',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   userProfilePill: {
     display: 'flex',

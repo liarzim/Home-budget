@@ -29,6 +29,7 @@ import {
   Check,
   Search,
   ExternalLink,
+  RotateCcw,
 } from 'lucide-react';
 import { fetchAssetQuote, fetchBatchAssetQuotes, MarketQuoteResult } from '../../lib/quotesService';
 import { InvestmentsCharts } from './InvestmentsCharts';
@@ -56,6 +57,9 @@ export const InvestmentsView: React.FC = () => {
     deleteInvestmentAsset,
     addInvestmentTranche,
     deleteInvestmentTranche,
+    clearDemoData,
+    restoreDemoData,
+    isDemoDataCleared,
     activeHousehold,
     language,
     dir,
@@ -135,6 +139,10 @@ export const InvestmentsView: React.FC = () => {
   // Periodic Snapshots State (stored in localStorage)
   const [snapshots, setSnapshots] = useState<InvestmentPeriodicSnapshot[]>(() => {
     try {
+      if (localStorage.getItem('demo_data_cleared') === 'true') {
+        const saved = localStorage.getItem('household_investment_snapshots');
+        return saved ? JSON.parse(saved) : [];
+      }
       const saved = localStorage.getItem('household_investment_snapshots');
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -142,6 +150,10 @@ export const InvestmentsView: React.FC = () => {
       }
     } catch (e) {
       console.error(e);
+    }
+
+    if (localStorage.getItem('demo_data_cleared') === 'true') {
+      return [];
     }
 
     const defaultItems: InvestmentSnapshotItem[] = [
@@ -291,6 +303,12 @@ export const InvestmentsView: React.FC = () => {
       console.error(e);
     }
   };
+
+  useEffect(() => {
+    if (isDemoDataCleared) {
+      setSnapshots([]);
+    }
+  }, [isDemoDataCleared]);
 
   const toggleExpand = (assetId: string) => {
     setExpandedAssetIds((prev) => ({
@@ -985,6 +1003,40 @@ export const InvestmentsView: React.FC = () => {
           >
             <RefreshCw size={15} color="#059669" className={isRefreshingQuotes ? 'spin-icon' : ''} />
             <span>{isRefreshingQuotes ? (isHe ? 'מעדכן שערים...' : 'Fetching...') : (isHe ? 'רענן שערי שוק' : 'Live Quotes')}</span>
+          </button>
+
+          {/* Clear / Restore Demo Data Button */}
+          <button
+            style={isDemoDataCleared ? styles.restoreDemoBtn : styles.clearDemoBtn}
+            onClick={() => {
+              if (isDemoDataCleared) {
+                if (confirm(isHe ? 'האם לשחזר את נתוני הדמו להדגמה?' : 'Restore demo data?')) {
+                  restoreDemoData();
+                }
+              } else {
+                if (confirm(isHe ? 'האם לנקות את כל נתוני הדמו מהמערכת (כולל עסקאות, תיק השקעות, תקציבים וחסכונות) ולהתחיל מלוח נקי לחלוטין?' : 'Clear all demo data and start fresh?')) {
+                  clearDemoData();
+                  setSnapshots([]);
+                }
+              }
+            }}
+            title={
+              isDemoDataCleared
+                ? (isHe ? 'שחזר נתוני דמו לדוגמה' : 'Restore demo data')
+                : (isHe ? 'נקה את כל נתוני הדמו מהמערכת והתחל מלוח חלק' : 'Clear demo data')
+            }
+          >
+            {isDemoDataCleared ? (
+              <>
+                <RotateCcw size={15} color="#2563EB" />
+                <span>{isHe ? 'שחזר דמו' : 'Restore Demo'}</span>
+              </>
+            ) : (
+              <>
+                <Trash2 size={15} color="#DC2626" />
+                <span>{isHe ? 'נקה נתוני דמו' : 'Clear Demo'}</span>
+              </>
+            )}
           </button>
 
           {/* Add New Stock / Tranche Button */}
@@ -2530,6 +2582,34 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.8125rem',
     fontWeight: '700',
     textAlign: 'center',
+  },
+  clearDemoBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    backgroundColor: '#FEF2F2',
+    border: '1px solid #FECACA',
+    borderRadius: '10px',
+    color: '#DC2626',
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  restoreDemoBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    backgroundColor: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    borderRadius: '10px',
+    color: '#2563EB',
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   addAssetBtn: {
     display: 'flex',

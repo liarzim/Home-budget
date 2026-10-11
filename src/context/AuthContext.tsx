@@ -145,6 +145,9 @@ interface AuthContextType {
   seedDefaultHouseholdData: (targetHouseholdId?: string) => Promise<void>;
   showHiddenNotice: boolean;
   setShowHiddenNotice: (val: boolean) => void;
+  clearDemoData: () => void;
+  restoreDemoData: () => void;
+  isDemoDataCleared: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -162,14 +165,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [savings, setSavings] = useState<Savings[]>([]);
+
+  const [isDemoDataCleared, setIsDemoDataCleared] = useState<boolean>(() => {
+    return localStorage.getItem('demo_data_cleared') === 'true';
+  });
+
   const [investments, setInvestments] = useState<InvestmentAsset[]>(() => {
     try {
+      if (localStorage.getItem('demo_data_cleared') === 'true') {
+        const saved = localStorage.getItem('household_investments_data');
+        return saved ? JSON.parse(saved) : [];
+      }
       const saved = localStorage.getItem('household_investments_data');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
     } catch (e) {
       console.error(e);
     }
-    return mockInvestments;
+    // Clean default slate
+    return [];
   });
 
   const saveInvestments = (newList: InvestmentAsset[]) => {
@@ -233,6 +249,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return a;
     });
     saveInvestments(updated);
+  };
+
+  const clearDemoData = () => {
+    localStorage.setItem('demo_data_cleared', 'true');
+    localStorage.setItem('demo_transactions', '[]');
+    localStorage.setItem('household_investments_data', '[]');
+    localStorage.setItem('household_investment_snapshots', '[]');
+    localStorage.setItem('demo_budgets', '[]');
+    localStorage.setItem('demo_savings', '[]');
+    setIsDemoDataCleared(true);
+    setTransactions([]);
+    setBudgets([]);
+    setSavings([]);
+    setInvestments([]);
+  };
+
+  const restoreDemoData = () => {
+    localStorage.removeItem('demo_data_cleared');
+    localStorage.removeItem('demo_transactions');
+    localStorage.removeItem('household_investments_data');
+    localStorage.removeItem('household_investment_snapshots');
+    localStorage.removeItem('demo_budgets');
+    localStorage.removeItem('demo_savings');
+    setIsDemoDataCleared(false);
+    setTransactions(mockTransactions);
+    setBudgets(mockBudgets);
+    setSavings(mockSavings);
+    setInvestments(mockInvestments);
   };
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -554,6 +598,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCategories(mockCategories);
     setBusinessMappings(mockBusinessMappings);
     setCardMappings(mockCardMappings);
+    const isCleared = localStorage.getItem('demo_data_cleared') === 'true';
+    if (isCleared) {
+      setTransactions([]);
+      setBudgets([]);
+      setSavings([]);
+      setInvestments([]);
+      setIsLoading(false);
+      return;
+    }
 
     const savedDemoTxs = localStorage.getItem('demo_transactions');
     if (savedDemoTxs) {
@@ -1642,6 +1695,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteInvestmentAsset,
         addInvestmentTranche,
         deleteInvestmentTranche,
+        clearDemoData,
+        restoreDemoData,
+        isDemoDataCleared,
       }}
     >
       {children}
