@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured, signInWithSocialOAuth, signOutUser, OAuthProvider } from '../lib/supabase';
 import {
   Profile,
@@ -155,6 +155,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<Profile | null>(null);
+  const userRef = useRef<Profile | null>(null);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
   const [households, setHouseholds] = useState<Household[]>([]);
   const [allSystemHouseholds, setAllSystemHouseholds] = useState<Household[]>([]);
   const [activeHousehold, setActiveHousehold] = useState<Household | null>(null);
@@ -628,12 +632,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth state changes (OAuth Redirects, Logins, Logouts)
     if (isSupabaseConfigured) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          setIsLoading(true);
-          await loadSupabaseUserData(session.user.id, session.user.email);
-          setIsLoading(false);
-        } else if (event === 'SIGNED_OUT') {
+        if (event === 'SIGNED_OUT') {
           logout();
+        } else if (event === 'SIGNED_IN' && session?.user) {
+          // If already signed in as this exact user, ignore background token/focus events to prevent screen flashing
+          if (userRef.current?.id === session.user.id) {
+            return;
+          }
+          try {
+            await loadSupabaseUserData(session.user.id, session.user.email);
+          } finally {
+            setIsLoading(false);
+          }
         }
       });
 
@@ -666,13 +676,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profile = newProf;
       }
 
-      setUser(profile || {
+      const loadedUser = profile || {
         id: userId,
         email: email || '',
         full_name: email?.split('@')[0] || 'User',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      });
+      };
+      userRef.current = loadedUser;
+      setUser(loadedUser);
 
       const isUserSuper = Boolean(
         email && SUPER_USER_EMAILS.some((e) => e.toLowerCase() === email.toLowerCase())
@@ -892,6 +904,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    userRef.current = null;
     setIsLoading(true);
     sessionStorage.setItem('explicit_logout', 'true');
     if (isSupabaseConfigured) {

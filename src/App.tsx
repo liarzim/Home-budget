@@ -21,7 +21,8 @@ import { InvestmentsView } from './components/Investments/InvestmentsView';
 const MainScreen: React.FC = () => {
   const { user, isDemoMode, isLoading, activeTab } = useAuth();
 
-  if (isLoading) {
+  // Only show full-screen spinner on initial app boot before we know auth status
+  if (isLoading && !user && !isDemoMode) {
     return (
       <div style={styles.loadingContainer}>
         <div style={styles.spinner} />

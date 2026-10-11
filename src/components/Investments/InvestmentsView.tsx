@@ -81,12 +81,22 @@ export const InvestmentsView: React.FC = () => {
   // Expanded asset rows (to view purchase tranches)
   const [expandedAssetIds, setExpandedAssetIds] = useState<Record<string, boolean>>({});
 
+  // Load modal draft synchronously on initial render if user was in the middle of filling
+  const initialModalDraft = useMemo(() => {
+    try {
+      const raw = sessionStorage.getItem('investments_modal_draft');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<'new_asset' | 'edit_asset' | 'add_tranche' | 'edit_tranche'>('new_asset');
-  const [selectedAssetIdForTranche, setSelectedAssetIdForTranche] = useState<string>('');
-  const [selectedTrancheId, setSelectedTrancheId] = useState<string>('');
-  const [selectedTrancheIndex, setSelectedTrancheIndex] = useState<number>(-1);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(() => Boolean(initialModalDraft?.isModalOpen));
+  const [modalMode, setModalMode] = useState<'new_asset' | 'edit_asset' | 'add_tranche' | 'edit_tranche'>(() => initialModalDraft?.modalMode || 'new_asset');
+  const [selectedAssetIdForTranche, setSelectedAssetIdForTranche] = useState<string>(() => initialModalDraft?.selectedAssetIdForTranche || '');
+  const [selectedTrancheId, setSelectedTrancheId] = useState<string>(() => initialModalDraft?.selectedTrancheId || '');
+  const [selectedTrancheIndex, setSelectedTrancheIndex] = useState<number>(() => initialModalDraft?.selectedTrancheIndex ?? -1);
 
   // Snapshot Modal State
   const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
@@ -96,18 +106,18 @@ export const InvestmentsView: React.FC = () => {
   const [snapshotNotes, setSnapshotNotes] = useState<string>('');
 
   // Form Fields
-  const [formTicker, setFormTicker] = useState('');
-  const [formSecurityNumber, setFormSecurityNumber] = useState('');
-  const [formName, setFormName] = useState('');
-  const [formCurrency, setFormCurrency] = useState<'USD' | 'ILS'>('USD');
-  const [formAssetType, setFormAssetType] = useState<SecurityType>('stock');
-  const [formCurrentPrice, setFormCurrentPrice] = useState<string>('');
-  const [formDate, setFormDate] = useState<string>(formatDate(new Date()));
-  const [formShares, setFormShares] = useState<string>('');
-  const [formPricePerShare, setFormPricePerShare] = useState<string>('');
-  const [formTotalCost, setFormTotalCost] = useState<string>('');
-  const [formFee, setFormFee] = useState<string>('0');
-  const [formNotes, setFormNotes] = useState<string>('');
+  const [formTicker, setFormTicker] = useState<string>(() => initialModalDraft?.formTicker || '');
+  const [formSecurityNumber, setFormSecurityNumber] = useState<string>(() => initialModalDraft?.formSecurityNumber || '');
+  const [formName, setFormName] = useState<string>(() => initialModalDraft?.formName || '');
+  const [formCurrency, setFormCurrency] = useState<'USD' | 'ILS'>(() => initialModalDraft?.formCurrency || 'USD');
+  const [formAssetType, setFormAssetType] = useState<SecurityType>(() => initialModalDraft?.formAssetType || 'stock');
+  const [formCurrentPrice, setFormCurrentPrice] = useState<string>(() => initialModalDraft?.formCurrentPrice || '');
+  const [formDate, setFormDate] = useState<string>(() => initialModalDraft?.formDate || formatDate(new Date()));
+  const [formShares, setFormShares] = useState<string>(() => initialModalDraft?.formShares || '');
+  const [formPricePerShare, setFormPricePerShare] = useState<string>(() => initialModalDraft?.formPricePerShare || '');
+  const [formTotalCost, setFormTotalCost] = useState<string>(() => initialModalDraft?.formTotalCost || '');
+  const [formFee, setFormFee] = useState<string>(() => initialModalDraft?.formFee || '0');
+  const [formNotes, setFormNotes] = useState<string>(() => initialModalDraft?.formNotes || '');
 
   // Inline Quick Price Edit
   const [editingPriceAssetId, setEditingPriceAssetId] = useState<string | null>(null);
@@ -263,36 +273,7 @@ export const InvestmentsView: React.FC = () => {
 
   // Synchronize price per share and total cost in form
 
-  // Restore modal draft on mount if exists
-  useEffect(() => {
-    try {
-      const rawDraft = sessionStorage.getItem('investments_modal_draft');
-      if (rawDraft) {
-        const draft = JSON.parse(rawDraft);
-        if (draft && draft.isModalOpen) {
-          setIsModalOpen(true);
-          setModalMode(draft.modalMode || 'new_asset');
-          setSelectedAssetIdForTranche(draft.selectedAssetIdForTranche || '');
-          setSelectedTrancheId(draft.selectedTrancheId || '');
-          setSelectedTrancheIndex(draft.selectedTrancheIndex ?? -1);
-          setFormTicker(draft.formTicker || '');
-          setFormSecurityNumber(draft.formSecurityNumber || '');
-          setFormName(draft.formName || '');
-          setFormCurrency(draft.formCurrency || 'USD');
-          setFormAssetType(draft.formAssetType || 'stock');
-          setFormCurrentPrice(draft.formCurrentPrice || '');
-          setFormDate(draft.formDate || formatDate(new Date()));
-          setFormShares(draft.formShares || '');
-          setFormPricePerShare(draft.formPricePerShare || '');
-          setFormTotalCost(draft.formTotalCost || '');
-          setFormFee(draft.formFee || '0');
-          setFormNotes(draft.formNotes || '');
-        }
-      }
-    } catch (e) {
-      console.error('Failed to restore modal draft:', e);
-    }
-  }, []);
+
 
   // Save modal draft whenever form changes
   useEffect(() => {
