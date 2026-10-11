@@ -78,7 +78,11 @@ export const Header: React.FC = () => {
             onClick={() => setActiveTab('dashboard')}
           >
             <div style={styles.logoBox}>
-              <PieChart size={18} color="var(--primary)" />
+              <img
+                src="/app-icon.png"
+                alt="HomeBudget"
+                style={styles.logoImg}
+              />
             </div>
             <span style={styles.brandName}>
               {language === 'he' ? 'ניהול תקציב' : 'HomeBudget'}
@@ -347,10 +351,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: '32px',
     height: '32px',
     borderRadius: '8px',
-    backgroundColor: 'var(--primary-light)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    boxShadow: '0 2px 5px rgba(0, 0, 0, 0.12)',
+  },
+  logoImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover' as const,
   },
   brandName: {
     fontSize: '1.125rem',

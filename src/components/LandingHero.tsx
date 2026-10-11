@@ -32,7 +32,11 @@ export const LandingHero: React.FC = () => {
       <header style={styles.topNav}>
         <div style={styles.brandRow}>
           <div style={styles.logoBadge}>
-            <PieChart size={20} color="var(--primary)" />
+            <img
+              src="/app-icon.png"
+              alt="HomeBudget"
+              style={styles.logoImg}
+            />
           </div>
           <span style={styles.brandTitle}>HomeBudget</span>
           <span style={styles.tagBadge}>Multi-Tenant</span>
@@ -51,6 +55,15 @@ export const LandingHero: React.FC = () => {
 
       {/* Hero Body */}
       <main style={styles.heroSection} className="animate-fade-in">
+        {/* Entrance App Icon */}
+        <div style={styles.heroIconWrapper}>
+          <img
+            src="/app-icon.png"
+            alt="ניהול תקציב משפחתי"
+            style={styles.heroIconImg}
+          />
+        </div>
+
         <div style={styles.badgeContainer}>
           <ShieldCheck size={14} color="var(--success-text)" />
           <span>Supabase Auth & Strict Row Level Security (RLS)</span>
@@ -201,11 +214,31 @@ const styles: { [key: string]: React.CSSProperties } = {
   logoBadge: {
     width: '36px',
     height: '36px',
-    borderRadius: '8px',
-    backgroundColor: 'var(--primary-light)',
+    borderRadius: '10px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.12)',
+  },
+  logoImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover' as const,
+  },
+  heroIconWrapper: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: '20px',
+  },
+  heroIconImg: {
+    width: '92px',
+    height: '92px',
+    borderRadius: '22px',
+    boxShadow: '0 12px 28px rgba(13, 60, 140, 0.22)',
+    objectFit: 'cover' as const,
+    transition: 'transform 0.2s ease',
   },
   brandTitle: {
     fontSize: '1.25rem',

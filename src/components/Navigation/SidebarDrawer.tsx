@@ -151,7 +151,11 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
         <div style={styles.drawerHeader}>
           <div style={styles.brandRow}>
             <div style={styles.logoBox}>
-              <PieChart size={20} color="var(--primary)" />
+              <img
+                src="/app-icon.png"
+                alt="HomeBudget"
+                style={styles.logoImg}
+              />
             </div>
             <div>
               <div style={styles.brandName}>
@@ -363,10 +367,16 @@ const styles: Record<string, React.CSSProperties> = {
     width: '36px',
     height: '36px',
     borderRadius: '10px',
-    backgroundColor: 'var(--primary-light)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.12)',
+  },
+  logoImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover' as const,
   },
   brandName: {
     fontSize: '1rem',
