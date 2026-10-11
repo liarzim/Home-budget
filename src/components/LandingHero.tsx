@@ -3,20 +3,24 @@ import { useAuth } from '../context/AuthContext';
 import { OAuthProvider } from '../lib/supabase';
 import {
   ShieldCheck,
-  Building2,
   PieChart,
-  Layers,
   ArrowRight,
+  ArrowLeft,
   Sparkles,
-  CheckCircle2,
-  Database,
   Lock,
-  Wallet,
+  Globe,
+  PiggyBank,
+  Receipt,
+  TrendingUp,
+  Users,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const LandingHero: React.FC = () => {
-  const { loginWithOAuth, loginDemo, isSupabaseReady, isLoading } = useAuth();
+  const { loginWithOAuth, loginDemo, isSupabaseReady, isLoading, language, setLanguage, dir } = useAuth();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const isHe = language === 'he';
 
   const handleOAuth = async (provider: OAuthProvider) => {
     setErrorMessage(null);
@@ -26,29 +30,51 @@ export const LandingHero: React.FC = () => {
     }
   };
 
+  const toggleLanguage = () => {
+    setLanguage(isHe ? 'en' : 'he');
+  };
+
   return (
-    <div style={styles.container}>
+    <div style={styles.container} dir={dir}>
       {/* Top Navbar */}
       <header style={styles.topNav}>
         <div style={styles.brandRow}>
           <div style={styles.logoBadge}>
             <img
-              src="/app-icon.png"
+              src="/app-icon.png?v=2"
               alt="HomeBudget"
               style={styles.logoImg}
             />
           </div>
-          <span style={styles.brandTitle}>HomeBudget</span>
-          <span style={styles.tagBadge}>Multi-Tenant</span>
+          <div style={styles.brandTextGroup}>
+            <span style={styles.brandTitle}>
+              {isHe ? 'ניהול תקציב משפחתי' : 'HomeBudget'}
+            </span>
+            <span style={styles.tagBadge}>
+              {isHe ? 'פרטי ומאובטח' : 'Safe & Private'}
+            </span>
+          </div>
         </div>
 
-        <div>
+        <div style={styles.topNavActions}>
+          {/* Language Switcher */}
+          <button
+            style={styles.langToggleBtn}
+            onClick={toggleLanguage}
+            title={isHe ? 'החלף לאנגלית' : 'Switch to Hebrew'}
+            aria-label="Toggle Language"
+          >
+            <Globe size={15} color="var(--text-secondary)" />
+            <span>{isHe ? 'English' : 'עברית'}</span>
+          </button>
+
+          {/* Quick Demo Preview Button */}
           <button
             style={styles.demoPillBtn}
             onClick={() => loginDemo('Micha')}
           >
             <Sparkles size={14} color="var(--primary)" />
-            <span>Instant Demo Preview</span>
+            <span>{isHe ? 'התנסות מהירה בדמו' : 'Instant Demo Preview'}</span>
           </button>
         </div>
       </header>
@@ -58,32 +84,48 @@ export const LandingHero: React.FC = () => {
         {/* Entrance App Icon */}
         <div style={styles.heroIconWrapper}>
           <img
-            src="/app-icon.png"
-            alt="ניהול תקציב משפחתי"
+            src="/app-icon.png?v=2"
+            alt={isHe ? 'סמל ניהול תקציב משפחתי' : 'Household Budget App Icon'}
             style={styles.heroIconImg}
           />
         </div>
 
+        {/* Reassurance Badge */}
         <div style={styles.badgeContainer}>
-          <ShieldCheck size={14} color="var(--success-text)" />
-          <span>Supabase Auth & Strict Row Level Security (RLS)</span>
+          <ShieldCheck size={16} color="#059669" />
+          <span>
+            {isHe
+              ? 'פרטיות מלאה ואבטחה פיננסית מתקדמת'
+              : 'Bank-Grade Privacy & Dedicated Isolation'}
+          </span>
         </div>
 
+        {/* Main Heading */}
         <h1 style={styles.heroHeading}>
-          Multi-Tenant Household Budget Management
+          {isHe
+            ? 'ניהול תקציב משפחתי חכם, פשוט ומאובטח'
+            : 'Smart, Simple Household Budget Management'}
         </h1>
 
+        {/* Subtitle */}
         <p style={styles.heroSubheading}>
-          Complete financial clarity for families, couples, and shared households.
-          Strict data isolation per tenant, automated merchant categorization, strict category budgets, and calendar-year savings ledger.
+          {isHe
+            ? 'שליטה מלאה בהוצאות הבית, מעקב קניות וכרטיסי אשראי, יעדי חיסכון משותפים ושקט נפשי לאורך כל החודש — בלי הפתעות.'
+            : 'Take full control of family expenses, credit cards, monthly budget limits, and shared savings goals — with zero surprises.'}
         </p>
 
-        {/* OAuth Authentication Card */}
+        {/* Authentication Card */}
         <div style={styles.authBox}>
-          <h2 style={styles.authTitle}>Get Started / Sign In</h2>
-          <p style={styles.authDescription}>
-            Sign in securely using Social OAuth. Your private profile and isolated tenant household will be created automatically.
-          </p>
+          <div style={styles.authHeaderBox}>
+            <h2 style={styles.authTitle}>
+              {isHe ? 'ברוכים הבאים! מתחילים בקלות' : 'Welcome! Get Started in Seconds'}
+            </h2>
+            <p style={styles.authDescription}>
+              {isHe
+                ? 'התחברו בביטחון בלחיצה אחת או נסו את המערכת מיד ללא צורך בהרשמה'
+                : 'Sign in securely with one click or explore the full system right now without credentials'}
+            </p>
+          </div>
 
           {errorMessage && (
             <div style={styles.errorAlert}>
@@ -98,8 +140,27 @@ export const LandingHero: React.FC = () => {
               onClick={() => handleOAuth('google')}
               disabled={isLoading}
             >
-              <span style={styles.googleG}>G</span>
-              <span style={styles.oauthButtonText}>Continue with Google</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span style={styles.oauthButtonText}>
+                {isHe ? 'המשך באמצעות Google' : 'Continue with Google'}
+              </span>
             </button>
 
             {/* Apple */}
@@ -108,84 +169,135 @@ export const LandingHero: React.FC = () => {
               onClick={() => handleOAuth('apple')}
               disabled={isLoading}
             >
-              <Lock size={16} color="var(--text-primary)" />
-              <span style={styles.oauthButtonText}>Continue with Apple</span>
+              <Lock size={17} color="var(--text-primary)" style={{ flexShrink: 0 }} />
+              <span style={styles.oauthButtonText}>
+                {isHe ? 'המשך באמצעות Apple' : 'Continue with Apple'}
+              </span>
             </button>
           </div>
 
           <div style={styles.dividerRow}>
             <div style={styles.dividerLine} />
-            <span style={styles.dividerText}>or test without credentials</span>
+            <span style={styles.dividerText}>
+              {isHe ? 'או התנסות מהירה' : 'or instant preview'}
+            </span>
             <div style={styles.dividerLine} />
           </div>
 
+          {/* Interactive Demo Button */}
           <button
             style={styles.directDemoButton}
             onClick={() => loginDemo('Micha')}
           >
-            <span>Launch Interactive Demo & SQL Inspector</span>
-            <ArrowRight size={16} color="#FFFFFF" />
+            <Sparkles size={17} color="#FFFFFF" style={{ flexShrink: 0 }} />
+            <span>
+              {isHe
+                ? 'כניסה מיידית למערכת לדוגמה (Demo)'
+                : 'Launch Interactive Demo & Explore'}
+            </span>
+            {isHe ? (
+              <ArrowLeft size={16} color="#FFFFFF" style={{ flexShrink: 0 }} />
+            ) : (
+              <ArrowRight size={16} color="#FFFFFF" style={{ flexShrink: 0 }} />
+            )}
           </button>
 
-          {!isSupabaseReady && (
-            <div style={styles.envNotice}>
-              <Database size={14} color="var(--text-secondary)" />
-              <span>
-                Running in Mock & Setup Mode. When you deploy to Vercel or locally, configure <code>VITE_SUPABASE_URL</code> in <code>.env</code>.
-              </span>
-            </div>
-          )}
+          <div style={styles.securityFootnote}>
+            <CheckCircle2 size={14} color="#059669" style={{ flexShrink: 0 }} />
+            <span>
+              {isHe
+                ? 'המידע האישי מבודד ומוגן בהצפנה מלאה בכל עת'
+                : 'Your data is strictly isolated and protected with full encryption'}
+            </span>
+          </div>
         </div>
 
-        {/* Feature Grid */}
+        {/* Friendly Feature Section */}
         <section style={styles.featuresSection}>
-          <h2 style={styles.sectionHeaderTitle}>Engineered for Full Tenant Isolation</h2>
-          <p style={styles.sectionHeaderSubtitle}>
-            Built on PostgreSQL Row Level Security (RLS) with instant web and native APK responsiveness.
-          </p>
+          <div style={styles.sectionHeaderBox}>
+            <h2 style={styles.sectionHeaderTitle}>
+              {isHe
+                ? 'כל מה שצריך לניהול תקציב המשפחה'
+                : 'Everything Your Household Needs'}
+            </h2>
+            <p style={styles.sectionHeaderSubtitle}>
+              {isHe
+                ? 'כלים חכמים, פשוטים ומדויקים המעניקים לכם ביטחון כלכלי ושליטה יומיומית'
+                : 'Intuitive, powerful tools designed to help your family spend wisely and thrive together.'}
+            </p>
+          </div>
 
           <div style={styles.featureGrid}>
+            {/* Card 1: Budgets */}
             <div style={styles.featureCard}>
-              <div style={{ ...styles.featureIconWrap, backgroundColor: 'var(--primary-light)' }}>
-                <Building2 size={22} color="var(--primary)" />
+              <div style={{ ...styles.featureIconWrap, backgroundColor: '#EFF6FF' }}>
+                <PieChart size={24} color="#2563EB" />
               </div>
-              <h3 style={styles.featureCardTitle}>Multi-Tenant Households</h3>
+              <h3 style={styles.featureCardTitle}>
+                {isHe ? 'תקציב חודשי ללא חריגות' : 'Monthly Budget Limits'}
+              </h3>
               <p style={styles.featureCardDesc}>
-                Switch seamlessly between personal, shared family, or rental property households. Members only access data from households they belong to.
+                {isHe
+                  ? 'הגדרת גבולות ברורים לפי קטגוריות (סופר, חשבונות, בילויים) עם מחוון חזותי בזמן אמת שמתריע לפני חריגה.'
+                  : 'Set clear spending caps for groceries, utilities, and leisure with real-time visual progress bars.'}
               </p>
             </div>
 
+            {/* Card 2: Auto Categorization */}
             <div style={styles.featureCard}>
-              <div style={{ ...styles.featureIconWrap, backgroundColor: 'var(--success-light)' }}>
-                <CheckCircle2 size={22} color="var(--success)" />
+              <div style={{ ...styles.featureIconWrap, backgroundColor: '#ECFDF5' }}>
+                <Receipt size={24} color="#059669" />
               </div>
-              <h3 style={styles.featureCardTitle}>Auto Business Mapping</h3>
+              <h3 style={styles.featureCardTitle}>
+                {isHe ? 'סיווג עסקאות אוטומטי' : 'Smart Auto-Categorization'}
+              </h3>
               <p style={styles.featureCardDesc}>
-                Intelligently matches credit card and bank merchant names (e.g. Shufersal, Paz, Netflix, Super-Pharm) to budget categories automatically.
+                {isHe
+                  ? 'זיהוי חכם של עסקאות אשראי ובנקים (שופרסל, דלק, נטפליקס והוראות קבע) ישירות לקטגוריה הנכונה.'
+                  : 'Intelligently sorts credit card and bank transactions to the right budget bucket automatically.'}
               </p>
             </div>
 
+            {/* Card 3: Savings Goals */}
             <div style={styles.featureCard}>
-              <div style={{ ...styles.featureIconWrap, backgroundColor: 'var(--warning-light)' }}>
-                <PieChart size={22} color="var(--warning)" />
+              <div style={{ ...styles.featureIconWrap, backgroundColor: '#FEF3C7' }}>
+                <TrendingUp size={24} color="#D97706" />
               </div>
-              <h3 style={styles.featureCardTitle}>Monthly & Yearly Budgets</h3>
+              <h3 style={styles.featureCardTitle}>
+                {isHe ? 'יעדי חיסכון וצמיחה' : 'Family Savings Goals'}
+              </h3>
               <p style={styles.featureCardDesc}>
-                Strict per-category limits. Real-time visual progress bars warn you before exceeding limits and track annual spending targets.
+                {isHe
+                  ? 'מעקב שוטף אחרי קופות חיסכון, קרנות וסגירת חודש חיובית משנה לשנה עבור מטרות המשפחה.'
+                  : 'Track emergency funds, vacation pots, and positive annual savings growth with complete peace of mind.'}
               </p>
             </div>
 
+            {/* Card 4: Partner Collaboration */}
             <div style={styles.featureCard}>
-              <div style={{ ...styles.featureIconWrap, backgroundColor: 'var(--danger-light)' }}>
-                <Wallet size={22} color="var(--danger)" />
+              <div style={{ ...styles.featureIconWrap, backgroundColor: '#F5F3FF' }}>
+                <Users size={24} color="#7C3AED" />
               </div>
-              <h3 style={styles.featureCardTitle}>Soft Deletes & Savings Ledger</h3>
+              <h3 style={styles.featureCardTitle}>
+                {isHe ? 'שיתוף נוח בין בני הזוג' : 'Real-Time Family Sharing'}
+              </h3>
               <p style={styles.featureCardDesc}>
-                Transactions include <code>is_hidden</code> flag for safe reversible archiving. Track opening and closing balances per calendar year.
+                {isHe
+                  ? 'חשבון משותף המסונכרן בזמן אמת בין בני הזוג, עם שקיפות מלאה ושליטה נוחה מהנייד ומהמחשב.'
+                  : 'Seamless real-time synchronization between partners and household members across phones and desktop.'}
               </p>
             </div>
           </div>
         </section>
+
+        {/* Simple Friendly Footer */}
+        <footer style={styles.footerBox}>
+          <span>
+            {isHe
+              ? 'ניהול תקציב משפחתי © 2026 | מערכת מאובטחת לניהול פיננסי למשק הבית'
+              : 'Home Budget © 2026 | Private, Secure Household Finance Platform'}
+          </span>
+        </footer>
       </main>
     </div>
   );
@@ -194,37 +306,103 @@ export const LandingHero: React.FC = () => {
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
     minHeight: '100vh',
-    backgroundColor: 'var(--bg-app)',
+    backgroundColor: 'var(--bg-app, #F8FAFC)',
     display: 'flex',
     flexDirection: 'column',
+    fontFamily: 'inherit',
   },
   topNav: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '16px 32px',
-    backgroundColor: 'var(--bg-surface)',
-    borderBottom: '1px solid var(--border-main)',
+    padding: '14px 28px',
+    backgroundColor: '#FFFFFF',
+    borderBottom: '1px solid var(--border-main, #E2E8F0)',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)',
   },
   brandRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: '12px',
   },
   logoBadge: {
-    width: '36px',
-    height: '36px',
+    width: '38px',
+    height: '38px',
     borderRadius: '10px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.12)',
+    boxShadow: '0 2px 8px rgba(37, 99, 235, 0.18)',
+    flexShrink: 0,
   },
   logoImg: {
     width: '100%',
     height: '100%',
     objectFit: 'cover' as const,
+  },
+  brandTextGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  brandTitle: {
+    fontSize: '1.2rem',
+    fontWeight: '800',
+    color: 'var(--text-primary, #0F172A)',
+    letterSpacing: '-0.02em',
+  },
+  tagBadge: {
+    padding: '3px 9px',
+    borderRadius: '20px',
+    backgroundColor: '#ECFDF5',
+    border: '1px solid #A7F3D0',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: '#059669',
+  },
+  topNavActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  langToggleBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '7px 12px',
+    backgroundColor: 'var(--bg-surface-subtle, #F1F5F9)',
+    border: '1px solid var(--border-main, #E2E8F0)',
+    borderRadius: '18px',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    color: 'var(--text-secondary, #475569)',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  demoPillBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '7px 14px',
+    backgroundColor: 'var(--primary-light, #EFF6FF)',
+    border: '1px solid rgba(37, 99, 235, 0.2)',
+    borderRadius: '20px',
+    color: 'var(--primary, #2563EB)',
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  heroSection: {
+    maxWidth: '960px',
+    margin: '0 auto',
+    padding: '40px 20px 60px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+    width: '100%',
   },
   heroIconWrapper: {
     display: 'flex',
@@ -233,108 +411,75 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: '20px',
   },
   heroIconImg: {
-    width: '92px',
-    height: '92px',
-    borderRadius: '22px',
-    boxShadow: '0 12px 28px rgba(13, 60, 140, 0.22)',
+    width: '104px',
+    height: '104px',
+    borderRadius: '26px',
+    boxShadow: '0 16px 36px rgba(37, 99, 235, 0.22), 0 4px 12px rgba(0, 0, 0, 0.06)',
     objectFit: 'cover' as const,
-    transition: 'transform 0.2s ease',
-  },
-  brandTitle: {
-    fontSize: '1.25rem',
-    fontWeight: '800',
-    color: 'var(--text-primary)',
-    letterSpacing: '-0.03em',
-  },
-  tagBadge: {
-    padding: '3px 8px',
-    borderRadius: '6px',
-    backgroundColor: 'var(--bg-surface-subtle)',
-    border: '1px solid var(--border-main)',
-    fontSize: '0.6875rem',
-    fontWeight: '700',
-    color: 'var(--text-secondary)',
-    textTransform: 'uppercase',
-  },
-  demoPillBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '8px 16px',
-    backgroundColor: 'var(--primary-light)',
-    borderRadius: '20px',
-    color: 'var(--primary)',
-    fontSize: '0.8125rem',
-    fontWeight: '600',
-    transition: 'all 0.15s ease',
-  },
-  heroSection: {
-    maxWidth: '920px',
-    margin: '0 auto',
-    padding: '48px 24px 60px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    textAlign: 'center',
+    transition: 'transform 0.25s ease',
   },
   badgeContainer: {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: '6px 14px',
-    backgroundColor: 'var(--success-light)',
-    borderRadius: '20px',
+    gap: '8px',
+    padding: '6px 16px',
+    backgroundColor: '#ECFDF5',
+    borderRadius: '30px',
     border: '1px solid #A7F3D0',
-    color: 'var(--success-text)',
-    fontSize: '0.75rem',
+    color: '#065F46',
+    fontSize: '0.8125rem',
     fontWeight: '700',
-    marginBottom: '20px',
+    marginBottom: '16px',
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
   },
   heroHeading: {
     fontSize: '2.5rem',
-    fontWeight: '800',
-    color: 'var(--text-primary)',
-    letterSpacing: '-0.04em',
-    lineHeight: '1.15',
+    fontWeight: '900',
+    color: 'var(--text-primary, #0F172A)',
+    letterSpacing: '-0.03em',
+    lineHeight: '1.2',
     marginBottom: '16px',
+    maxWidth: '820px',
   },
   heroSubheading: {
-    fontSize: '1.0625rem',
-    color: 'var(--text-secondary)',
-    lineHeight: '1.6',
-    maxWidth: '700px',
-    marginBottom: '36px',
+    fontSize: '1.125rem',
+    color: 'var(--text-secondary, #475569)',
+    lineHeight: '1.65',
+    maxWidth: '680px',
+    marginBottom: '32px',
+    fontWeight: '400',
   },
   authBox: {
     width: '100%',
-    maxWidth: '480px',
-    backgroundColor: 'var(--bg-surface)',
-    borderRadius: 'var(--radius-lg)',
-    border: '1px solid var(--border-main)',
-    padding: '28px',
-    boxShadow: 'var(--shadow-lg)',
-    textAlign: 'left',
+    maxWidth: '460px',
+    backgroundColor: '#FFFFFF',
+    borderRadius: '20px',
+    border: '1px solid var(--border-main, #E2E8F0)',
+    padding: '30px 28px',
+    boxShadow: '0 20px 40px -12px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.02)',
+    marginBottom: '20px',
+  },
+  authHeaderBox: {
+    textAlign: 'center',
+    marginBottom: '22px',
   },
   authTitle: {
-    fontSize: '1.125rem',
-    fontWeight: '700',
-    color: 'var(--text-primary)',
+    fontSize: '1.25rem',
+    fontWeight: '800',
+    color: 'var(--text-primary, #0F172A)',
     marginBottom: '6px',
-    textAlign: 'center',
   },
   authDescription: {
-    fontSize: '0.8125rem',
-    color: 'var(--text-secondary)',
+    fontSize: '0.875rem',
+    color: 'var(--text-secondary, #64748B)',
     lineHeight: '1.5',
-    textAlign: 'center',
-    marginBottom: '20px',
   },
   errorAlert: {
     padding: '10px 14px',
-    backgroundColor: 'var(--danger-light)',
-    borderRadius: 'var(--radius-sm)',
+    backgroundColor: '#FEE2E2',
+    borderRadius: '10px',
     border: '1px solid #FECACA',
-    color: 'var(--danger-text)',
+    color: '#991B1B',
     fontSize: '0.8125rem',
     marginBottom: '16px',
     textAlign: 'center',
@@ -342,44 +487,42 @@ const styles: { [key: string]: React.CSSProperties } = {
   oauthButtonsRow: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: '12px',
   },
   oauthButton: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     gap: '12px',
-    padding: '12px 16px',
-    backgroundColor: 'var(--bg-surface)',
-    border: '1px solid var(--border-strong)',
-    borderRadius: 'var(--radius-md)',
-    color: 'var(--text-primary)',
-    fontWeight: '600',
-    fontSize: '0.875rem',
+    padding: '13px 18px',
+    backgroundColor: '#FFFFFF',
+    border: '1px solid var(--border-strong, #CBD5E1)',
+    borderRadius: '12px',
+    color: 'var(--text-primary, #1E293B)',
+    fontWeight: '700',
+    fontSize: '0.9375rem',
+    cursor: 'pointer',
     transition: 'all 0.15s ease',
-  },
-  googleG: {
-    fontSize: '1rem',
-    fontWeight: '800',
-    color: '#EA4335',
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
   },
   oauthButtonText: {
-    color: 'var(--text-primary)',
+    color: 'var(--text-primary, #1E293B)',
   },
   dividerRow: {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
-    margin: '18px 0',
+    margin: '20px 0',
   },
   dividerLine: {
     flex: 1,
     height: '1px',
-    backgroundColor: 'var(--border-main)',
+    backgroundColor: 'var(--border-main, #E2E8F0)',
   },
   dividerText: {
-    fontSize: '0.75rem',
-    color: 'var(--text-muted)',
+    fontSize: '0.8125rem',
+    color: 'var(--text-muted, #94A3B8)',
+    fontWeight: '500',
   },
   directDemoButton: {
     width: '100%',
@@ -387,75 +530,92 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '10px',
-    padding: '13px 18px',
-    backgroundColor: 'var(--primary)',
-    borderRadius: 'var(--radius-md)',
+    padding: '14px 20px',
+    backgroundColor: 'var(--primary, #2563EB)',
+    borderRadius: '12px',
+    border: 'none',
     color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: '0.875rem',
-    boxShadow: 'var(--shadow-sm)',
-    transition: 'background-color 0.15s ease',
+    fontWeight: '700',
+    fontSize: '0.9375rem',
+    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+    cursor: 'pointer',
+    transition: 'background-color 0.15s ease, transform 0.15s ease',
   },
-  envNotice: {
+  securityFootnote: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    marginTop: '16px',
-    padding: '10px 12px',
-    backgroundColor: 'var(--bg-surface-subtle)',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid var(--border-main)',
-    fontSize: '0.6875rem',
-    color: 'var(--text-secondary)',
-    lineHeight: '1.4',
+    justifyContent: 'center',
+    gap: '6px',
+    marginTop: '18px',
+    fontSize: '0.75rem',
+    color: 'var(--text-muted, #64748B)',
+    textAlign: 'center',
   },
   featuresSection: {
-    marginTop: '64px',
+    marginTop: '56px',
     width: '100%',
   },
+  sectionHeaderBox: {
+    marginBottom: '32px',
+    textAlign: 'center',
+  },
   sectionHeaderTitle: {
-    fontSize: '1.5rem',
-    fontWeight: '800',
-    color: 'var(--text-primary)',
+    fontSize: '1.75rem',
+    fontWeight: '900',
+    color: 'var(--text-primary, #0F172A)',
     marginBottom: '8px',
     letterSpacing: '-0.02em',
   },
   sectionHeaderSubtitle: {
-    fontSize: '0.875rem',
-    color: 'var(--text-secondary)',
-    marginBottom: '32px',
+    fontSize: '1rem',
+    color: 'var(--text-secondary, #64748B)',
+    maxWidth: '620px',
+    margin: '0 auto',
   },
   featureGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
     gap: '20px',
-    textAlign: 'left',
   },
   featureCard: {
-    backgroundColor: 'var(--bg-surface)',
+    backgroundColor: '#FFFFFF',
     padding: '24px',
-    borderRadius: 'var(--radius-lg)',
-    border: '1px solid var(--border-main)',
-    boxShadow: 'var(--shadow-sm)',
+    borderRadius: '18px',
+    border: '1px solid var(--border-main, #E2E8F0)',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.03)',
+    textAlign: 'start',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
   },
   featureIconWrap: {
-    width: '44px',
-    height: '44px',
-    borderRadius: '10px',
+    width: '48px',
+    height: '48px',
+    borderRadius: '14px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: '16px',
   },
   featureCardTitle: {
-    fontSize: '1rem',
-    fontWeight: '700',
-    color: 'var(--text-primary)',
-    marginBottom: '6px',
+    fontSize: '1.0625rem',
+    fontWeight: '800',
+    color: 'var(--text-primary, #0F172A)',
+    marginBottom: '8px',
   },
   featureCardDesc: {
+    fontSize: '0.875rem',
+    color: 'var(--text-secondary, #475569)',
+    lineHeight: '1.6',
+  },
+  footerBox: {
+    marginTop: '60px',
+    paddingTop: '24px',
+    borderTop: '1px solid var(--border-main, #E2E8F0)',
+    width: '100%',
+    color: 'var(--text-muted, #94A3B8)',
     fontSize: '0.8125rem',
-    color: 'var(--text-secondary)',
-    lineHeight: '1.5',
+    textAlign: 'center',
   },
 };
