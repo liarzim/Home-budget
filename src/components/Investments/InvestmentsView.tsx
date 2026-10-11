@@ -1329,7 +1329,7 @@ export const InvestmentsView: React.FC = () => {
                     <th style={styles.thCell}>{isHe ? 'סוג נייר' : 'Asset Type'}</th>
                     <th style={styles.thCell}>{isHe ? 'כמות מניות' : 'Quantity'}</th>
                     <th style={styles.thCell}>{isHe ? 'מחיר קנייה ממוצע' : 'Avg. Cost'}</th>
-                    <th style={styles.thCell}>{isHe ? 'שער נוכחי (ערך נוכחי)' : 'Market Price'}</th>
+                    <th style={styles.thCell}>{isHe ? 'שער נוכחי' : 'Market Price'}</th>
                     <th style={styles.thCell}>{isHe ? 'סך עלות רכישה' : 'Total Cost'}</th>
                     <th style={styles.thCell}>{isHe ? 'שווי נוכחי' : 'Current Value'}</th>
                     <th style={styles.thCell}>{isHe ? 'רווח / הפסד' : 'P&L'}</th>
@@ -1594,27 +1594,27 @@ export const InvestmentsView: React.FC = () => {
                                   <table style={styles.trancheTable}>
                                     <thead>
                                       <tr style={styles.trancheThRow}>
-                                        <th style={styles.trancheTh}>#</th>
-                                        <th style={styles.trancheTh}>{isHe ? 'תאריך רכישה' : 'Date'}</th>
-                                        <th style={styles.trancheTh}>{isHe ? 'כמות מניות' : 'Shares'}</th>
-                                        <th style={styles.trancheTh}>
+                                        <th style={{ ...styles.trancheTh, width: '28px', textAlign: 'center' }}>#</th>
+                                        <th style={{ ...styles.trancheTh, minWidth: '95px' }}>{isHe ? 'תאריך רכישה' : 'Date'}</th>
+                                        <th style={{ ...styles.trancheTh, textAlign: 'center' }}>{isHe ? 'כמות מניות' : 'Shares'}</th>
+                                        <th style={{ ...styles.trancheTh, textAlign: 'right' }}>
                                           {isHe ? 'שער קנייה ליחידה' : 'Price / Share'}
                                         </th>
-                                        <th style={styles.trancheTh}>
-                                          {isHe ? 'עמלת מסחר' : 'Trading Fee'}
+                                        <th style={{ ...styles.trancheTh, textAlign: 'center' }}>
+                                          {isHe ? 'עמלת מסחר' : 'Fee'}
                                         </th>
-                                        <th style={styles.trancheTh}>
-                                          {isHe ? 'סך סכום רכישה' : 'Total Tranche Cost'}
+                                        <th style={{ ...styles.trancheTh, textAlign: 'right' }}>
+                                          {isHe ? 'סך סכום רכישה' : 'Total Cost'}
                                         </th>
-                                        <th style={styles.trancheTh}>
+                                        <th style={{ ...styles.trancheTh, textAlign: 'right' }}>
                                           {isHe ? 'שווי נוכחי לפעימה' : 'Current Value'}
                                         </th>
-                                        <th style={styles.trancheTh}>
-                                          {isHe ? 'רווח/הפסד נקודתי' : 'Tranche P&L'}
+                                        <th style={{ ...styles.trancheTh, textAlign: 'right' }}>
+                                          {isHe ? 'רווח / הפסד' : 'P&L'}
                                         </th>
-                                        <th style={styles.trancheTh}>{isHe ? 'תשואה' : 'Yield'}</th>
+                                        <th style={{ ...styles.trancheTh, textAlign: 'center' }}>{isHe ? 'תשואה' : 'Yield'}</th>
                                         <th style={styles.trancheTh}>{isHe ? 'הערות' : 'Notes'}</th>
-                                        <th style={{ ...styles.trancheTh, textAlign: 'center' }}>
+                                        <th style={{ ...styles.trancheTh, textAlign: 'center', width: '55px' }}>
                                           {isHe ? 'פעולות' : 'Actions'}
                                         </th>
                                       </tr>
@@ -3037,19 +3037,22 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderBottom: '1px solid var(--border-main, #E2E8F0)',
   },
   thCell: {
-    padding: '12px 14px',
-    fontSize: '0.75rem',
+    padding: '10px 8px',
+    fontSize: '0.72rem',
     fontWeight: '700',
     color: 'var(--text-secondary, #64748B)',
-    whiteSpace: 'nowrap',
+    whiteSpace: 'normal',
+    wordBreak: 'normal',
+    lineHeight: '1.25',
+    verticalAlign: 'bottom',
   },
   trRow: {
     borderBottom: '1px solid var(--border-main, #E2E8F0)',
     transition: 'background-color 0.15s ease',
   },
   tdCell: {
-    padding: '13px 14px',
-    fontSize: '0.875rem',
+    padding: '11px 8px',
+    fontSize: '0.8125rem',
     verticalAlign: 'middle',
   },
   assetNameBlock: {
@@ -3219,26 +3222,29 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderBottom: '2px solid #CBD5E1',
   },
   trancheSubTd: {
-    padding: '12px 16px 20px',
+    padding: '8px 8px 16px',
   },
   trancheSubContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: '12px',
     border: '1px solid #E2E8F0',
-    padding: '16px',
+    padding: '12px 14px',
     boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+    overflowX: 'hidden',
+    width: '100%',
+    boxSizing: 'border-box',
   },
   trancheSubHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '12px',
+    marginBottom: '10px',
   },
   trancheSubTitle: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    fontSize: '0.875rem',
+    gap: '6px',
+    fontSize: '0.84rem',
     fontWeight: '800',
     color: '#1E293B',
   },
@@ -3246,37 +3252,44 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     gap: '4px',
-    padding: '5px 10px',
+    padding: '4px 8px',
     backgroundColor: '#EFF6FF',
     border: '1px solid #BFDBFE',
     borderRadius: '6px',
     color: '#2563EB',
-    fontSize: '0.75rem',
+    fontSize: '0.72rem',
     fontWeight: '700',
     cursor: 'pointer',
   },
   trancheTable: {
     width: '100%',
     borderCollapse: 'collapse',
-    fontSize: '0.8125rem',
+    fontSize: '0.78125rem',
+    tableLayout: 'auto',
   },
   trancheThRow: {
     backgroundColor: '#F1F5F9',
     borderBottom: '1px solid #CBD5E1',
   },
   trancheTh: {
-    padding: '8px 10px',
+    padding: '7px 5px',
     fontSize: '0.6875rem',
     fontWeight: '700',
     color: '#475569',
     textAlign: 'inherit',
+    whiteSpace: 'normal',
+    wordBreak: 'normal',
+    lineHeight: '1.25',
+    verticalAlign: 'bottom',
   },
   trancheTr: {
     borderBottom: '1px solid #F1F5F9',
   },
   trancheTd: {
-    padding: '9px 10px',
+    padding: '7px 5px',
     color: '#1E293B',
+    whiteSpace: 'nowrap',
+    verticalAlign: 'middle',
   },
   trancheIndexPill: {
     width: '18px',
