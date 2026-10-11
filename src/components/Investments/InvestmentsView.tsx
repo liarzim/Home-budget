@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { InvestmentAsset, InvestmentTranche, SecurityType, InvestmentPeriodicSnapshot } from '../../lib/types';
+import { InvestmentAsset, InvestmentTranche, SecurityType, InvestmentPeriodicSnapshot, InvestmentSnapshotItem } from '../../lib/types';
 import {
   TrendingUp,
   TrendingDown,
@@ -23,7 +23,14 @@ import {
   FileSpreadsheet,
   Clock,
   CheckCircle2,
+  RefreshCw,
+  Globe,
+  FileDown,
+  Check,
+  Search,
+  ExternalLink,
 } from 'lucide-react';
+import { fetchAssetQuote, fetchBatchAssetQuotes, MarketQuoteResult } from '../../lib/quotesService';
 
 export const SECURITY_TYPE_LABELS: Record<SecurityType, { he: string; en: string; icon: string }> = {
   stock: { he: 'מניה', en: 'Stock', icon: '📈' },
@@ -99,6 +106,29 @@ export const InvestmentsView: React.FC = () => {
 
   // Info Accordion toggle
   const [isFormulaExpanded, setIsFormulaExpanded] = useState<boolean>(false);
+
+  // Live Quotes Refresh
+  const [isRefreshingQuotes, setIsRefreshingQuotes] = useState<boolean>(false);
+  const [quotesRefreshMessage, setQuotesRefreshMessage] = useState<string | null>(null);
+
+  // Periodic Market Quote Fetcher (שלב ב' - פנייה לאתרים)
+  const [fetchPeriodType, setFetchPeriodType] = useState<'year_end' | 'quarter_end' | 'month_end' | 'current'>('year_end');
+  const [fetchYear, setFetchYear] = useState<number>(2025);
+  const [fetchQuarter, setFetchQuarter] = useState<number>(4);
+  const [fetchMonth, setFetchMonth] = useState<number>(12);
+  const [isFetchingPeriodQuotes, setIsFetchingPeriodQuotes] = useState<boolean>(false);
+  const [fetchedPeriodResult, setFetchedPeriodResult] = useState<{
+    periodLabel: string;
+    date: string;
+    periodType: 'year' | 'quarter' | 'month' | 'current';
+    items: InvestmentSnapshotItem[];
+    totalInvested: number;
+    totalValue: number;
+    totalProfit: number;
+    totalReturnPct: number;
+  } | null>(null);
+  const [fetchPeriodError, setFetchPeriodError] = useState<string | null>(null);
+  const [expandedSnapshotId, setExpandedSnapshotId] = useState<string | null>(null);
 
   // Periodic Snapshots State (stored in localStorage)
   const [snapshots, setSnapshots] = useState<InvestmentPeriodicSnapshot[]>(() => {
@@ -421,6 +451,251 @@ export const InvestmentsView: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  // 1. Live Quotes Refresh Handler (main screen)
+  const handleRefreshLiveQuotes = async () => {
+    if (investments.length === 0) return;
+    setIsRefreshingQuotes(true);
+    setQuotesRefreshMessage(null);
+    try {
+      const resultsMap = await fetchBatchAssetQuotes(investments, { periodType: 'current' });
+      let updatedCount = 0;
+      investments.forEach((asset) => {
+        const res = resultsMap.get(asset.id);
+        if (res && res.success && res.price > 0) {
+          updateInvestmentAsset(asset.id, { current_price: res.price });
+          updatedCount++;
+        }
+      });
+      setQuotesRefreshMessage(
+        isHe
+          ? `✓ עודכנו בהצלחה ${updatedCount} ניירות לפי שערי שוק עדכניים מאתרי הבורסה!`
+          : `✓ Successfully updated ${updatedCount} assets from market sources!`
+      );
+      setTimeout(() => setQuotesRefreshMessage(null), 6000);
+    } catch (e) {
+      console.error(e);
+      setQuotesRefreshMessage(
+        isHe
+          ? 'שגיאה במשיכת נתונים מהאתר. אנא נסה שוב מאוחר יותר.'
+          : 'Failed to fetch live quotes. Please try again.'
+      );
+      setTimeout(() => setQuotesRefreshMessage(null), 5000);
+    } finally {
+      setIsRefreshingQuotes(false);
+    }
+  };
+
+  // 2. Historical Period Market Quote Fetcher (שלב ב' - פנייה לאתרים בסוף חודש/רבעון/שנה)
+  const handleFetchPeriodQuotes = async () => {
+    if (investments.length === 0) {
+      alert(isHe ? 'אין ניירות ערך בתיק למשיכת נתונים' : 'No assets in portfolio');
+      return;
+    }
+
+    setIsFetchingPeriodQuotes(true);
+    setFetchPeriodError(null);
+    setFetchedPeriodResult(null);
+
+    try {
+      const resultsMap = await fetchBatchAssetQuotes(investments, {
+        periodType: fetchPeriodType,
+        year: fetchYear,
+        month: fetchMonth,
+        quarter: fetchQuarter,
+      });
+
+      // Construct descriptive period label
+      let periodLabel = '';
+      const monthNamesHe = [
+        '', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+        'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
+      ];
+      if (fetchPeriodType === 'year_end') {
+        periodLabel = `סיום שנת ${fetchYear} (סוף דצמבר)`;
+      } else if (fetchPeriodType === 'quarter_end') {
+        const qEnds = ['', 'סוף מרץ', 'סוף יוני', 'סוף ספטמבר', 'סוף דצמבר'];
+        periodLabel = `סיום רבעון Q${fetchQuarter} ${fetchYear} (${qEnds[fetchQuarter]})`;
+      } else if (fetchPeriodType === 'month_end') {
+        periodLabel = `סיום חודש ${monthNamesHe[fetchMonth] || fetchMonth} ${fetchYear}`;
+      } else {
+        periodLabel = `ציטוט שוק נוכחי (${new Date().toLocaleDateString('he-IL')})`;
+      }
+
+      let totalInvestedILS = 0;
+      let totalValueILS = 0;
+      let latestDateFound = '';
+
+      const items: InvestmentSnapshotItem[] = investments.map((asset) => {
+        const quote = resultsMap.get(asset.id);
+        const { totalShares, totalCost, avgPrice } = calculateAssetMetrics(asset);
+        const priceToUse = quote && quote.success && quote.price > 0 ? quote.price : asset.current_price;
+        const quoteDate = quote?.date || new Date().toISOString().split('T')[0];
+        if (quoteDate && (!latestDateFound || quoteDate > latestDateFound)) {
+          latestDateFound = quoteDate;
+        }
+
+        const val = totalShares * priceToUse;
+        const profit = val - totalCost;
+        const returnPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+
+        const mult = asset.currency === 'USD' ? usdRate : 1;
+        totalInvestedILS += totalCost * mult;
+        totalValueILS += val * mult;
+
+        return {
+          asset_id: asset.id,
+          ticker: asset.ticker,
+          security_number: asset.security_number,
+          name: asset.name,
+          currency: asset.currency,
+          shares: totalShares,
+          avg_cost_price: avgPrice,
+          total_cost: totalCost,
+          market_price: priceToUse,
+          market_value: val,
+          profit,
+          return_pct: returnPct,
+          quote_date: quoteDate,
+          quote_source: quote?.source || 'ברירת מחדל תיק',
+        };
+      });
+
+      const totalProfitILS = totalValueILS - totalInvestedILS;
+      const totalReturnPct = totalInvestedILS > 0 ? (totalProfitILS / totalInvestedILS) * 100 : 0;
+
+      setFetchedPeriodResult({
+        periodLabel,
+        date: latestDateFound || new Date().toISOString().split('T')[0],
+        periodType: fetchPeriodType === 'year_end' ? 'year' : fetchPeriodType === 'quarter_end' ? 'quarter' : fetchPeriodType === 'month_end' ? 'month' : 'current',
+        items,
+        totalInvested: totalInvestedILS,
+        totalValue: totalValueILS,
+        totalProfit: totalProfitILS,
+        totalReturnPct,
+      });
+    } catch (e: any) {
+      console.error(e);
+      setFetchPeriodError(e?.message || (isHe ? 'שגיאה בפנייה לאתרי השוק' : 'Failed to fetch quotes'));
+    } finally {
+      setIsFetchingPeriodQuotes(false);
+    }
+  };
+
+  // 3. Save the fetched periodic snapshot into snapshots state
+  const handleSaveFetchedPeriodResult = () => {
+    if (!fetchedPeriodResult) return;
+
+    const newSnapshot: InvestmentPeriodicSnapshot = {
+      id: `snap-${Date.now()}`,
+      household_id: activeHousehold?.id || 'hh-main',
+      period_type: fetchedPeriodResult.periodType,
+      period_label: fetchedPeriodResult.periodLabel,
+      date: fetchedPeriodResult.date,
+      total_invested: fetchedPeriodResult.totalInvested,
+      total_value: fetchedPeriodResult.totalValue,
+      total_profit: fetchedPeriodResult.totalProfit,
+      total_return_pct: fetchedPeriodResult.totalReturnPct,
+      assets_count: fetchedPeriodResult.items.length,
+      items: fetchedPeriodResult.items,
+      notes: `נמשך אוטומטית מאתרי הבורסה (${fetchedPeriodResult.periodLabel})`,
+    };
+
+    saveSnapshots([newSnapshot, ...snapshots]);
+    alert(isHe ? 'צילום המצב נשמר בהצלחה בהיסטוריית התיק!' : 'Snapshot saved successfully!');
+  };
+
+  // 4. Export detailed periodic snapshot to CSV (with Hebrew UTF-8 BOM)
+  const handleExportFetchedPeriodCSV = (result: {
+    periodLabel: string;
+    date: string;
+    items: InvestmentSnapshotItem[];
+    totalInvested: number;
+    totalValue: number;
+    totalProfit: number;
+    totalReturnPct: number;
+  }) => {
+    if (!result) return;
+    const BOM = '\uFEFF';
+    const headers = [
+      'סימול נייר',
+      'מספר נייר',
+      'שם נייר / חברה',
+      'מטבע',
+      'כמות כוללת',
+      'מחיר קנייה ממוצע',
+      'סך עלות רכישה',
+      'שער סגירה בתקופה שנמשך',
+      'תאריך יום מסחר',
+      'מקור הציטוט (אתר)',
+      'שווי במועד זה',
+      'רווח / הפסד נקודתי',
+      'תשואה נקודתית (%)',
+      'שם תקופה',
+    ];
+
+    const rows = result.items.map((item) => [
+      `"${item.ticker}"`,
+      `"${item.security_number || '—'}"`,
+      `"${item.name}"`,
+      `"${item.currency}"`,
+      item.shares,
+      item.avg_cost_price.toFixed(2),
+      item.total_cost.toFixed(2),
+      item.market_price.toFixed(2),
+      `"${item.quote_date || ''}"`,
+      `"${item.quote_source || ''}"`,
+      item.market_value.toFixed(2),
+      item.profit.toFixed(2),
+      `${item.return_pct.toFixed(2)}%`,
+      `"${result.periodLabel}"`,
+    ].join(','));
+
+    const summaryRow = [
+      '"סה״כ תיק (בשקלים)"',
+      '""',
+      '""',
+      '"ILS"',
+      '""',
+      '""',
+      result.totalInvested.toFixed(2),
+      '""',
+      `"${result.date}"`,
+      '"ציטוטי שוק"',
+      result.totalValue.toFixed(2),
+      result.totalProfit.toFixed(2),
+      `${result.totalReturnPct.toFixed(2)}%`,
+      `"${result.periodLabel}"`,
+    ].join(',');
+
+    const csvContent = BOM + headers.join(',') + '\n' + rows.join('\n') + '\n' + summaryRow;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const sanitizedLabel = result.periodLabel.replace(/[\/\s:()]+/g, '_');
+    link.setAttribute('download', `snapshot_${sanitizedLabel}_${result.date}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 5. Export previously saved snapshot to CSV
+  const handleExportSavedSnapshotCSV = (snap: InvestmentPeriodicSnapshot) => {
+    if (snap.items && snap.items.length > 0) {
+      handleExportFetchedPeriodCSV({
+        periodLabel: snap.period_label,
+        date: snap.date,
+        items: snap.items,
+        totalInvested: snap.total_invested,
+        totalValue: snap.total_value,
+        totalProfit: snap.total_profit,
+        totalReturnPct: snap.total_return_pct,
+      });
+    } else {
+      handleExportCurrentStateCSV();
+    }
+  };
+
   // Open Snapshot Modal with dynamic label default
   const handleOpenSnapshotModal = (type: 'month' | 'quarter' | 'year' | 'current') => {
     setSnapshotPeriodType(type);
@@ -565,6 +840,20 @@ export const InvestmentsView: React.FC = () => {
             )}
           </div>
 
+          {/* Live Market Quotes Refresh Button */}
+          <button
+            style={{
+              ...styles.refreshQuotesBtn,
+              ...(isRefreshingQuotes ? styles.refreshQuotesBtnLoading : {}),
+            }}
+            onClick={handleRefreshLiveQuotes}
+            disabled={isRefreshingQuotes}
+            title={isHe ? 'פנה לאתרים (Yahoo Finance / ביזפורטל) ומשוך שער שוק עדכני' : 'Fetch live market quotes'}
+          >
+            <RefreshCw size={15} color="#059669" className={isRefreshingQuotes ? 'spin-icon' : ''} />
+            <span>{isRefreshingQuotes ? (isHe ? 'מעדכן שערים...' : 'Fetching...') : (isHe ? 'רענן שערי שוק' : 'Live Quotes')}</span>
+          </button>
+
           {/* Add New Stock / Tranche Button */}
           <button
             style={styles.addAssetBtn}
@@ -575,6 +864,14 @@ export const InvestmentsView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Live Refresh Status Banner */}
+      {quotesRefreshMessage && (
+        <div style={styles.quotesBanner} className="animate-fade-in">
+          <Check size={16} color="#059669" />
+          <span>{quotesRefreshMessage}</span>
+        </div>
+      )}
 
       {/* Aggregate Portfolio KPI Cards */}
       <div style={styles.kpiGrid}>
@@ -1185,6 +1482,341 @@ export const InvestmentsView: React.FC = () => {
             </div>
           </div>
 
+          {/* MARKET QUOTE FETCH & VALUATION BUILDER (פנייה לאתרים) */}
+          <div style={styles.quoteFetchCard}>
+            <div style={styles.quoteFetchHeader}>
+              <div style={styles.quoteFetchIconBadge}>
+                <Globe size={22} color="#2563EB" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={styles.quoteFetchTagRow}>
+                  <span style={styles.quoteFetchTag}>
+                    <Sparkles size={12} color="#2563EB" />
+                    {isHe ? 'שלב ב׳ — פנייה לאתרי הבורסה וציטוטים היסטוריים' : 'Market Quotes API'}
+                  </span>
+                </div>
+                <h3 style={styles.quoteFetchTitle}>
+                  {isHe
+                    ? 'משיכת ציטוט שוק וחישוב שווי בסוף חודש / סוף רבעון / סוף שנה'
+                    : 'Fetch Historical Market Quotes & Calculate P&L'}
+                </h3>
+                <p style={styles.quoteFetchSubtitle}>
+                  {isHe
+                    ? 'המערכת פונה ישירות לאתרי הבורסה (Yahoo Finance לניירות זרים, וביזפורטל לניירות ישראליים לפי מספר נייר), מביאה את שער הסגירה המדויק ומחשבת שווי, רווח/הפסד נקודתי ותשואה.'
+                    : 'Connects to Yahoo Finance & Bizportal TASE to fetch official closing prices at end of month, quarter, or year.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Period Type Selection Tabs */}
+            <div style={styles.periodTabsWrap}>
+              <button
+                type="button"
+                style={{
+                  ...styles.periodTabItem,
+                  ...(fetchPeriodType === 'year_end' ? styles.periodTabItemActive : {}),
+                }}
+                onClick={() => {
+                  setFetchPeriodType('year_end');
+                  setFetchMonth(12);
+                }}
+              >
+                <Clock size={15} />
+                <span>{isHe ? 'סוף שנה (סוף חודש דצמבר)' : 'Year End (Dec 31)'}</span>
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...styles.periodTabItem,
+                  ...(fetchPeriodType === 'quarter_end' ? styles.periodTabItemActive : {}),
+                }}
+                onClick={() => setFetchPeriodType('quarter_end')}
+              >
+                <Layers size={15} />
+                <span>{isHe ? 'סוף רבעון (סוף החודש ברבעון)' : 'Quarter End'}</span>
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...styles.periodTabItem,
+                  ...(fetchPeriodType === 'month_end' ? styles.periodTabItemActive : {}),
+                }}
+                onClick={() => setFetchPeriodType('month_end')}
+              >
+                <Calendar size={15} />
+                <span>{isHe ? 'סוף חודש ספציפי' : 'Month End'}</span>
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  ...styles.periodTabItem,
+                  ...(fetchPeriodType === 'current' ? styles.periodTabItemActive : {}),
+                }}
+                onClick={() => setFetchPeriodType('current')}
+              >
+                <TrendingUp size={15} />
+                <span>{isHe ? 'נקודת זמן נוכחית (חי)' : 'Current Live'}</span>
+              </button>
+            </div>
+
+            {/* Controls Row */}
+            <div style={styles.fetchControlsRow}>
+              {fetchPeriodType !== 'current' && (
+                <div style={styles.fetchSelectGroup}>
+                  <label style={styles.fetchSelectLabel}>
+                    {isHe ? 'בחר שנת סגירה:' : 'Select Year:'}
+                  </label>
+                  <select
+                    value={fetchYear}
+                    onChange={(e) => setFetchYear(parseInt(e.target.value, 10))}
+                    style={styles.fetchSelect}
+                  >
+                    <option value={2026}>2026</option>
+                    <option value={2025}>2025</option>
+                    <option value={2024}>2024</option>
+                    <option value={2023}>2023</option>
+                    <option value={2022}>2022</option>
+                  </select>
+                </div>
+              )}
+
+              {fetchPeriodType === 'quarter_end' && (
+                <div style={styles.fetchSelectGroup}>
+                  <label style={styles.fetchSelectLabel}>
+                    {isHe ? 'בחר רבעון (החודש האחרון ברבעון):' : 'Select Quarter:'}
+                  </label>
+                  <select
+                    value={fetchQuarter}
+                    onChange={(e) => setFetchQuarter(parseInt(e.target.value, 10))}
+                    style={styles.fetchSelect}
+                  >
+                    <option value={1}>{isHe ? 'רבעון 1 (Q1 - סוף חודש מרץ)' : 'Q1 (End of March)'}</option>
+                    <option value={2}>{isHe ? 'רבעון 2 (Q2 - סוף חודש יוני)' : 'Q2 (End of June)'}</option>
+                    <option value={3}>{isHe ? 'רבעון 3 (Q3 - סוף חודש ספטמבר)' : 'Q3 (End of September)'}</option>
+                    <option value={4}>{isHe ? 'רבעון 4 (Q4 - סוף חודש דצמבר)' : 'Q4 (End of December)'}</option>
+                  </select>
+                </div>
+              )}
+
+              {fetchPeriodType === 'month_end' && (
+                <div style={styles.fetchSelectGroup}>
+                  <label style={styles.fetchSelectLabel}>
+                    {isHe ? 'בחר חודש לסגירה:' : 'Select Month:'}
+                  </label>
+                  <select
+                    value={fetchMonth}
+                    onChange={(e) => setFetchMonth(parseInt(e.target.value, 10))}
+                    style={styles.fetchSelect}
+                  >
+                    <option value={1}>{isHe ? 'חודש 1 (סוף ינואר)' : 'January'}</option>
+                    <option value={2}>{isHe ? 'חודש 2 (סוף פברואר)' : 'February'}</option>
+                    <option value={3}>{isHe ? 'חודש 3 (סוף מרץ)' : 'March'}</option>
+                    <option value={4}>{isHe ? 'חודש 4 (סוף אפריל)' : 'April'}</option>
+                    <option value={5}>{isHe ? 'חודש 5 (סוף מאי)' : 'May'}</option>
+                    <option value={6}>{isHe ? 'חודש 6 (סוף יוני)' : 'June'}</option>
+                    <option value={7}>{isHe ? 'חודש 7 (סוף יולי)' : 'July'}</option>
+                    <option value={8}>{isHe ? 'חודש 8 (סוף אוגוסט)' : 'August'}</option>
+                    <option value={9}>{isHe ? 'חודש 9 (סוף ספטמבר)' : 'September'}</option>
+                    <option value={10}>{isHe ? 'חודש 10 (סוף אוקטובר)' : 'October'}</option>
+                    <option value={11}>{isHe ? 'חודש 11 (סוף נובמבר)' : 'November'}</option>
+                    <option value={12}>{isHe ? 'חודש 12 (סוף דצמבר)' : 'December'}</option>
+                  </select>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1 }}>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.fetchActionBtn,
+                    ...(isFetchingPeriodQuotes ? styles.fetchActionBtnLoading : {}),
+                  }}
+                  onClick={handleFetchPeriodQuotes}
+                  disabled={isFetchingPeriodQuotes}
+                >
+                  <Globe size={18} className={isFetchingPeriodQuotes ? 'spin-icon' : ''} />
+                  <span>
+                    {isFetchingPeriodQuotes
+                      ? isHe
+                        ? 'פונה לאתרים ומושך ציטוטי סגירה...'
+                        : 'Fetching closing quotes...'
+                      : isHe
+                      ? 'פנה לאתרים ומשוך ציטוטים לתקופה זו'
+                      : 'Fetch Closing Quotes & Calculate P&L'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {fetchPeriodError && (
+              <div style={styles.fetchErrorBox}>
+                <Info size={16} color="#DC2626" />
+                <span>{fetchPeriodError}</span>
+              </div>
+            )}
+
+            {/* FETCHED RESULTS PREVIEW CARD */}
+            {fetchedPeriodResult && (
+              <div style={styles.fetchedResultCard} className="animate-fade-in">
+                <div style={styles.fetchedResultHeader}>
+                  <div>
+                    <div style={styles.fetchedResultBadge}>
+                      <CheckCircle2 size={14} color="#16A34A" />
+                      <span>{isHe ? 'ציטוטים היסטוריים נמשכו בהצלחה' : 'Quotes Retrieved'}</span>
+                    </div>
+                    <h4 style={styles.fetchedResultTitle}>{fetchedPeriodResult.periodLabel}</h4>
+                    <p style={styles.fetchedResultSub}>
+                      {isHe
+                        ? `יום מסחר שנמצא: ${fetchedPeriodResult.date} | סה״כ ${fetchedPeriodResult.items.length} ניירות חושבו`
+                        : `Trading date: ${fetchedPeriodResult.date} | ${fetchedPeriodResult.items.length} assets`}
+                    </p>
+                  </div>
+
+                  <div style={styles.fetchedActionsGroup}>
+                    <button
+                      type="button"
+                      style={styles.saveFetchedBtn}
+                      onClick={handleSaveFetchedPeriodResult}
+                    >
+                      <Check size={16} />
+                      <span>{isHe ? 'שמור צילום מצב זה בהיסטוריה' : 'Save Snapshot'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.exportFetchedBtn}
+                      onClick={() => handleExportFetchedPeriodCSV(fetchedPeriodResult)}
+                    >
+                      <Download size={16} />
+                      <span>{isHe ? 'הורד דוח לתקופה זו (Excel/CSV)' : 'Export CSV'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Period KPI Summary */}
+                <div style={styles.periodKpiGrid}>
+                  <div style={styles.periodKpiItem}>
+                    <span style={styles.periodKpiLabel}>{isHe ? 'סך עלות ההשקעה' : 'Total Cost'}</span>
+                    <span style={styles.periodKpiVal}>
+                      ₪{fetchedPeriodResult.totalInvested.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                  <div style={styles.periodKpiItem}>
+                    <span style={styles.periodKpiLabel}>{isHe ? 'שווי תיק במועד זה' : 'Period Valuation'}</span>
+                    <span style={{ ...styles.periodKpiVal, color: '#0F172A' }}>
+                      ₪{fetchedPeriodResult.totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                  <div style={styles.periodKpiItem}>
+                    <span style={styles.periodKpiLabel}>{isHe ? 'רווח/הפסד נקודתי' : 'Periodic P&L'}</span>
+                    <span
+                      style={{
+                        ...styles.periodKpiVal,
+                        color: fetchedPeriodResult.totalProfit >= 0 ? '#059669' : '#DC2626',
+                      }}
+                    >
+                      {fetchedPeriodResult.totalProfit >= 0 ? '+' : ''}
+                      ₪{fetchedPeriodResult.totalProfit.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </span>
+                  </div>
+                  <div style={styles.periodKpiItem}>
+                    <span style={styles.periodKpiLabel}>{isHe ? 'תשואה נקודתית' : 'Periodic Yield'}</span>
+                    <span
+                      style={{
+                        ...styles.periodKpiVal,
+                        color: fetchedPeriodResult.totalProfit >= 0 ? '#15803D' : '#B91C1C',
+                      }}
+                    >
+                      {fetchedPeriodResult.totalProfit >= 0 ? '+' : ''}
+                      {fetchedPeriodResult.totalReturnPct.toFixed(2)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Detailed Assets Breakdown Table for the Period */}
+                <div style={{ overflowX: 'auto', marginTop: '14px' }}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr style={styles.thRow}>
+                        <th style={styles.thCell}>{isHe ? 'סימול / מספר נייר' : 'Ticker / Security No.'}</th>
+                        <th style={styles.thCell}>{isHe ? 'שם נייר' : 'Name'}</th>
+                        <th style={styles.thCell}>{isHe ? 'מקור הציטוט' : 'Source'}</th>
+                        <th style={styles.thCell}>{isHe ? 'שער סגירה בתקופה' : 'Closing Price'}</th>
+                        <th style={styles.thCell}>{isHe ? 'תאריך יום מסחר' : 'Trade Date'}</th>
+                        <th style={styles.thCell}>{isHe ? 'כמות' : 'Shares'}</th>
+                        <th style={styles.thCell}>{isHe ? 'סך עלות' : 'Total Cost'}</th>
+                        <th style={styles.thCell}>{isHe ? 'שווי במועד זה' : 'Valuation'}</th>
+                        <th style={styles.thCell}>{isHe ? 'רווח/הפסד נקודתי' : 'P&L'}</th>
+                        <th style={styles.thCell}>{isHe ? 'תשואה (%)' : 'Yield %'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fetchedPeriodResult.items.map((item) => {
+                        const isGain = item.profit >= 0;
+                        return (
+                          <tr key={item.asset_id} style={styles.trRow}>
+                            <td style={styles.tdCell}>
+                              <div style={styles.tickerPill}>{item.ticker}</div>
+                              {item.security_number && (
+                                <div style={styles.secNumText}>#{item.security_number}</div>
+                              )}
+                            </td>
+                            <td style={styles.tdCell}>
+                              <span style={styles.boldCellText}>{item.name}</span>
+                            </td>
+                            <td style={styles.tdCell}>
+                              <span style={styles.quoteSourceBadge}>{item.quote_source}</span>
+                            </td>
+                            <td style={styles.tdCell}>
+                              <strong style={{ color: '#2563EB' }}>
+                                {item.currency === 'USD' ? '$' : '₪'}
+                                {item.market_price.toFixed(2)}
+                              </strong>
+                            </td>
+                            <td style={styles.tdCell}>{item.quote_date || '—'}</td>
+                            <td style={styles.tdCell}>{item.shares}</td>
+                            <td style={styles.tdCell}>
+                              {item.currency === 'USD' ? '$' : '₪'}
+                              {item.total_cost.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td style={styles.tdCell}>
+                              <strong>
+                                {item.currency === 'USD' ? '$' : '₪'}
+                                {item.market_value.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </strong>
+                            </td>
+                            <td style={styles.tdCell}>
+                              <span style={{ color: isGain ? '#059669' : '#DC2626', fontWeight: '700' }}>
+                                {isGain ? '+' : ''}
+                                {item.currency === 'USD' ? '$' : '₪'}
+                                {item.profit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </span>
+                            </td>
+                            <td style={styles.tdCell}>
+                              <span
+                                style={{
+                                  ...styles.yieldBadge,
+                                  backgroundColor: isGain ? '#DCFCE7' : '#FEE2E2',
+                                  color: isGain ? '#15803D' : '#B91C1C',
+                                }}
+                              >
+                                {isGain ? '+' : ''}
+                                {item.return_pct.toFixed(2)}%
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Snapshots Table */}
           <div style={styles.tableCard}>
             <div style={styles.tableHeaderBar}>
@@ -1231,76 +1863,172 @@ export const InvestmentsView: React.FC = () => {
                   snapshots.map((snap) => {
                     const isProfit = snap.total_profit >= 0;
                     return (
-                      <tr key={snap.id} style={styles.trRow}>
-                        <td style={styles.tdCell}>
-                          <div style={styles.boldCellText}>{snap.period_label}</div>
-                          {snap.notes && <div style={styles.notesText}>{snap.notes}</div>}
-                        </td>
-                        <td style={styles.tdCell}>
-                          <span style={styles.periodTypeBadge}>
-                            {snap.period_type === 'month' && (isHe ? 'סיום חודש' : 'Month End')}
-                            {snap.period_type === 'quarter' && (isHe ? 'סיום רבעון' : 'Quarter End')}
-                            {snap.period_type === 'year' && (isHe ? 'סיום שנה' : 'Year End')}
-                            {snap.period_type === 'current' && (isHe ? 'צילום נקודתי' : 'Custom Point')}
-                          </span>
-                        </td>
-                        <td style={styles.tdCell}>{snap.date}</td>
-                        <td style={styles.tdCell}>
-                          ₪{snap.total_invested.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                        </td>
-                        <td style={styles.tdCell}>
-                          <strong style={{ color: '#0F172A' }}>
-                            ₪{snap.total_value.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                          </strong>
-                        </td>
-                        <td style={styles.tdCell}>
-                          <span
-                            style={{
-                              ...styles.boldCellText,
-                              color: isProfit ? '#059669' : '#DC2626',
-                            }}
-                          >
-                            {isProfit ? '+' : ''}
-                            ₪{snap.total_profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                          </span>
-                        </td>
-                        <td style={styles.tdCell}>
-                          <span
-                            style={{
-                              ...styles.yieldBadge,
-                              backgroundColor: isProfit ? '#DCFCE7' : '#FEE2E2',
-                              color: isProfit ? '#15803D' : '#B91C1C',
-                            }}
-                          >
-                            {isProfit ? '+' : ''}
-                            {snap.total_return_pct.toFixed(2)}%
-                          </span>
-                        </td>
-                        <td style={styles.tdCell}>
-                          <span>{snap.assets_count} {isHe ? 'ניירות' : 'Assets'}</span>
-                        </td>
-                        <td style={{ ...styles.tdCell, textAlign: 'center' }}>
-                          <div style={styles.actionsRow}>
-                            <button
-                              style={styles.exportSmallBtn}
-                              onClick={() => {
-                                handleExportCurrentStateCSV();
+                      <React.Fragment key={snap.id}>
+                        <tr style={styles.trRow}>
+                          <td style={styles.tdCell}>
+                            <div style={styles.boldCellText}>{snap.period_label}</div>
+                            {snap.notes && <div style={styles.notesText}>{snap.notes}</div>}
+                          </td>
+                          <td style={styles.tdCell}>
+                            <span style={styles.periodTypeBadge}>
+                              {snap.period_type === 'month' && (isHe ? 'סיום חודש' : 'Month End')}
+                              {snap.period_type === 'quarter' && (isHe ? 'סיום רבעון' : 'Quarter End')}
+                              {snap.period_type === 'year' && (isHe ? 'סיום שנה' : 'Year End')}
+                              {snap.period_type === 'current' && (isHe ? 'צילום נקודתי' : 'Custom Point')}
+                            </span>
+                          </td>
+                          <td style={styles.tdCell}>{snap.date}</td>
+                          <td style={styles.tdCell}>
+                            ₪{snap.total_invested.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          </td>
+                          <td style={styles.tdCell}>
+                            <strong style={{ color: '#0F172A' }}>
+                              ₪{snap.total_value.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                            </strong>
+                          </td>
+                          <td style={styles.tdCell}>
+                            <span
+                              style={{
+                                ...styles.boldCellText,
+                                color: isProfit ? '#059669' : '#DC2626',
                               }}
-                              title={isHe ? 'הורד דוח של צילום מצב זה' : 'Download report'}
                             >
-                              <Download size={13} color="var(--primary)" />
-                              <span>{isHe ? 'הורד דוח' : 'Download'}</span>
-                            </button>
-                            <button
-                              style={styles.deleteAssetBtn}
-                              onClick={() => handleDeleteSnapshot(snap.id)}
-                              title={isHe ? 'מחק צילום מצב' : 'Delete snapshot'}
+                              {isProfit ? '+' : ''}
+                              ₪{snap.total_profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                            </span>
+                          </td>
+                          <td style={styles.tdCell}>
+                            <span
+                              style={{
+                                ...styles.yieldBadge,
+                                backgroundColor: isProfit ? '#DCFCE7' : '#FEE2E2',
+                                color: isProfit ? '#15803D' : '#B91C1C',
+                              }}
                             >
-                              <Trash2 size={14} color="#EF4444" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                              {isProfit ? '+' : ''}
+                              {snap.total_return_pct.toFixed(2)}%
+                            </span>
+                          </td>
+                          <td style={styles.tdCell}>
+                            <span>{snap.assets_count} {isHe ? 'ניירות' : 'Assets'}</span>
+                          </td>
+                          <td style={{ ...styles.tdCell, textAlign: 'center' }}>
+                            <div style={styles.actionsRow}>
+                              {snap.items && snap.items.length > 0 && (
+                                <button
+                                  type="button"
+                                  style={styles.addTrancheSmallBtn}
+                                  onClick={() => setExpandedSnapshotId(expandedSnapshotId === snap.id ? null : snap.id)}
+                                  title={isHe ? 'הצג/הסתר פירוט ניירות' : 'Toggle holdings breakdown'}
+                                >
+                                  {expandedSnapshotId === snap.id ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                  <span>{isHe ? 'פירוט ניירות' : 'Holdings'}</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                style={styles.exportSmallBtn}
+                                onClick={() => {
+                                  handleExportSavedSnapshotCSV(snap);
+                                }}
+                                title={isHe ? 'הורד דוח של צילום מצב זה' : 'Download report'}
+                              >
+                                <Download size={13} color="var(--primary)" />
+                                <span>{isHe ? 'הורד דוח (Excel)' : 'Download'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                style={styles.deleteAssetBtn}
+                                onClick={() => handleDeleteSnapshot(snap.id)}
+                                title={isHe ? 'מחק צילום מצב' : 'Delete snapshot'}
+                              >
+                                <Trash2 size={14} color="#EF4444" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {expandedSnapshotId === snap.id && snap.items && snap.items.length > 0 && (
+                          <tr style={styles.snapshotItemsSubTr}>
+                            <td colSpan={9} style={styles.snapshotItemsSubTd}>
+                              <div style={{ ...styles.trancheSubContainer, border: '1px solid #93C5FD' }}>
+                                <div style={styles.trancheSubHeader}>
+                                  <div style={styles.trancheSubTitle}>
+                                    <Clock size={16} color="#2563EB" />
+                                    <span>{isHe ? `פירוט ניירות שערכו בצילום מצב: ${snap.period_label}` : `Holdings at: ${snap.period_label}`}</span>
+                                  </div>
+                                  <span style={styles.quoteSourceBadge}>
+                                    {isHe ? `תאריך: ${snap.date}` : `Date: ${snap.date}`}
+                                  </span>
+                                </div>
+                                <table style={styles.trancheTable}>
+                                  <thead>
+                                    <tr style={styles.trancheThRow}>
+                                      <th style={styles.trancheTh}>{isHe ? 'סימול / מספר' : 'Symbol / ID'}</th>
+                                      <th style={styles.trancheTh}>{isHe ? 'שם נייר' : 'Name'}</th>
+                                      <th style={styles.trancheTh}>{isHe ? 'מקור' : 'Source'}</th>
+                                      <th style={styles.trancheTh}>{isHe ? 'שער סגירה' : 'Price'}</th>
+                                      <th style={styles.trancheTh}>{isHe ? 'כמות' : 'Shares'}</th>
+                                      <th style={styles.trancheTh}>{isHe ? 'עלות רכישה' : 'Cost'}</th>
+                                      <th style={styles.trancheTh}>{isHe ? 'שווי במועד זה' : 'Valuation'}</th>
+                                      <th style={styles.trancheTh}>{isHe ? 'רווח/הפסד נקודתי' : 'P&L'}</th>
+                                      <th style={styles.trancheTh}>{isHe ? 'תשואה (%)' : 'Yield'}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {snap.items.map((it) => {
+                                      const isItemProfit = it.profit >= 0;
+                                      return (
+                                        <tr key={it.asset_id} style={styles.trancheTr}>
+                                          <td style={styles.trancheTd}>
+                                            <div style={styles.tickerPill}>{it.ticker}</div>
+                                            {it.security_number && <div style={styles.secNumText}>#{it.security_number}</div>}
+                                          </td>
+                                          <td style={styles.trancheTd}>
+                                            <strong>{it.name}</strong>
+                                          </td>
+                                          <td style={styles.trancheTd}>
+                                            <span style={styles.quoteSourceBadge}>{it.quote_source || '—'}</span>
+                                          </td>
+                                          <td style={styles.trancheTd}>
+                                            <strong style={{ color: '#2563EB' }}>
+                                              {it.currency === 'USD' ? '$' : '₪'}{it.market_price.toFixed(2)}
+                                            </strong>
+                                          </td>
+                                          <td style={styles.trancheTd}>{it.shares}</td>
+                                          <td style={styles.trancheTd}>
+                                            {it.currency === 'USD' ? '$' : '₪'}{it.total_cost.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                          </td>
+                                          <td style={styles.trancheTd}>
+                                            <strong>
+                                              {it.currency === 'USD' ? '$' : '₪'}{it.market_value.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            </strong>
+                                          </td>
+                                          <td style={styles.trancheTd}>
+                                            <span style={{ color: isItemProfit ? '#059669' : '#DC2626', fontWeight: '700' }}>
+                                              {isItemProfit ? '+' : ''}{it.currency === 'USD' ? '$' : '₪'}{it.profit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            </span>
+                                          </td>
+                                          <td style={styles.trancheTd}>
+                                            <span
+                                              style={{
+                                                ...styles.yieldPillSmall,
+                                                backgroundColor: isItemProfit ? '#DCFCE7' : '#FEE2E2',
+                                                color: isItemProfit ? '#15803D' : '#B91C1C',
+                                              }}
+                                            >
+                                              {isItemProfit ? '+' : ''}{it.return_pct.toFixed(2)}%
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })
                 )}
@@ -2561,5 +3289,299 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.875rem',
     cursor: 'pointer',
     boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)',
+  },
+  refreshQuotesBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    backgroundColor: '#F0FDF4',
+    border: '1px solid #BBF7D0',
+    borderRadius: '10px',
+    color: '#15803D',
+    fontWeight: '700',
+    fontSize: '0.8125rem',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  refreshQuotesBtnLoading: {
+    opacity: 0.7,
+    cursor: 'wait',
+  },
+  quotesBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    backgroundColor: '#F0FDF4',
+    border: '1px solid #86EFAC',
+    borderRadius: '12px',
+    padding: '10px 16px',
+    color: '#166534',
+    fontSize: '0.875rem',
+    fontWeight: '700',
+    marginBottom: '16px',
+  },
+  quoteFetchCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: '16px',
+    border: '1px solid #BFDBFE',
+    padding: '24px',
+    marginBottom: '24px',
+    boxShadow: '0 4px 16px rgba(37, 99, 235, 0.08)',
+  },
+  quoteFetchHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '14px',
+    marginBottom: '18px',
+  },
+  quoteFetchIconBadge: {
+    width: '44px',
+    height: '44px',
+    borderRadius: '12px',
+    backgroundColor: '#EFF6FF',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    border: '1px solid #DBEAFE',
+  },
+  quoteFetchTagRow: {
+    display: 'flex',
+    marginBottom: '4px',
+  },
+  quoteFetchTag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '3px 8px',
+    backgroundColor: '#EFF6FF',
+    color: '#2563EB',
+    borderRadius: '6px',
+    fontSize: '0.6875rem',
+    fontWeight: '800',
+  },
+  quoteFetchTitle: {
+    fontSize: '1.125rem',
+    fontWeight: '800',
+    color: '#0F172A',
+    margin: '0 0 4px',
+  },
+  quoteFetchSubtitle: {
+    fontSize: '0.8125rem',
+    color: '#475569',
+    margin: 0,
+    lineHeight: '1.4',
+  },
+  periodTabsWrap: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '8px',
+    marginBottom: '18px',
+  },
+  periodTabItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '10px 12px',
+    backgroundColor: '#F8FAFC',
+    border: '1px solid #E2E8F0',
+    borderRadius: '10px',
+    color: '#475569',
+    fontWeight: '700',
+    fontSize: '0.8125rem',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  periodTabItemActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+    color: '#FFFFFF',
+    boxShadow: '0 2px 8px rgba(37, 99, 235, 0.25)',
+  },
+  fetchControlsRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '12px',
+    alignItems: 'flex-end',
+    backgroundColor: '#F8FAFC',
+    padding: '16px',
+    borderRadius: '12px',
+    border: '1px solid #E2E8F0',
+  },
+  fetchSelectGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    minWidth: '170px',
+  },
+  fetchSelectLabel: {
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: '#475569',
+  },
+  fetchSelect: {
+    padding: '9px 12px',
+    borderRadius: '8px',
+    border: '1px solid #CBD5E1',
+    backgroundColor: '#FFFFFF',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    color: '#0F172A',
+    outline: 'none',
+  },
+  fetchActionBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '10px 20px',
+    backgroundColor: '#2563EB',
+    color: '#FFFFFF',
+    borderRadius: '10px',
+    border: 'none',
+    fontWeight: '800',
+    fontSize: '0.875rem',
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)',
+    width: '100%',
+  },
+  fetchActionBtnLoading: {
+    opacity: 0.75,
+    cursor: 'wait',
+  },
+  fetchErrorBox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    backgroundColor: '#FEF2F2',
+    border: '1px solid #FECACA',
+    borderRadius: '10px',
+    padding: '10px 14px',
+    color: '#991B1B',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    marginTop: '12px',
+  },
+  fetchedResultCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: '14px',
+    border: '2px solid #93C5FD',
+    padding: '20px',
+    marginTop: '20px',
+    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.08)',
+  },
+  fetchedResultHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '12px',
+    marginBottom: '16px',
+    paddingBottom: '14px',
+    borderBottom: '1px solid #E2E8F0',
+  },
+  fetchedResultBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    backgroundColor: '#DCFCE7',
+    color: '#166534',
+    padding: '3px 8px',
+    borderRadius: '6px',
+    fontSize: '0.6875rem',
+    fontWeight: '800',
+    marginBottom: '4px',
+  },
+  fetchedResultTitle: {
+    fontSize: '1.0625rem',
+    fontWeight: '800',
+    color: '#0F172A',
+    margin: '0 0 2px',
+  },
+  fetchedResultSub: {
+    fontSize: '0.75rem',
+    color: '#64748B',
+    margin: 0,
+  },
+  fetchedActionsGroup: {
+    display: 'flex',
+    gap: '8px',
+    flexWrap: 'wrap',
+  },
+  saveFetchedBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '9px 14px',
+    backgroundColor: '#16A34A',
+    color: '#FFFFFF',
+    border: 'none',
+    borderRadius: '8px',
+    fontWeight: '700',
+    fontSize: '0.8125rem',
+    cursor: 'pointer',
+    boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)',
+  },
+  exportFetchedBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '9px 14px',
+    backgroundColor: '#EFF6FF',
+    color: '#2563EB',
+    border: '1px solid #BFDBFE',
+    borderRadius: '8px',
+    fontWeight: '700',
+    fontSize: '0.8125rem',
+    cursor: 'pointer',
+  },
+  periodKpiGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+    gap: '10px',
+    marginBottom: '16px',
+  },
+  periodKpiItem: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: '10px',
+    border: '1px solid #E2E8F0',
+    padding: '10px 12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  periodKpiLabel: {
+    fontSize: '0.6875rem',
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  periodKpiVal: {
+    fontSize: '1rem',
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  quoteSourceBadge: {
+    display: 'inline-block',
+    padding: '2px 6px',
+    backgroundColor: '#F1F5F9',
+    color: '#334155',
+    borderRadius: '4px',
+    fontSize: '0.6875rem',
+    fontWeight: '600',
+  },
+  secNumText: {
+    fontSize: '0.6875rem',
+    color: '#64748B',
+    fontWeight: '600',
+    marginTop: '2px',
+  },
+  snapshotItemsSubTr: {
+    backgroundColor: '#F8FAFC',
+    borderBottom: '2px solid #CBD5E1',
+  },
+  snapshotItemsSubTd: {
+    padding: '12px 16px',
   },
 };

@@ -382,6 +382,23 @@ export interface InvestmentAsset {
   updated_at: string;
 }
 
+export interface InvestmentSnapshotItem {
+  asset_id: string;
+  ticker: string;
+  security_number?: string;
+  name: string;
+  currency: 'USD' | 'ILS';
+  shares: number;
+  avg_cost_price: number;
+  total_cost: number;
+  market_price: number; // Closing/current price from external site
+  market_value: number;
+  profit: number;
+  return_pct: number;
+  quote_date?: string;
+  quote_source?: string;
+}
+
 export interface InvestmentPeriodicSnapshot {
   id: string;
   household_id: string;
@@ -394,6 +411,7 @@ export interface InvestmentPeriodicSnapshot {
   total_return_pct: number;
   assets_count: number;
   notes?: string;
+  items?: InvestmentSnapshotItem[]; // Per-asset breakdown
 }
 
 
