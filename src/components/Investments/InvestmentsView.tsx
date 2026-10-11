@@ -351,17 +351,24 @@ export const InvestmentsView: React.FC = () => {
         ],
       });
     } else if (modalMode === 'add_tranche' && selectedAssetIdForTranche) {
-      addInvestmentTranche(selectedAssetIdForTranche, {
-        date: formDate,
-        shares: sharesNum,
-        price_per_share: priceNum,
-        total_cost: totalCostNum,
-        fee: feeNum,
-        notes: formNotes.trim() || undefined,
-      });
-      if (!isNaN(currentPriceNum) && currentPriceNum > 0) {
-        updateInvestmentAsset(selectedAssetIdForTranche, { current_price: currentPriceNum });
-      }
+      addInvestmentTranche(
+        selectedAssetIdForTranche,
+        {
+          date: formDate,
+          shares: sharesNum,
+          price_per_share: priceNum,
+          total_cost: totalCostNum,
+          fee: feeNum,
+          notes: formNotes.trim() || undefined,
+        },
+        !isNaN(currentPriceNum) && currentPriceNum > 0 ? currentPriceNum : undefined
+      );
+
+      // Automatically expand this asset so the user sees their new tranche immediately
+      setExpandedAssetIds((prev) => ({
+        ...prev,
+        [selectedAssetIdForTranche]: true,
+      }));
     }
 
     setIsModalOpen(false);

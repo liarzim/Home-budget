@@ -69,7 +69,7 @@ interface AuthContextType {
   addInvestmentAsset: (asset: Omit<InvestmentAsset, 'id' | 'created_at' | 'updated_at'>) => void;
   updateInvestmentAsset: (id: string, updates: Partial<InvestmentAsset>) => void;
   deleteInvestmentAsset: (id: string) => void;
-  addInvestmentTranche: (assetId: string, tranche: Omit<InvestmentTranche, 'id'>) => void;
+  addInvestmentTranche: (assetId: string, tranche: Omit<InvestmentTranche, 'id'>, newCurrentPrice?: number) => void;
   deleteInvestmentTranche: (assetId: string, trancheId: string) => void;
   isLoading: boolean;
   isDemoMode: boolean;
@@ -218,51 +218,93 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    saveInvestments([newAsset, ...investments]);
+    setInvestments((prev) => {
+      const updated = [newAsset, ...prev];
+      try {
+        localStorage.setItem('household_investments_data', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
   };
 
   const updateInvestmentAsset = (id: string, updates: Partial<InvestmentAsset>) => {
-    const updated = investments.map((a) =>
-      a.id === id ? { ...a, ...updates, updated_at: new Date().toISOString() } : a
-    );
-    saveInvestments(updated);
+    setInvestments((prev) => {
+      const updated = prev.map((a) =>
+        a.id === id ? { ...a, ...updates, updated_at: new Date().toISOString() } : a
+      );
+      try {
+        localStorage.setItem('household_investments_data', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
   };
 
   const deleteInvestmentAsset = (id: string) => {
-    const updated = investments.filter((a) => a.id !== id);
-    saveInvestments(updated);
+    setInvestments((prev) => {
+      const updated = prev.filter((a) => a.id !== id);
+      try {
+        localStorage.setItem('household_investments_data', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
   };
 
-  const addInvestmentTranche = (assetId: string, trancheData: Omit<InvestmentTranche, 'id'>) => {
+  const addInvestmentTranche = (
+    assetId: string,
+    trancheData: Omit<InvestmentTranche, 'id'>,
+    newCurrentPrice?: number
+  ) => {
     const newTranche: InvestmentTranche = {
       ...trancheData,
       id: `tr-${Date.now()}`,
     };
-    const updated = investments.map((a) => {
-      if (a.id === assetId) {
-        return {
-          ...a,
-          tranches: [...a.tranches, newTranche],
-          updated_at: new Date().toISOString(),
-        };
+    setInvestments((prev) => {
+      const updated = prev.map((a) => {
+        if (a.id === assetId) {
+          return {
+            ...a,
+            current_price:
+              newCurrentPrice !== undefined && newCurrentPrice > 0 ? newCurrentPrice : a.current_price,
+            tranches: [...(a.tranches || []), newTranche],
+            updated_at: new Date().toISOString(),
+          };
+        }
+        return a;
+      });
+      try {
+        localStorage.setItem('household_investments_data', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
       }
-      return a;
+      return updated;
     });
-    saveInvestments(updated);
   };
 
   const deleteInvestmentTranche = (assetId: string, trancheId: string) => {
-    const updated = investments.map((a) => {
-      if (a.id === assetId) {
-        return {
-          ...a,
-          tranches: a.tranches.filter((t) => t.id !== trancheId),
-          updated_at: new Date().toISOString(),
-        };
+    setInvestments((prev) => {
+      const updated = prev.map((a) => {
+        if (a.id === assetId) {
+          return {
+            ...a,
+            tranches: (a.tranches || []).filter((t) => t.id !== trancheId),
+            updated_at: new Date().toISOString(),
+          };
+        }
+        return a;
+      });
+      try {
+        localStorage.setItem('household_investments_data', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
       }
-      return a;
+      return updated;
     });
-    saveInvestments(updated);
   };
 
   const clearDemoData = () => {
