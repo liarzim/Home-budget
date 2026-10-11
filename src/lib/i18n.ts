@@ -410,3 +410,47 @@ export function formatDisplayDate(dateInput: string | Date | null | undefined): 
 
 export const formatDate = formatDisplayDate;
 
+/**
+ * Converts any user date input (DD/MM/YYYY, DD.MM.YYYY, YYYY-MM-DD, Date object)
+ * into a standardized ISO date string (YYYY-MM-DD) for database storage and calculations.
+ */
+export function normalizeToISODate(input: string | Date | null | undefined): string {
+  if (!input) {
+    return new Date().toISOString().split('T')[0];
+  }
+  if (input instanceof Date && !isNaN(input.getTime())) {
+    return input.toISOString().split('T')[0];
+  }
+
+  const trimmed = String(input).trim();
+  if (!trimmed) {
+    return new Date().toISOString().split('T')[0];
+  }
+
+  // 1. Matches DD/MM/YYYY or DD.MM.YYYY or DD-MM-YYYY
+  const dmyMatch = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // 2. Matches YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const ymdMatch = trimmed.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // 3. Fallback: try parsing as Date
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().split('T')[0];
+  }
+
+  return new Date().toISOString().split('T')[0];
+}
+

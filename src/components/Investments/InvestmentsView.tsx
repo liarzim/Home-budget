@@ -32,7 +32,8 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { fetchAssetQuote, fetchBatchAssetQuotes, MarketQuoteResult } from '../../lib/quotesService';
-import { formatDate } from '../../lib/i18n';
+import { formatDate, normalizeToISODate } from '../../lib/i18n';
+import { IsraeliDateInput } from '../common/IsraeliDateInput';
 import { InvestmentsCharts } from './InvestmentsCharts';
 import { InvestmentsSnapshotsTree } from './InvestmentsSnapshotsTree';
 
@@ -91,7 +92,7 @@ export const InvestmentsView: React.FC = () => {
   const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
   const [snapshotPeriodType, setSnapshotPeriodType] = useState<'month' | 'quarter' | 'year' | 'current'>('month');
   const [snapshotLabel, setSnapshotLabel] = useState<string>('');
-  const [snapshotDate, setSnapshotDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [snapshotDate, setSnapshotDate] = useState<string>(formatDate(new Date()));
   const [snapshotNotes, setSnapshotNotes] = useState<string>('');
 
   // Form Fields
@@ -312,7 +313,7 @@ export const InvestmentsView: React.FC = () => {
       setFormAssetType('stock');
       setFormCurrentPrice('');
     }
-    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormDate(formatDate(new Date()));
     setFormShares('');
     setFormPricePerShare('');
     setFormTotalCost('');
@@ -350,15 +351,8 @@ export const InvestmentsView: React.FC = () => {
     setFormAssetType(asset.asset_type);
     setFormCurrentPrice(asset.current_price.toString());
 
-    // Normalize date to YYYY-MM-DD
-    let d = tranche.date ? String(tranche.date).trim() : new Date().toISOString().split('T')[0];
-    if (d.includes('/')) {
-      const parts = d.split('/');
-      if (parts.length === 3 && parts[2].length === 4) {
-        d = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-      }
-    }
-    setFormDate(d);
+    // Set formDate in user-friendly DD/MM/YYYY
+    setFormDate(tranche.date ? formatDate(tranche.date) : formatDate(new Date()));
     setFormShares(tranche.shares.toString());
     setFormPricePerShare(tranche.price_per_share.toString());
     const cost =
@@ -403,16 +397,8 @@ export const InvestmentsView: React.FC = () => {
       return;
     }
 
-    // Ensure date is formatted as YYYY-MM-DD
-    let cleanDate = formDate.trim();
-    if (!cleanDate) {
-      cleanDate = new Date().toISOString().split('T')[0];
-    } else if (cleanDate.includes('/')) {
-      const parts = cleanDate.split('/');
-      if (parts.length === 3 && parts[2].length === 4) {
-        cleanDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-      }
-    }
+    // Ensure date is standardized to YYYY-MM-DD for DB and calculations
+    const cleanDate = normalizeToISODate(formDate);
 
     if (modalMode === 'new_asset') {
       if (!formTicker.trim()) {
@@ -838,7 +824,7 @@ export const InvestmentsView: React.FC = () => {
       setSnapshotLabel(`צילום מצב נקודתי - ${now.toLocaleDateString('he-IL')}`);
     }
 
-    setSnapshotDate(now.toISOString().split('T')[0]);
+    setSnapshotDate(formatDate(now));
     setSnapshotNotes('');
     setIsSnapshotModalOpen(true);
   };
@@ -855,7 +841,7 @@ export const InvestmentsView: React.FC = () => {
       household_id: activeHousehold?.id || 'hh-main',
       period_type: snapshotPeriodType,
       period_label: snapshotLabel.trim(),
-      date: snapshotDate,
+      date: normalizeToISODate(snapshotDate),
       total_invested: portfolioSummary.totalInvestedILS,
       total_value: portfolioSummary.currentValueILS,
       total_profit: portfolioSummary.totalProfitILS,
@@ -1573,16 +1559,17 @@ export const InvestmentsView: React.FC = () => {
                                             <td style={styles.trancheTd}>
                                               {editingDateTrancheKey === `${asset.id}_${idx}` ? (
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                  <input
-                                                    type="date"
+                                                  <IsraeliDateInput
                                                     value={inlineDateInput}
-                                                    onChange={(e) => setInlineDateInput(e.target.value)}
-                                                    style={{
-                                                      padding: '2px 6px',
-                                                      borderRadius: '4px',
-                                                      border: '1px solid #2563EB',
+                                                    onChange={(displayVal) => setInlineDateInput(displayVal)}
+                                                    placeholder="15/06/2026"
+                                                    style={{ width: '135px' }}
+                                                    inputStyle={{
+                                                      padding: '3px 6px 3px 28px',
                                                       fontSize: '0.8125rem',
                                                       fontWeight: '700',
+                                                      borderRadius: '4px',
+                                                      border: '1.5px solid #2563EB',
                                                     }}
                                                     autoFocus
                                                   />
@@ -1592,7 +1579,7 @@ export const InvestmentsView: React.FC = () => {
                                                       color: '#FFFFFF',
                                                       border: 'none',
                                                       borderRadius: '4px',
-                                                      padding: '3px 6px',
+                                                      padding: '3px 8px',
                                                       cursor: 'pointer',
                                                       fontWeight: '700',
                                                       fontSize: '0.75rem',
@@ -1600,17 +1587,18 @@ export const InvestmentsView: React.FC = () => {
                                                     onClick={() => {
                                                       const d = inlineDateInput.trim();
                                                       if (d) {
+                                                        const isoDate = normalizeToISODate(d);
                                                         updateInvestmentTranche(
                                                           asset.id,
                                                           tr.id ? String(tr.id) : String(idx),
-                                                          { date: d },
+                                                          { date: isoDate },
                                                           undefined,
                                                           idx
                                                         );
                                                         setActionFeedbackMsg(
                                                           isHe
-                                                            ? `תאריך פעימה #${idx + 1} עודכן בהצלחה ל-${formatDate(d)}`
-                                                            : `Tranche #${idx + 1} date updated to ${formatDate(d)}`
+                                                            ? `תאריך פעימה #${idx + 1} עודכן בהצלחה ל-${formatDate(isoDate)}`
+                                                            : `Tranche #${idx + 1} date updated to ${formatDate(isoDate)}`
                                                         );
                                                         setTimeout(() => setActionFeedbackMsg(null), 4000);
                                                       }
@@ -1652,7 +1640,7 @@ export const InvestmentsView: React.FC = () => {
                                                     }}
                                                     onClick={() => {
                                                       setEditingDateTrancheKey(`${asset.id}_${idx}`);
-                                                      setInlineDateInput(tr.date || new Date().toISOString().split('T')[0]);
+                                                      setInlineDateInput(formatDate(tr.date));
                                                     }}
                                                     title={isHe ? 'עריכה מהירה של תאריך הרכישה' : 'Quick edit date'}
                                                   >
@@ -2354,13 +2342,12 @@ export const InvestmentsView: React.FC = () => {
                   <div style={styles.formRow3}>
                     <div style={styles.formGroup}>
                       <label style={styles.formLabel}>
-                        {isHe ? 'תאריך רכישה *' : 'Purchase Date *'}
+                        {isHe ? 'תאריך רכישה (DD/MM/YYYY) *' : 'Purchase Date (DD/MM/YYYY) *'}
                       </label>
-                      <input
-                        style={styles.formInput}
-                        type="date"
+                      <IsraeliDateInput
                         value={formDate}
-                        onChange={(e) => setFormDate(e.target.value)}
+                        onChange={(displayVal) => setFormDate(displayVal)}
+                        placeholder="15/06/2026"
                         required
                       />
                     </div>
@@ -2574,13 +2561,12 @@ export const InvestmentsView: React.FC = () => {
 
               <div style={styles.formGroup}>
                 <label style={styles.formLabel}>
-                  {isHe ? 'תאריך סגירה *' : 'Snapshot Date *'}
+                  {isHe ? 'תאריך סגירה (DD/MM/YYYY) *' : 'Snapshot Date (DD/MM/YYYY) *'}
                 </label>
-                <input
-                  style={styles.formInput}
-                  type="date"
+                <IsraeliDateInput
                   value={snapshotDate}
-                  onChange={(e) => setSnapshotDate(e.target.value)}
+                  onChange={(displayVal) => setSnapshotDate(displayVal)}
+                  placeholder="DD/MM/YYYY"
                   required
                 />
               </div>
