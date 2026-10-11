@@ -111,6 +111,11 @@ export const InvestmentsView: React.FC = () => {
   const [editingPriceAssetId, setEditingPriceAssetId] = useState<string | null>(null);
   const [inlinePriceInput, setInlinePriceInput] = useState<string>('');
 
+  // Inline Quick Date Edit for Tranches
+  const [editingDateTrancheKey, setEditingDateTrancheKey] = useState<string | null>(null);
+  const [inlineDateInput, setInlineDateInput] = useState<string>('');
+  const [actionFeedbackMsg, setActionFeedbackMsg] = useState<string | null>(null);
+
   // Info Accordion toggle
   const [isFormulaExpanded, setIsFormulaExpanded] = useState<boolean>(false);
 
@@ -466,13 +471,21 @@ export const InvestmentsView: React.FC = () => {
           fee: feeNum,
           notes: formNotes.trim() || undefined,
         },
-        !isNaN(currentPriceNum) && currentPriceNum > 0 ? currentPriceNum : undefined
+        !isNaN(currentPriceNum) && currentPriceNum > 0 ? currentPriceNum : undefined,
+        selectedTrancheIndex >= 0 ? selectedTrancheIndex : undefined
       );
 
       setExpandedAssetIds((prev) => ({
         ...prev,
         [selectedAssetIdForTranche]: true,
       }));
+
+      setActionFeedbackMsg(
+        isHe
+          ? `פעימת הרכישה עודכנה בהצלחה (תאריך: ${cleanDate})`
+          : `Tranche updated successfully (Date: ${cleanDate})`
+      );
+      setTimeout(() => setActionFeedbackMsg(null), 4000);
     }
 
     setIsModalOpen(false);
@@ -1219,6 +1232,28 @@ export const InvestmentsView: React.FC = () => {
               </div>
             </div>
 
+            {actionFeedbackMsg && (
+              <div
+                style={{
+                  backgroundColor: '#DCFCE7',
+                  border: '1px solid #86EFAC',
+                  color: '#15803D',
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontWeight: '700',
+                  fontSize: '0.875rem',
+                }}
+                className="animate-fade-in"
+              >
+                <CheckCircle2 size={16} color="#15803D" />
+                <span>{actionFeedbackMsg}</span>
+              </div>
+            )}
+
             <div style={styles.tableResponsiveWrap}>
               <table style={styles.table}>
                 <thead>
@@ -1534,7 +1569,97 @@ export const InvestmentsView: React.FC = () => {
                                             <td style={styles.trancheTd}>
                                               <span style={styles.trancheIndexPill}>{idx + 1}</span>
                                             </td>
-                                            <td style={styles.trancheTd}>{tr.date}</td>
+                                            <td style={styles.trancheTd}>
+                                              {editingDateTrancheKey === `${asset.id}_${idx}` ? (
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                  <input
+                                                    type="date"
+                                                    value={inlineDateInput}
+                                                    onChange={(e) => setInlineDateInput(e.target.value)}
+                                                    style={{
+                                                      padding: '2px 6px',
+                                                      borderRadius: '4px',
+                                                      border: '1px solid #2563EB',
+                                                      fontSize: '0.8125rem',
+                                                      fontWeight: '700',
+                                                    }}
+                                                    autoFocus
+                                                  />
+                                                  <button
+                                                    style={{
+                                                      backgroundColor: '#059669',
+                                                      color: '#FFFFFF',
+                                                      border: 'none',
+                                                      borderRadius: '4px',
+                                                      padding: '3px 6px',
+                                                      cursor: 'pointer',
+                                                      fontWeight: '700',
+                                                      fontSize: '0.75rem',
+                                                    }}
+                                                    onClick={() => {
+                                                      const d = inlineDateInput.trim();
+                                                      if (d) {
+                                                        updateInvestmentTranche(
+                                                          asset.id,
+                                                          tr.id ? String(tr.id) : String(idx),
+                                                          { date: d },
+                                                          undefined,
+                                                          idx
+                                                        );
+                                                        setActionFeedbackMsg(
+                                                          isHe
+                                                            ? `תאריך פעימה #${idx + 1} עודכן בהצלחה ל-${d}`
+                                                            : `Tranche #${idx + 1} date updated to ${d}`
+                                                        );
+                                                        setTimeout(() => setActionFeedbackMsg(null), 4000);
+                                                      }
+                                                      setEditingDateTrancheKey(null);
+                                                    }}
+                                                    title={isHe ? 'שמור תאריך' : 'Save date'}
+                                                  >
+                                                    ✓
+                                                  </button>
+                                                  <button
+                                                    style={{
+                                                      backgroundColor: '#EF4444',
+                                                      color: '#FFFFFF',
+                                                      border: 'none',
+                                                      borderRadius: '4px',
+                                                      padding: '3px 6px',
+                                                      cursor: 'pointer',
+                                                      fontSize: '0.75rem',
+                                                    }}
+                                                    onClick={() => setEditingDateTrancheKey(null)}
+                                                    title={isHe ? 'ביטול' : 'Cancel'}
+                                                  >
+                                                    ✕
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                  <span style={{ fontWeight: '700', color: '#1E293B' }}>{tr.date}</span>
+                                                  <button
+                                                    style={{
+                                                      backgroundColor: '#EFF6FF',
+                                                      border: '1px solid #BFDBFE',
+                                                      borderRadius: '4px',
+                                                      cursor: 'pointer',
+                                                      padding: '2px 4px',
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      gap: '2px',
+                                                    }}
+                                                    onClick={() => {
+                                                      setEditingDateTrancheKey(`${asset.id}_${idx}`);
+                                                      setInlineDateInput(tr.date || new Date().toISOString().split('T')[0]);
+                                                    }}
+                                                    title={isHe ? 'עריכה מהירה של תאריך הרכישה' : 'Quick edit date'}
+                                                  >
+                                                    <Edit2 size={11} color="#2563EB" />
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </td>
                                             <td style={styles.trancheTd}>
                                               <strong>{tr.shares}</strong>
                                             </td>

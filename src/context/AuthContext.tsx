@@ -70,8 +70,8 @@ interface AuthContextType {
   updateInvestmentAsset: (id: string, updates: Partial<InvestmentAsset>) => void;
   deleteInvestmentAsset: (id: string) => void;
   addInvestmentTranche: (assetId: string, tranche: Omit<InvestmentTranche, 'id'>, newCurrentPrice?: number) => void;
-  updateInvestmentTranche: (assetId: string, trancheId: string, updates: Partial<InvestmentTranche>, newCurrentPrice?: number) => void;
-  deleteInvestmentTranche: (assetId: string, trancheId: string) => void;
+  updateInvestmentTranche: (assetId: string, trancheId: string, updates: Partial<InvestmentTranche>, newCurrentPrice?: number, trancheIndex?: number) => void;
+  deleteInvestmentTranche: (assetId: string, trancheId: string, trancheIndex?: number) => void;
   isLoading: boolean;
   isDemoMode: boolean;
   isSupabaseReady: boolean;
@@ -299,7 +299,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     assetId: string,
     trancheId: string,
     updates: Partial<InvestmentTranche>,
-    newCurrentPrice?: number
+    newCurrentPrice?: number,
+    trancheIndex?: number
   ) => {
     setInvestments((prev) => {
       const updated = prev.map((a) => {
@@ -307,6 +308,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const list = a.tranches || [];
           const updatedTranches = list.map((t, idx) => {
             const isMatch =
+              (trancheIndex !== undefined && trancheIndex >= 0 && idx === trancheIndex) ||
               (t.id && (t.id === trancheId || String(t.id) === String(trancheId))) ||
               String(idx) === String(trancheId);
 
@@ -339,7 +341,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const deleteInvestmentTranche = (assetId: string, trancheId: string) => {
+  const deleteInvestmentTranche = (assetId: string, trancheId: string, trancheIndex?: number) => {
     setInvestments((prev) => {
       const updated = prev.map((a) => {
         if (a.id === assetId) {
@@ -348,6 +350,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ...a,
             tranches: list.filter((t, idx) => {
               const isMatch =
+                (trancheIndex !== undefined && trancheIndex >= 0 && idx === trancheIndex) ||
                 (t.id && (t.id === trancheId || String(t.id) === String(trancheId))) ||
                 String(idx) === String(trancheId);
               return !isMatch;
@@ -776,7 +779,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setTransactions([]);
       setBudgets([]);
       setSavings([]);
-      setInvestments([]);
+      const savedUserInvs = localStorage.getItem('household_investments_data');
+      if (savedUserInvs) {
+        try {
+          const parsed = JSON.parse(savedUserInvs);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setInvestments(parsed);
+          } else {
+            setInvestments([]);
+          }
+        } catch (e) {
+          setInvestments([]);
+        }
+      } else {
+        setInvestments([]);
+      }
       setIsLoading(false);
       return;
     }
