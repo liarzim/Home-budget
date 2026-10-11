@@ -340,5 +340,32 @@ export interface HistoricalImportResult {
   error?: string;
 }
 
+// ==========================================
+// CAPITAL MARKET & INVESTMENT PORTFOLIO TYPES
+// ==========================================
+
+export interface InvestmentTranche {
+  id: string;
+  date: string; // YYYY-MM-DD
+  shares: number; // Quantity of shares purchased in this tranche
+  price_per_share: number; // Purchase price per share
+  fee: number; // Commission / Trading fee
+  notes?: string;
+}
+
+export interface InvestmentAsset {
+  id: string;
+  household_id: string;
+  ticker: string; // e.g. VOO, AAPL, NVDA, TA125
+  name: string; // e.g. Vanguard S&P 500 ETF, Apple Inc.
+  currency: 'USD' | 'ILS';
+  current_price: number; // Current market price per share
+  asset_type: 'stock' | 'etf' | 'mutual_fund' | 'crypto' | 'bond';
+  target_allocation_pct?: number;
+  tranches: InvestmentTranche[];
+  created_at: string;
+  updated_at: string;
+}
+
 
 

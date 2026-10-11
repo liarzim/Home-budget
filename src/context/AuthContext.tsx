@@ -13,6 +13,8 @@ import {
   HouseholdMember,
   MemberRole,
   SUPER_USER_EMAILS,
+  InvestmentAsset,
+  InvestmentTranche,
 } from '../lib/types';
 import {
   mockProfile,
@@ -25,6 +27,7 @@ import {
   mockTransactions,
   mockBudgets,
   mockSavings,
+  mockInvestments,
 } from '../lib/mockData';
 
 import { Language } from '../lib/i18n';
@@ -62,6 +65,12 @@ interface AuthContextType {
   transactions: Transaction[];
   budgets: Budget[];
   savings: Savings[];
+  investments: InvestmentAsset[];
+  addInvestmentAsset: (asset: Omit<InvestmentAsset, 'id' | 'created_at' | 'updated_at'>) => void;
+  updateInvestmentAsset: (id: string, updates: Partial<InvestmentAsset>) => void;
+  deleteInvestmentAsset: (id: string) => void;
+  addInvestmentTranche: (assetId: string, tranche: Omit<InvestmentTranche, 'id'>) => void;
+  deleteInvestmentTranche: (assetId: string, trancheId: string) => void;
   isLoading: boolean;
   isDemoMode: boolean;
   isSupabaseReady: boolean;
@@ -73,6 +82,7 @@ interface AuthContextType {
     | 'transactions'
     | 'budgets'
     | 'savings'
+    | 'investments'
     | 'mappings'
     | 'schema'
     | 'import'
@@ -87,6 +97,7 @@ interface AuthContextType {
       | 'transactions'
       | 'budgets'
       | 'savings'
+      | 'investments'
       | 'mappings'
       | 'schema'
       | 'import'
@@ -151,6 +162,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [savings, setSavings] = useState<Savings[]>([]);
+  const [investments, setInvestments] = useState<InvestmentAsset[]>(() => {
+    try {
+      const saved = localStorage.getItem('household_investments_data');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return mockInvestments;
+  });
+
+  const saveInvestments = (newList: InvestmentAsset[]) => {
+    setInvestments(newList);
+    try {
+      localStorage.setItem('household_investments_data', JSON.stringify(newList));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const addInvestmentAsset = (assetData: Omit<InvestmentAsset, 'id' | 'created_at' | 'updated_at'>) => {
+    const newAsset: InvestmentAsset = {
+      ...assetData,
+      id: `inv-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    saveInvestments([newAsset, ...investments]);
+  };
+
+  const updateInvestmentAsset = (id: string, updates: Partial<InvestmentAsset>) => {
+    const updated = investments.map((a) =>
+      a.id === id ? { ...a, ...updates, updated_at: new Date().toISOString() } : a
+    );
+    saveInvestments(updated);
+  };
+
+  const deleteInvestmentAsset = (id: string) => {
+    const updated = investments.filter((a) => a.id !== id);
+    saveInvestments(updated);
+  };
+
+  const addInvestmentTranche = (assetId: string, trancheData: Omit<InvestmentTranche, 'id'>) => {
+    const newTranche: InvestmentTranche = {
+      ...trancheData,
+      id: `tr-${Date.now()}`,
+    };
+    const updated = investments.map((a) => {
+      if (a.id === assetId) {
+        return {
+          ...a,
+          tranches: [...a.tranches, newTranche],
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return a;
+    });
+    saveInvestments(updated);
+  };
+
+  const deleteInvestmentTranche = (assetId: string, trancheId: string) => {
+    const updated = investments.map((a) => {
+      if (a.id === assetId) {
+        return {
+          ...a,
+          tranches: a.tranches.filter((t) => t.id !== trancheId),
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return a;
+    });
+    saveInvestments(updated);
+  };
+
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<AuthContextType['activeTab']>('dashboard');
@@ -1552,6 +1636,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         seedDefaultHouseholdData,
         showHiddenNotice,
         setShowHiddenNotice,
+        investments,
+        addInvestmentAsset,
+        updateInvestmentAsset,
+        deleteInvestmentAsset,
+        addInvestmentTranche,
+        deleteInvestmentTranche,
       }}
     >
       {children}

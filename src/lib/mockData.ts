@@ -1,4 +1,4 @@
-import { Household, Profile, Category, BusinessMapping, Transaction, Budget, Savings, CardMapping, MacroCategory, HouseholdMember } from './types';
+import { Household, Profile, Category, BusinessMapping, Transaction, Budget, Savings, CardMapping, MacroCategory, HouseholdMember, InvestmentAsset, InvestmentTranche } from './types';
 
 export const mockProfile: Profile = {
   id: 'usr-101',
@@ -618,4 +618,136 @@ export const mockCardMappings: CardMapping[] = [
     updated_at: '2026-01-01T00:00:00Z',
   },
 ];
+
+export const mockInvestments: InvestmentAsset[] = [
+  {
+    id: 'inv-sample-user',
+    household_id: 'hh-main',
+    ticker: 'SAMPLE',
+    name: 'מניית דוגמה (3 פעימות מהבקשה)',
+    currency: 'USD',
+    current_price: 130,
+    asset_type: 'stock',
+    target_allocation_pct: 25,
+    tranches: [
+      {
+        id: 'tr-sample-1',
+        date: '2026-01-10',
+        shares: 10,
+        price_per_share: 100,
+        fee: 0,
+        notes: 'קנייה פעימה ראשונה',
+      },
+      {
+        id: 'tr-sample-2',
+        date: '2026-02-12',
+        shares: 20,
+        price_per_share: 120,
+        fee: 0,
+        notes: 'קנייה פעימה שנייה',
+      },
+      {
+        id: 'tr-sample-3',
+        date: '2026-03-01',
+        shares: 10,
+        price_per_share: 90,
+        fee: 0,
+        notes: 'קנייה פעימה שלישית בירידה',
+      },
+    ],
+    created_at: '2026-01-10T00:00:00Z',
+    updated_at: '2026-03-01T00:00:00Z',
+  },
+  {
+    id: 'inv-voo',
+    household_id: 'hh-main',
+    ticker: 'VOO',
+    name: 'Vanguard S&P 500 ETF',
+    currency: 'USD',
+    current_price: 525,
+    asset_type: 'etf',
+    target_allocation_pct: 40,
+    tranches: [
+      {
+        id: 'tr-voo-1',
+        date: '2025-11-15',
+        shares: 15,
+        price_per_share: 465,
+        fee: 2,
+        notes: 'הפקדה חודשית קבועה',
+      },
+      {
+        id: 'tr-voo-2',
+        date: '2026-02-01',
+        shares: 10,
+        price_per_share: 490,
+        fee: 2,
+        notes: 'הפקדה חודשית קבועה',
+      },
+    ],
+    created_at: '2025-11-15T00:00:00Z',
+    updated_at: '2026-02-01T00:00:00Z',
+  },
+  {
+    id: 'inv-nvda',
+    household_id: 'hh-main',
+    ticker: 'NVDA',
+    name: 'NVIDIA Corporation',
+    currency: 'USD',
+    current_price: 138,
+    asset_type: 'stock',
+    target_allocation_pct: 20,
+    tranches: [
+      {
+        id: 'tr-nvda-1',
+        date: '2026-01-20',
+        shares: 25,
+        price_per_share: 112,
+        fee: 1.5,
+        notes: 'רכישה לאחר דוחות',
+      },
+      {
+        id: 'tr-nvda-2',
+        date: '2026-03-10',
+        shares: 15,
+        price_per_share: 124,
+        fee: 1.5,
+        notes: 'הגדלת פוזיציה',
+      },
+    ],
+    created_at: '2026-01-20T00:00:00Z',
+    updated_at: '2026-03-10T00:00:00Z',
+  },
+  {
+    id: 'inv-ta125',
+    household_id: 'hh-main',
+    ticker: 'TA-125',
+    name: 'קרן סל מחקה מדד ת״א 125',
+    currency: 'ILS',
+    current_price: 2150,
+    asset_type: 'etf',
+    target_allocation_pct: 15,
+    tranches: [
+      {
+        id: 'tr-ta-1',
+        date: '2026-01-05',
+        shares: 8,
+        price_per_share: 1940,
+        fee: 12,
+        notes: 'חשיפה לשוק המקומי',
+      },
+      {
+        id: 'tr-ta-2',
+        date: '2026-02-28',
+        shares: 6,
+        price_per_share: 2010,
+        fee: 12,
+        notes: 'חיזוק פוזיציה שקלית',
+      },
+    ],
+    created_at: '2026-01-05T00:00:00Z',
+    updated_at: '2026-02-28T00:00:00Z',
+  },
+];
+
 

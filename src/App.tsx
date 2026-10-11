@@ -16,6 +16,7 @@ import { HistoricalMigrationScreen } from './components/Admin/HistoricalMigratio
 import { ConnectedAccountsScreen } from './components/Settings/ConnectedAccountsScreen';
 import { SystemTablesScreen } from './components/Settings/SystemTablesScreen';
 import { HouseholdUsersScreen } from './components/Users/HouseholdUsersScreen';
+import { InvestmentsView } from './components/Investments/InvestmentsView';
 
 const MainScreen: React.FC = () => {
   const { user, isDemoMode, isLoading, activeTab } = useAuth();
@@ -47,6 +48,7 @@ const MainScreen: React.FC = () => {
         {activeTab === 'migration' && <HistoricalMigrationScreen />}
         {activeTab === 'budgets' && <BudgetsView />}
         {activeTab === 'savings' && <SavingsView />}
+        {activeTab === 'investments' && <InvestmentsView />}
         {activeTab === 'schema' && <SchemaViewer />}
       </main>
       {/* Desktop Floating Action Button */}

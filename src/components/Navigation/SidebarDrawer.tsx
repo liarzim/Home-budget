@@ -21,6 +21,7 @@ import {
   Sparkles,
   ShieldCheck,
   Plus,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { t } from '../../lib/i18n';
@@ -114,6 +115,12 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
       items: [
         { id: 'budgets', label: t('navBudgets', language), icon: PieChart, badge: null },
         { id: 'savings', label: t('navSavings', language), icon: PiggyBank, badge: null },
+        {
+          id: 'investments',
+          label: language === 'he' ? 'תיק השקעות ושוק ההון' : 'Investments & Stocks',
+          icon: TrendingUp,
+          badge: language === 'he' ? 'ביצועים' : 'Yield',
+        },
         { id: 'schema', label: t('navSchema', language), icon: Database, badge: 'SQL' },
       ],
     },
