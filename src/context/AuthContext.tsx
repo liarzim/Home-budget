@@ -70,6 +70,7 @@ interface AuthContextType {
   updateInvestmentAsset: (id: string, updates: Partial<InvestmentAsset>) => void;
   deleteInvestmentAsset: (id: string) => void;
   addInvestmentTranche: (assetId: string, tranche: Omit<InvestmentTranche, 'id'>, newCurrentPrice?: number) => void;
+  updateInvestmentTranche: (assetId: string, trancheId: string, updates: Partial<InvestmentTranche>, newCurrentPrice?: number) => void;
   deleteInvestmentTranche: (assetId: string, trancheId: string) => void;
   isLoading: boolean;
   isDemoMode: boolean;
@@ -272,6 +273,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             current_price:
               newCurrentPrice !== undefined && newCurrentPrice > 0 ? newCurrentPrice : a.current_price,
             tranches: [...(a.tranches || []), newTranche],
+            updated_at: new Date().toISOString(),
+          };
+        }
+        return a;
+      });
+      try {
+        localStorage.setItem('household_investments_data', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
+  };
+
+  const updateInvestmentTranche = (
+    assetId: string,
+    trancheId: string,
+    updates: Partial<InvestmentTranche>,
+    newCurrentPrice?: number
+  ) => {
+    setInvestments((prev) => {
+      const updated = prev.map((a) => {
+        if (a.id === assetId) {
+          return {
+            ...a,
+            current_price:
+              newCurrentPrice !== undefined && newCurrentPrice > 0 ? newCurrentPrice : a.current_price,
+            tranches: (a.tranches || []).map((t) =>
+              t.id === trancheId ? { ...t, ...updates } : t
+            ),
             updated_at: new Date().toISOString(),
           };
         }
@@ -1770,6 +1801,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateInvestmentAsset,
         deleteInvestmentAsset,
         addInvestmentTranche,
+        updateInvestmentTranche,
         deleteInvestmentTranche,
         clearDemoData,
         restoreDemoData,

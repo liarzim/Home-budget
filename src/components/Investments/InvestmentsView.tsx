@@ -56,6 +56,7 @@ export const InvestmentsView: React.FC = () => {
     updateInvestmentAsset,
     deleteInvestmentAsset,
     addInvestmentTranche,
+    updateInvestmentTranche,
     deleteInvestmentTranche,
     clearDemoData,
     restoreDemoData,
@@ -80,8 +81,9 @@ export const InvestmentsView: React.FC = () => {
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<'new_asset' | 'add_tranche'>('new_asset');
+  const [modalMode, setModalMode] = useState<'new_asset' | 'edit_asset' | 'add_tranche' | 'edit_tranche'>('new_asset');
   const [selectedAssetIdForTranche, setSelectedAssetIdForTranche] = useState<string>('');
+  const [selectedTrancheId, setSelectedTrancheId] = useState<string>('');
 
   // Snapshot Modal State
   const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
@@ -285,6 +287,7 @@ export const InvestmentsView: React.FC = () => {
 
   const handleOpenAddModal = (mode: 'new_asset' | 'add_tranche', asset?: InvestmentAsset) => {
     setModalMode(mode);
+    setSelectedTrancheId('');
     if (mode === 'add_tranche' && asset) {
       setSelectedAssetIdForTranche(asset.id);
       setFormTicker(asset.ticker);
@@ -311,8 +314,63 @@ export const InvestmentsView: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const handleOpenEditAssetModal = (asset: InvestmentAsset) => {
+    setModalMode('edit_asset');
+    setSelectedAssetIdForTranche(asset.id);
+    setSelectedTrancheId('');
+    setFormTicker(asset.ticker);
+    setFormSecurityNumber(asset.security_number || '');
+    setFormName(asset.name);
+    setFormCurrency(asset.currency);
+    setFormAssetType(asset.asset_type);
+    setFormCurrentPrice(asset.current_price.toString());
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditTrancheModal = (asset: InvestmentAsset, tranche: InvestmentTranche) => {
+    setModalMode('edit_tranche');
+    setSelectedAssetIdForTranche(asset.id);
+    setSelectedTrancheId(tranche.id);
+    setFormTicker(asset.ticker);
+    setFormSecurityNumber(asset.security_number || '');
+    setFormName(asset.name);
+    setFormCurrency(asset.currency);
+    setFormAssetType(asset.asset_type);
+    setFormCurrentPrice(asset.current_price.toString());
+    setFormDate(tranche.date);
+    setFormShares(tranche.shares.toString());
+    setFormPricePerShare(tranche.price_per_share.toString());
+    const cost =
+      tranche.total_cost ||
+      tranche.shares * tranche.price_per_share + (tranche.fee || 0);
+    setFormTotalCost(cost.toString());
+    setFormFee((tranche.fee || 0).toString());
+    setFormNotes(tranche.notes || '');
+    setIsModalOpen(true);
+  };
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Mode: Edit Asset metadata
+    if (modalMode === 'edit_asset' && selectedAssetIdForTranche) {
+      if (!formTicker.trim()) {
+        alert(isHe ? 'אנא הזן סימול נייר' : 'Please enter a ticker');
+        return;
+      }
+      const curPrice = parseFloat(formCurrentPrice);
+      updateInvestmentAsset(selectedAssetIdForTranche, {
+        ticker: formTicker.trim().toUpperCase(),
+        security_number: formSecurityNumber.trim() || undefined,
+        name: formName.trim() || formTicker.trim().toUpperCase(),
+        currency: formCurrency,
+        asset_type: formAssetType,
+        ...(!isNaN(curPrice) && curPrice > 0 ? { current_price: curPrice } : {}),
+      });
+      setIsModalOpen(false);
+      return;
+    }
+
     const sharesNum = parseFloat(formShares);
     const priceNum = parseFloat(formPricePerShare);
     const feeNum = parseFloat(formFee) || 0;
@@ -365,6 +423,25 @@ export const InvestmentsView: React.FC = () => {
       );
 
       // Automatically expand this asset so the user sees their new tranche immediately
+      setExpandedAssetIds((prev) => ({
+        ...prev,
+        [selectedAssetIdForTranche]: true,
+      }));
+    } else if (modalMode === 'edit_tranche' && selectedAssetIdForTranche && selectedTrancheId) {
+      updateInvestmentTranche(
+        selectedAssetIdForTranche,
+        selectedTrancheId,
+        {
+          date: formDate,
+          shares: sharesNum,
+          price_per_share: priceNum,
+          total_cost: totalCostNum,
+          fee: feeNum,
+          notes: formNotes.trim() || undefined,
+        },
+        !isNaN(currentPriceNum) && currentPriceNum > 0 ? currentPriceNum : undefined
+      );
+
       setExpandedAssetIds((prev) => ({
         ...prev,
         [selectedAssetIdForTranche]: true,
@@ -1328,6 +1405,13 @@ export const InvestmentsView: React.FC = () => {
                             <td style={{ ...styles.tdCell, textAlign: 'center' }}>
                               <div style={styles.actionsRow}>
                                 <button
+                                  style={styles.editAssetBtn}
+                                  onClick={() => handleOpenEditAssetModal(asset)}
+                                  title={isHe ? 'ערוך פרטי נייר' : 'Edit asset'}
+                                >
+                                  <Edit2 size={13} color="#2563EB" />
+                                </button>
+                                <button
                                   style={styles.addTrancheSmallBtn}
                                   onClick={() => handleOpenAddModal('add_tranche', asset)}
                                   title={isHe ? 'הוסף פעימת קנייה נוספת' : 'Add purchase tranche'}
@@ -1403,7 +1487,7 @@ export const InvestmentsView: React.FC = () => {
                                         <th style={styles.trancheTh}>{isHe ? 'תשואה' : 'Yield'}</th>
                                         <th style={styles.trancheTh}>{isHe ? 'הערות' : 'Notes'}</th>
                                         <th style={{ ...styles.trancheTh, textAlign: 'center' }}>
-                                          {isHe ? 'מחק' : 'Delete'}
+                                          {isHe ? 'פעולות' : 'Actions'}
                                         </th>
                                       </tr>
                                     </thead>
@@ -1468,23 +1552,32 @@ export const InvestmentsView: React.FC = () => {
                                               <span style={styles.notesText}>{tr.notes || '—'}</span>
                                             </td>
                                             <td style={{ ...styles.trancheTd, textAlign: 'center' }}>
-                                              <button
-                                                style={styles.deleteTrancheBtn}
-                                                onClick={() => {
-                                                  if (
-                                                    confirm(
-                                                      isHe
-                                                        ? 'האם למחוק פעימת רכישה זו?'
-                                                        : 'Delete this purchase tranche?'
-                                                    )
-                                                  ) {
-                                                    deleteInvestmentTranche(asset.id, tr.id);
-                                                  }
-                                                }}
-                                                title={isHe ? 'מחק פעימה' : 'Delete tranche'}
-                                              >
-                                                <Trash2 size={13} color="#EF4444" />
-                                              </button>
+                                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                                                <button
+                                                  style={styles.editTrancheBtn}
+                                                  onClick={() => handleOpenEditTrancheModal(asset, tr)}
+                                                  title={isHe ? 'ערוך פעימה (כולל תאריך ומחיר)' : 'Edit tranche'}
+                                                >
+                                                  <Edit2 size={13} color="#2563EB" />
+                                                </button>
+                                                <button
+                                                  style={styles.deleteTrancheBtn}
+                                                  onClick={() => {
+                                                    if (
+                                                      confirm(
+                                                        isHe
+                                                          ? 'האם למחוק פעימת רכישה זו?'
+                                                          : 'Delete this purchase tranche?'
+                                                      )
+                                                    ) {
+                                                      deleteInvestmentTranche(asset.id, tr.id);
+                                                    }
+                                                  }}
+                                                  title={isHe ? 'מחק פעימה' : 'Delete tranche'}
+                                                >
+                                                  <Trash2 size={13} color="#EF4444" />
+                                                </button>
+                                              </div>
                                             </td>
                                           </tr>
                                         );
@@ -1913,7 +2006,7 @@ export const InvestmentsView: React.FC = () => {
         />
       )}
 
-      {/* MODAL: ADD ASSET / TRANCHE */}
+      {/* MODAL: ADD / EDIT ASSET / TRANCHE */}
       {isModalOpen && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalCard} className="animate-fade-in">
@@ -1921,13 +2014,10 @@ export const InvestmentsView: React.FC = () => {
               <div style={styles.modalTitleRow}>
                 <Coins size={20} color="#2563EB" />
                 <h3 style={styles.modalTitle}>
-                  {modalMode === 'new_asset'
-                    ? isHe
-                      ? 'הוספת נייר ערך חדש ופעימת רכישה'
-                      : 'Add New Investment & First Tranche'
-                    : isHe
-                    ? `הוספת פעימת רכישה ל-${formTicker}`
-                    : `Add Purchase Tranche to ${formTicker}`}
+                  {modalMode === 'new_asset' && (isHe ? 'הוספת נייר ערך חדש ופעימת רכישה' : 'Add New Investment & First Tranche')}
+                  {modalMode === 'edit_asset' && (isHe ? `עריכת פרטי נייר ערך (${formTicker || 'נייר'})` : `Edit Asset (${formTicker || 'Asset'})`)}
+                  {modalMode === 'add_tranche' && (isHe ? `הוספת פעימת רכישה ל-${formTicker}` : `Add Purchase Tranche to ${formTicker}`)}
+                  {modalMode === 'edit_tranche' && (isHe ? `עריכת פעימת רכישה עבור ${formTicker}` : `Edit Purchase Tranche for ${formTicker}`)}
                 </h3>
               </div>
               <button
@@ -1939,7 +2029,58 @@ export const InvestmentsView: React.FC = () => {
             </div>
 
             <form onSubmit={handleFormSubmit} style={styles.modalForm}>
-              {modalMode === 'new_asset' && (
+              {/* Asset Details Header for Tranche Modes */}
+              {(modalMode === 'add_tranche' || modalMode === 'edit_tranche') && (
+                <div
+                  style={{
+                    backgroundColor: '#EFF6FF',
+                    borderRadius: '10px',
+                    border: '1px solid #BFDBFE',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontWeight: '800', color: '#1E3A8A', fontSize: '1.05rem' }}>{formTicker}</span>
+                      <span style={{ color: '#64748B' }}>•</span>
+                      <span style={{ color: '#1E293B', fontWeight: '600', fontSize: '0.9rem' }}>{formName}</span>
+                      {formSecurityNumber && (
+                        <span style={{ fontSize: '0.75rem', backgroundColor: '#DBEAFE', color: '#1D4ED8', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                          #{formSecurityNumber}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '2px' }}>
+                      {SECURITY_TYPE_LABELS[formAssetType]?.icon} {isHe ? SECURITY_TYPE_LABELS[formAssetType]?.he : SECURITY_TYPE_LABELS[formAssetType]?.en} • {formCurrency}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                    <label style={{ fontSize: '0.7rem', color: '#475569', fontWeight: '700' }}>
+                      {isHe ? 'שער מניה נוכחי בשוק:' : 'Current Market Price:'}
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <input
+                        type="number"
+                        step="any"
+                        style={{ ...styles.formInput, width: '100px', padding: '4px 8px', fontSize: '0.85rem' }}
+                        value={formCurrentPrice}
+                        onChange={(e) => setFormCurrentPrice(e.target.value)}
+                        placeholder="שער"
+                      />
+                      <span style={{ fontSize: '0.8125rem', fontWeight: '800', color: '#1E3A8A' }}>
+                        {formCurrency === 'USD' ? '$' : '₪'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Asset Details Fields (only shown in new_asset and edit_asset) */}
+              {(modalMode === 'new_asset' || modalMode === 'edit_asset') && (
                 <>
                   <div style={styles.formRow2}>
                     <div style={styles.formGroup}>
@@ -2042,157 +2183,169 @@ export const InvestmentsView: React.FC = () => {
                 </>
               )}
 
-              {/* Tranche Details */}
-              <div style={styles.sectionDivider}>
-                <span>{isHe ? 'פרטי פעימת הרכישה (תאריך, כמות וסכום)' : 'Purchase Tranche Details'}</span>
-              </div>
-
-              <div style={styles.formRow3}>
-                <div style={styles.formGroup}>
-                  <label style={styles.formLabel}>
-                    {isHe ? 'תאריך רכישה *' : 'Purchase Date *'}
-                  </label>
-                  <input
-                    style={styles.formInput}
-                    type="date"
-                    value={formDate}
-                    onChange={(e) => setFormDate(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.formLabel}>
-                    {isHe ? 'כמות מניות / יחידות *' : 'Shares / Quantity *'}
-                  </label>
-                  <input
-                    style={styles.formInput}
-                    type="number"
-                    step="any"
-                    placeholder="e.g. 10"
-                    value={formShares}
-                    onChange={(e) => handleSharesChange(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.formLabel}>
-                    {isHe
-                      ? `מחיר ליחידה (${formCurrency === 'USD' ? '$' : '₪'}) *`
-                      : `Price per Share (${formCurrency === 'USD' ? '$' : '₪'}) *`}
-                  </label>
-                  <input
-                    style={styles.formInput}
-                    type="number"
-                    step="any"
-                    placeholder="e.g. 100"
-                    value={formPricePerShare}
-                    onChange={(e) => handlePricePerShareChange(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div style={styles.formRow2}>
-                <div style={styles.formGroup}>
-                  <label style={styles.formLabel}>
-                    {isHe
-                      ? `סך סכום רכישה לפעימה (${formCurrency === 'USD' ? '$' : '₪'})`
-                      : `Total Tranche Amount (${formCurrency === 'USD' ? '$' : '₪'})`}
-                  </label>
-                  <input
-                    style={styles.formInput}
-                    type="number"
-                    step="any"
-                    placeholder="e.g. 1000"
-                    value={formTotalCost}
-                    onChange={(e) => handleTotalCostChange(e.target.value)}
-                  />
-                  <span style={styles.inputHelper}>
-                    {isHe ? 'סכום כולל מחושב אוטומטית (כמות × מחיר + עמלה)' : 'Auto calculated: shares × price + fee'}
-                  </span>
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.formLabel}>
-                    {isHe
-                      ? `עמלת קנייה (${formCurrency === 'USD' ? '$' : '₪'})`
-                      : `Trading Fee (${formCurrency === 'USD' ? '$' : '₪'})`}
-                  </label>
-                  <input
-                    style={styles.formInput}
-                    type="number"
-                    step="any"
-                    placeholder="0"
-                    value={formFee}
-                    onChange={(e) => {
-                      setFormFee(e.target.value);
-                      const s = parseFloat(formShares);
-                      const p = parseFloat(formPricePerShare);
-                      const f = parseFloat(e.target.value) || 0;
-                      if (s > 0 && p >= 0) setFormTotalCost((s * p + f).toFixed(2));
-                    }}
-                  />
-                  <span style={styles.inputHelper}>
-                    {isHe ? 'תווסף לעלות הרכישה להקטנת מס רווחי הון' : 'Added to cost basis'}
-                  </span>
-                </div>
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.formLabel}>
-                  {isHe ? 'הערות לפעימה (אופציונלי)' : 'Notes / Remarks (Optional)'}
-                </label>
-                <input
-                  style={styles.formInput}
-                  type="text"
-                  placeholder="e.g. קנייה בפעימה חודשית"
-                  value={formNotes}
-                  onChange={(e) => setFormNotes(e.target.value)}
-                />
-              </div>
-
-              {/* Dynamic Live Calculation Preview */}
-              {parseFloat(formShares) > 0 && parseFloat(formPricePerShare) > 0 && (
-                <div style={styles.liveCalculationBox}>
-                  <div style={styles.calcPreviewTitle}>
-                    <Sparkles size={14} color="#2563EB" />
-                    <span>{isHe ? 'סיכום פעימה זו:' : 'Tranche Calculation Preview:'}</span>
-                  </div>
-                  <div style={styles.calcPreviewRow}>
+              {/* Tranche Details (Shown in new_asset, add_tranche, and edit_tranche) */}
+              {modalMode !== 'edit_asset' && (
+                <>
+                  <div style={styles.sectionDivider}>
                     <span>
-                      {isHe ? 'עלות רכישה כוללת:' : 'Total Cost:'}{' '}
-                      <strong>
-                        {formCurrency === 'USD' ? '$' : '₪'}
-                        {(
-                          parseFloat(formShares) * parseFloat(formPricePerShare) +
-                          (parseFloat(formFee) || 0)
-                        ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                      </strong>
+                      {modalMode === 'edit_tranche'
+                        ? isHe
+                          ? 'עריכת פעימת הרכישה (תאריך, כמות וסכום)'
+                          : 'Edit Purchase Tranche Details'
+                        : isHe
+                        ? 'פרטי פעימת הרכישה (תאריך, כמות וסכום)'
+                        : 'Purchase Tranche Details'}
                     </span>
-                    {parseFloat(formCurrentPrice) > 0 && (
-                      <span>
-                        {isHe ? 'רווח נוכחי לפעימה:' : 'Current Tranche Gain:'}{' '}
-                        <strong
-                          style={{
-                            color:
-                              parseFloat(formCurrentPrice) >= parseFloat(formPricePerShare)
-                                ? '#059669'
-                                : '#DC2626',
-                          }}
-                        >
-                          {formCurrency === 'USD' ? '$' : '₪'}
-                          {(
-                            parseFloat(formShares) * parseFloat(formCurrentPrice) -
-                            (parseFloat(formShares) * parseFloat(formPricePerShare) +
-                              (parseFloat(formFee) || 0))
-                          ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </strong>
-                      </span>
-                    )}
                   </div>
-                </div>
+
+                  <div style={styles.formRow3}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.formLabel}>
+                        {isHe ? 'תאריך רכישה *' : 'Purchase Date *'}
+                      </label>
+                      <input
+                        style={styles.formInput}
+                        type="date"
+                        value={formDate}
+                        onChange={(e) => setFormDate(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div style={styles.formGroup}>
+                      <label style={styles.formLabel}>
+                        {isHe ? 'כמות מניות / יחידות *' : 'Shares / Quantity *'}
+                      </label>
+                      <input
+                        style={styles.formInput}
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 10"
+                        value={formShares}
+                        onChange={(e) => handleSharesChange(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div style={styles.formGroup}>
+                      <label style={styles.formLabel}>
+                        {isHe
+                          ? `מחיר ליחידה (${formCurrency === 'USD' ? '$' : '₪'}) *`
+                          : `Price per Share (${formCurrency === 'USD' ? '$' : '₪'}) *`}
+                      </label>
+                      <input
+                        style={styles.formInput}
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 100"
+                        value={formPricePerShare}
+                        onChange={(e) => handlePricePerShareChange(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div style={styles.formRow2}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.formLabel}>
+                        {isHe
+                          ? `סך סכום רכישה לפעימה (${formCurrency === 'USD' ? '$' : '₪'})`
+                          : `Total Tranche Amount (${formCurrency === 'USD' ? '$' : '₪'})`}
+                      </label>
+                      <input
+                        style={styles.formInput}
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 1000"
+                        value={formTotalCost}
+                        onChange={(e) => handleTotalCostChange(e.target.value)}
+                      />
+                      <span style={styles.inputHelper}>
+                        {isHe ? 'סכום כולל מחושב אוטומטית (כמות × מחיר + עמלה)' : 'Auto calculated: shares × price + fee'}
+                      </span>
+                    </div>
+
+                    <div style={styles.formGroup}>
+                      <label style={styles.formLabel}>
+                        {isHe
+                          ? `עמלת קנייה (${formCurrency === 'USD' ? '$' : '₪'})`
+                          : `Trading Fee (${formCurrency === 'USD' ? '$' : '₪'})`}
+                      </label>
+                      <input
+                        style={styles.formInput}
+                        type="number"
+                        step="any"
+                        placeholder="0"
+                        value={formFee}
+                        onChange={(e) => {
+                          setFormFee(e.target.value);
+                          const s = parseFloat(formShares);
+                          const p = parseFloat(formPricePerShare);
+                          const f = parseFloat(e.target.value) || 0;
+                          if (s > 0 && p >= 0) setFormTotalCost((s * p + f).toFixed(2));
+                        }}
+                      />
+                      <span style={styles.inputHelper}>
+                        {isHe ? 'תווסף לעלות הרכישה להקטנת מס רווחי הון' : 'Added to cost basis'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.formLabel}>
+                      {isHe ? 'הערות לפעימה (אופציונלי)' : 'Notes / Remarks (Optional)'}
+                    </label>
+                    <input
+                      style={styles.formInput}
+                      type="text"
+                      placeholder="e.g. קנייה בפעימה חודשית"
+                      value={formNotes}
+                      onChange={(e) => setFormNotes(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Dynamic Live Calculation Preview */}
+                  {parseFloat(formShares) > 0 && parseFloat(formPricePerShare) > 0 && (
+                    <div style={styles.liveCalculationBox}>
+                      <div style={styles.calcPreviewTitle}>
+                        <Sparkles size={14} color="#2563EB" />
+                        <span>{isHe ? 'סיכום פעימה זו:' : 'Tranche Calculation Preview:'}</span>
+                      </div>
+                      <div style={styles.calcPreviewRow}>
+                        <span>
+                          {isHe ? 'עלות רכישה כוללת:' : 'Total Cost:'}{' '}
+                          <strong>
+                            {formCurrency === 'USD' ? '$' : '₪'}
+                            {(
+                              parseFloat(formShares) * parseFloat(formPricePerShare) +
+                              (parseFloat(formFee) || 0)
+                            ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </strong>
+                        </span>
+                        {parseFloat(formCurrentPrice) > 0 && (
+                          <span>
+                            {isHe ? 'רווח נוכחי לפעימה:' : 'Current Tranche Gain:'}{' '}
+                            <strong
+                              style={{
+                                color:
+                                  parseFloat(formCurrentPrice) >= parseFloat(formPricePerShare)
+                                    ? '#059669'
+                                    : '#DC2626',
+                              }}
+                            >
+                              {formCurrency === 'USD' ? '$' : '₪'}
+                              {(
+                                parseFloat(formShares) * parseFloat(formCurrentPrice) -
+                                (parseFloat(formShares) * parseFloat(formPricePerShare) +
+                                  (parseFloat(formFee) || 0))
+                              ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </strong>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Form Action Buttons */}
@@ -2205,13 +2358,10 @@ export const InvestmentsView: React.FC = () => {
                   {isHe ? 'ביטול' : 'Cancel'}
                 </button>
                 <button type="submit" style={styles.modalSubmitBtn}>
-                  {modalMode === 'new_asset'
-                    ? isHe
-                      ? 'צור נייר ערך ופעימה ראשונה'
-                      : 'Create Asset & First Tranche'
-                    : isHe
-                    ? 'הוסף פעימת רכישה'
-                    : 'Add Purchase Tranche'}
+                  {modalMode === 'new_asset' && (isHe ? 'צור נייר ערך ופעימה ראשונה' : 'Create Asset & First Tranche')}
+                  {modalMode === 'edit_asset' && (isHe ? 'שמור פרטי נייר ערך' : 'Save Asset Changes')}
+                  {modalMode === 'add_tranche' && (isHe ? 'הוסף פעימת רכישה' : 'Add Purchase Tranche')}
+                  {modalMode === 'edit_tranche' && (isHe ? 'שמור שינויים בפעימה' : 'Save Tranche Changes')}
                 </button>
               </div>
             </form>
@@ -2825,6 +2975,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '700',
     cursor: 'pointer',
   },
+  editAssetBtn: {
+    padding: '5px',
+    backgroundColor: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    cursor: 'pointer',
+    borderRadius: '6px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.15s ease',
+  },
   deleteAssetBtn: {
     padding: '5px',
     background: 'none',
@@ -2921,6 +3082,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.75rem',
     color: '#64748B',
     fontStyle: 'italic',
+  },
+  editTrancheBtn: {
+    padding: '4px 6px',
+    backgroundColor: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    cursor: 'pointer',
+    borderRadius: '4px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#2563EB',
+    transition: 'all 0.15s ease',
   },
   deleteTrancheBtn: {
     background: 'none',
