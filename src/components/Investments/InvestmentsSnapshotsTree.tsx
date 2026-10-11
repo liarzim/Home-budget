@@ -362,10 +362,16 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
 
                       <div style={treeStyles.metricBox}>
                         <span style={treeStyles.metricLabel}>{isHe ? 'רווח/הפסד:' : 'P&L:'}</span>
-                        <strong style={{ color: isYearProfit ? '#059669' : '#DC2626' }}>
-                          {isYearProfit ? '+' : ''}
-                          ₪{latest.total_profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
-                          ({latest.total_return_pct.toFixed(2)}%)
+                        <strong
+                          dir="ltr"
+                          style={{
+                            color: isYearProfit ? '#059669' : '#DC2626',
+                            direction: 'ltr',
+                            display: 'inline-block',
+                          }}
+                        >
+                          {isYearProfit ? '+' : '-'}₪{Math.abs(latest.total_profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
+                          ({latest.total_return_pct >= 0 ? '+' : '-'}{Math.abs(latest.total_return_pct).toFixed(2)}%)
                         </strong>
                       </div>
                     </div>
@@ -455,10 +461,16 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                                 </div>
                                 <div style={treeStyles.metricBox}>
                                   <span style={treeStyles.metricLabel}>{isHe ? 'רווח/הפסד:' : 'P&L:'}</span>
-                                  <strong style={{ color: isQProfit ? '#059669' : '#DC2626' }}>
-                                    {isQProfit ? '+' : ''}
-                                    ₪{qSnap.total_profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
-                                    ({qSnap.total_return_pct.toFixed(2)}%)
+                                  <strong
+                                    dir="ltr"
+                                    style={{
+                                      color: isQProfit ? '#059669' : '#DC2626',
+                                      direction: 'ltr',
+                                      display: 'inline-block',
+                                    }}
+                                  >
+                                    {isQProfit ? '+' : '-'}₪{Math.abs(qSnap.total_profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
+                                    ({qSnap.total_return_pct >= 0 ? '+' : '-'}{Math.abs(qSnap.total_return_pct).toFixed(2)}%)
                                   </strong>
                                 </div>
                               </div>
@@ -549,10 +561,16 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                                                   <span style={treeStyles.metricLabel}>
                                                     {isHe ? 'רווח/הפסד:' : 'P&L:'}
                                                   </span>
-                                                  <strong style={{ color: isSnapProfit ? '#059669' : '#DC2626' }}>
-                                                    {isSnapProfit ? '+' : ''}
-                                                    ₪{snap.total_profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
-                                                    ({snap.total_return_pct.toFixed(2)}%)
+                                                  <strong
+                                                    dir="ltr"
+                                                    style={{
+                                                      color: isSnapProfit ? '#059669' : '#DC2626',
+                                                      direction: 'ltr',
+                                                      display: 'inline-block',
+                                                    }}
+                                                  >
+                                                    {isSnapProfit ? '+' : '-'}₪{Math.abs(snap.total_profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
+                                                    ({snap.total_return_pct >= 0 ? '+' : '-'}{Math.abs(snap.total_return_pct).toFixed(2)}%)
                                                   </strong>
                                                 </div>
                                                 <div style={treeStyles.metricBox}>
@@ -667,28 +685,34 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                                                         </td>
                                                         <td style={treeStyles.subTd}>
                                                           <span
+                                                            dir="ltr"
                                                             style={{
                                                               color: itProf ? '#059669' : '#DC2626',
                                                               fontWeight: '700',
+                                                              direction: 'ltr',
+                                                              display: 'inline-block',
                                                             }}
                                                           >
-                                                            {itProf ? '+' : ''}
-                                                            {it.currency === 'USD' ? '$' : '₪'}
-                                                            {it.profit.toLocaleString('en-US', {
+                                                            {itProf ? '+' : '-'}{it.currency === 'USD' ? '$' : '₪'}
+                                                            {Math.abs(it.profit).toLocaleString('en-US', {
                                                               minimumFractionDigits: 2,
+                                                              maximumFractionDigits: 2,
                                                             })}
                                                           </span>
                                                         </td>
                                                         <td style={treeStyles.subTd}>
                                                           <span
+                                                            dir="ltr"
                                                             style={{
                                                               ...treeStyles.yieldBadge,
                                                               backgroundColor: itProf ? '#DCFCE7' : '#FEE2E2',
                                                               color: itProf ? '#15803D' : '#B91C1C',
+                                                              direction: 'ltr',
+                                                              display: 'inline-block',
                                                             }}
                                                           >
-                                                            {itProf ? '+' : ''}
-                                                            {it.return_pct.toFixed(2)}%
+                                                            {itProf ? '+' : '-'}
+                                                            {Math.abs(it.return_pct).toFixed(2)}%
                                                           </span>
                                                         </td>
                                                       </tr>

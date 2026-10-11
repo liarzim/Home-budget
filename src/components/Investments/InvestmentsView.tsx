@@ -265,10 +265,12 @@ export const InvestmentsView: React.FC = () => {
     }
 
     const symbol = targetCurr === 'USD' ? '$' : '₪';
-    return `${symbol}${convertedAmount.toLocaleString('en-US', {
+    const isNegative = convertedAmount < 0;
+    const absStr = Math.abs(convertedAmount).toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    })}`;
+    });
+    return isNegative ? `-${symbol}${absStr}` : `${symbol}${absStr}`;
   };
 
   // Synchronize price per share and total cost in form
@@ -1178,8 +1180,11 @@ export const InvestmentsView: React.FC = () => {
               color: portfolioSummary.totalProfitILS >= 0 ? '#059669' : '#DC2626',
             }}
           >
-            {portfolioSummary.totalProfitILS >= 0 ? '+' : ''}
-            ₪{portfolioSummary.totalProfitILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+            <span dir="ltr" style={{ direction: 'ltr', display: 'inline-block' }}>
+              {portfolioSummary.totalProfitILS >= 0
+                ? `+₪${portfolioSummary.totalProfitILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                : `-₪${Math.abs(portfolioSummary.totalProfitILS).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
+            </span>
           </div>
           <div style={styles.kpiBadgeYieldRow}>
             <span
@@ -1189,8 +1194,10 @@ export const InvestmentsView: React.FC = () => {
                 color: portfolioSummary.totalProfitILS >= 0 ? '#15803D' : '#B91C1C',
               }}
             >
-              {portfolioSummary.totalProfitILS >= 0 ? '+' : ''}
-              {portfolioSummary.totalReturnPct.toFixed(2)}%
+              <span dir="ltr" style={{ direction: 'ltr', display: 'inline-block' }}>
+                {portfolioSummary.totalReturnPct >= 0 ? '+' : '-'}
+                {Math.abs(portfolioSummary.totalReturnPct).toFixed(2)}%
+              </span>
             </span>
             <span style={styles.kpiSubText}>
               {isHe ? 'תשואה משוקללת' : 'Total Return'}
@@ -1488,27 +1495,32 @@ export const InvestmentsView: React.FC = () => {
                             {/* Profit / Loss */}
                             <td style={styles.tdCell}>
                               <span
+                                dir="ltr"
                                 style={{
                                   ...styles.boldCellText,
                                   color: isProfit ? '#059669' : '#DC2626',
+                                  direction: 'ltr',
+                                  display: 'inline-block',
                                 }}
                               >
-                                {isProfit ? '+' : ''}
-                                {formatVal(metrics.profit, asset.currency)}
+                                {isProfit ? `+${formatVal(metrics.profit, asset.currency)}` : formatVal(metrics.profit, asset.currency)}
                               </span>
                             </td>
 
                             {/* Yield % */}
                             <td style={styles.tdCell}>
                               <span
+                                dir="ltr"
                                 style={{
                                   ...styles.yieldBadge,
                                   backgroundColor: isProfit ? '#DCFCE7' : '#FEE2E2',
                                   color: isProfit ? '#15803D' : '#B91C1C',
+                                  direction: 'ltr',
+                                  display: 'inline-block',
                                 }}
                               >
-                                {isProfit ? '+' : ''}
-                                {metrics.returnPct.toFixed(2)}%
+                                {isProfit ? '+' : '-'}
+                                {Math.abs(metrics.returnPct).toFixed(2)}%
                               </span>
                             </td>
 
@@ -1745,27 +1757,32 @@ export const InvestmentsView: React.FC = () => {
                                             </td>
                                             <td style={styles.trancheTd}>
                                               <span
+                                                dir="ltr"
                                                 style={{
                                                   color: isTrProfit ? '#059669' : '#DC2626',
                                                   fontWeight: '700',
+                                                  direction: 'ltr',
+                                                  display: 'inline-block',
                                                 }}
                                               >
-                                                {isTrProfit ? '+' : ''}
-                                                {formatVal(trProfit, asset.currency)}
+                                                {isTrProfit ? `+${formatVal(trProfit, asset.currency)}` : formatVal(trProfit, asset.currency)}
                                               </span>
                                             </td>
                                             <td style={styles.trancheTd}>
                                               <span
+                                                dir="ltr"
                                                 style={{
                                                   ...styles.yieldPillSmall,
                                                   backgroundColor: isTrProfit
                                                     ? '#DCFCE7'
                                                     : '#FEE2E2',
                                                   color: isTrProfit ? '#15803D' : '#B91C1C',
+                                                  direction: 'ltr',
+                                                  display: 'inline-block',
                                                 }}
                                               >
-                                                {isTrProfit ? '+' : ''}
-                                                {trYield.toFixed(2)}%
+                                                {isTrProfit ? '+' : '-'}
+                                                {Math.abs(trYield).toFixed(2)}%
                                               </span>
                                             </td>
                                             <td style={styles.trancheTd}>
@@ -2099,25 +2116,31 @@ export const InvestmentsView: React.FC = () => {
                   <div style={styles.periodKpiItem}>
                     <span style={styles.periodKpiLabel}>{isHe ? 'רווח/הפסד נקודתי' : 'Periodic P&L'}</span>
                     <span
+                      dir="ltr"
                       style={{
                         ...styles.periodKpiVal,
                         color: fetchedPeriodResult.totalProfit >= 0 ? '#059669' : '#DC2626',
+                        direction: 'ltr',
+                        display: 'inline-block',
                       }}
                     >
-                      {fetchedPeriodResult.totalProfit >= 0 ? '+' : ''}
-                      ₪{fetchedPeriodResult.totalProfit.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                      {fetchedPeriodResult.totalProfit >= 0 ? '+' : '-'}
+                      ₪{Math.abs(fetchedPeriodResult.totalProfit).toLocaleString('en-US', { maximumFractionDigits: 0 })}
                     </span>
                   </div>
                   <div style={styles.periodKpiItem}>
                     <span style={styles.periodKpiLabel}>{isHe ? 'תשואה נקודתית' : 'Periodic Yield'}</span>
                     <span
+                      dir="ltr"
                       style={{
                         ...styles.periodKpiVal,
                         color: fetchedPeriodResult.totalProfit >= 0 ? '#15803D' : '#B91C1C',
+                        direction: 'ltr',
+                        display: 'inline-block',
                       }}
                     >
-                      {fetchedPeriodResult.totalProfit >= 0 ? '+' : ''}
-                      {fetchedPeriodResult.totalReturnPct.toFixed(2)}%
+                      {fetchedPeriodResult.totalReturnPct >= 0 ? '+' : '-'}
+                      {Math.abs(fetchedPeriodResult.totalReturnPct).toFixed(2)}%
                     </span>
                   </div>
                 </div>
@@ -2662,10 +2685,11 @@ export const InvestmentsView: React.FC = () => {
                 </div>
                 <div style={styles.snapshotPreviewRow}>
                   <span>{isHe ? 'רווח נקודתי לתקופה:' : 'Point-in-Time Gain:'}</span>
-                  <strong style={{ color: portfolioSummary.totalProfitILS >= 0 ? '#059669' : '#DC2626' }}>
-                    {portfolioSummary.totalProfitILS >= 0 ? '+' : ''}
-                    ₪{portfolioSummary.totalProfitILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
-                    ({portfolioSummary.totalReturnPct.toFixed(2)}%)
+                  <strong dir="ltr" style={{ color: portfolioSummary.totalProfitILS >= 0 ? '#059669' : '#DC2626', direction: 'ltr', display: 'inline-block' }}>
+                    {portfolioSummary.totalProfitILS >= 0
+                      ? `+₪${portfolioSummary.totalProfitILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                      : `-₪${Math.abs(portfolioSummary.totalProfitILS).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}{' '}
+                    ({portfolioSummary.totalReturnPct >= 0 ? '+' : '-'}{Math.abs(portfolioSummary.totalReturnPct).toFixed(2)}%)
                   </strong>
                 </div>
                 <div style={styles.snapshotPreviewRow}>

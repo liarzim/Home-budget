@@ -543,15 +543,25 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                   </div>
                   <div>
                     <span style={chartStyles.tooltipLabel}>{isHe ? 'רווח/הפסד:' : 'Gain/Loss:'}</span>
-                    <strong
-                      style={{
-                        color: chartDataPoints[hoveredPointIndex].profit >= 0 ? '#059669' : '#DC2626',
-                      }}
-                    >
-                      {chartDataPoints[hoveredPointIndex].profit >= 0 ? '+' : ''}
-                      ₪{chartDataPoints[hoveredPointIndex].profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}{' '}
-                      ({chartDataPoints[hoveredPointIndex].returnPct.toFixed(2)}%)
-                    </strong>
+                    {(() => {
+                      const pt = chartDataPoints[hoveredPointIndex];
+                      const isPtProfit = pt.profit >= 0;
+                      return (
+                        <strong
+                          dir="ltr"
+                          style={{
+                            color: isPtProfit ? '#059669' : '#DC2626',
+                            direction: 'ltr',
+                            display: 'inline-block',
+                          }}
+                        >
+                          {isPtProfit
+                            ? `+₪${pt.profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                            : `-₪${Math.abs(pt.profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}{' '}
+                          ({pt.returnPct >= 0 ? '+' : '-'}{Math.abs(pt.returnPct).toFixed(2)}%)
+                        </strong>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -665,10 +675,24 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                 <div>
                   <div style={chartStyles.insightHead}>{isHe ? 'תשואה מצטברת משוקללת' : 'Total Return'}</div>
                   <div style={chartStyles.insightVal}>
-                    {portfolioSummary.totalReturnPct >= 0 ? '+' : ''}
-                    {portfolioSummary.totalReturnPct.toFixed(2)}%
-                    <span style={{ color: '#059669', fontSize: '0.8125rem', fontWeight: '600', marginRight: '6px' }}>
-                      (+₪{portfolioSummary.totalProfitILS.toLocaleString('en-US', { maximumFractionDigits: 0 })})
+                    <span dir="ltr" style={{ direction: 'ltr', display: 'inline-block' }}>
+                      {portfolioSummary.totalReturnPct >= 0 ? '+' : '-'}
+                      {Math.abs(portfolioSummary.totalReturnPct).toFixed(2)}%
+                    </span>
+                    <span
+                      dir="ltr"
+                      style={{
+                        color: portfolioSummary.totalProfitILS >= 0 ? '#059669' : '#DC2626',
+                        fontSize: '0.8125rem',
+                        fontWeight: '600',
+                        marginRight: '6px',
+                        direction: 'ltr',
+                        display: 'inline-block',
+                      }}
+                    >
+                      ({portfolioSummary.totalProfitILS >= 0
+                        ? `+₪${portfolioSummary.totalProfitILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                        : `-₪${Math.abs(portfolioSummary.totalProfitILS).toLocaleString('en-US', { maximumFractionDigits: 0 })}`})
                     </span>
                   </div>
                 </div>
