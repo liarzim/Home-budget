@@ -17,7 +17,7 @@ interface IsraeliDateInputProps {
 export const IsraeliDateInput: React.FC<IsraeliDateInputProps> = ({
   value,
   onChange,
-  placeholder = 'DD/MM/YYYY',
+  placeholder = '15/06/2026',
   style,
   inputStyle,
   required,
@@ -75,38 +75,46 @@ export const IsraeliDateInput: React.FC<IsraeliDateInputProps> = ({
         title={title || 'הזן תאריך בפורמט DD/MM/YYYY או בחר מהיומן'}
         style={{
           width: '100%',
-          paddingLeft: '34px',
           direction: 'ltr',
-          textAlign: 'right',
-          fontFamily: 'monospace, sans-serif',
-          fontSize: '0.9rem',
+          textAlign: 'center',
+          fontFamily: 'inherit',
+          fontSize: '0.875rem',
           fontWeight: '600',
-          borderRadius: '6px',
+          borderRadius: '10px',
           border: '1px solid #CBD5E1',
-          padding: '8px 12px 8px 34px',
+          padding: '10px 10px 10px 32px',
           outline: 'none',
           backgroundColor: '#FFFFFF',
           color: '#0F172A',
           boxSizing: 'border-box',
+          transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
           ...inputStyle,
         }}
       />
 
-      {/* Calendar Button */}
-      <div
+      {/* Calendar Button inside input */}
+      <button
+        type="button"
         style={{
           position: 'absolute',
           left: '8px',
+          top: '50%',
+          transform: 'translateY(-50%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: disabled ? 'not-allowed' : 'pointer',
+          border: 'none',
+          background: 'transparent',
+          padding: '4px',
+          borderRadius: '6px',
+          color: '#2563EB',
           zIndex: 2,
         }}
         onClick={handleOpenPicker}
         title="בחר תאריך מלוח שנה"
       >
-        <Calendar size={16} color="#2563EB" style={{ pointerEvents: 'none' }} />
+        <Calendar size={16} color="#2563EB" />
         {/* Hidden Native Date Picker */}
         <input
           ref={hiddenDateInputRef}
@@ -122,7 +130,7 @@ export const IsraeliDateInput: React.FC<IsraeliDateInputProps> = ({
           }}
           tabIndex={-1}
         />
-      </div>
+      </button>
     </div>
   );
 };

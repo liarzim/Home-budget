@@ -2342,7 +2342,7 @@ export const InvestmentsView: React.FC = () => {
                   <div style={styles.formRow3}>
                     <div style={styles.formGroup}>
                       <label style={styles.formLabel}>
-                        {isHe ? 'תאריך רכישה (DD/MM/YYYY) *' : 'Purchase Date (DD/MM/YYYY) *'}
+                        {isHe ? 'תאריך רכישה *' : 'Purchase Date *'}
                       </label>
                       <IsraeliDateInput
                         value={formDate}
@@ -2561,7 +2561,7 @@ export const InvestmentsView: React.FC = () => {
 
               <div style={styles.formGroup}>
                 <label style={styles.formLabel}>
-                  {isHe ? 'תאריך סגירה (DD/MM/YYYY) *' : 'Snapshot Date (DD/MM/YYYY) *'}
+                  {isHe ? 'תאריך סגירה *' : 'Snapshot Date *'}
                 </label>
                 <IsraeliDateInput
                   value={snapshotDate}
@@ -3411,17 +3411,20 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr 1fr',
     gap: '12px',
+    alignItems: 'end',
   },
   formGroup: {
     display: 'flex',
     flexDirection: 'column',
     gap: '6px',
     textAlign: 'inherit',
+    justifyContent: 'flex-end',
   },
   formLabel: {
     fontSize: '0.8125rem',
     fontWeight: '700',
     color: '#334155',
+    whiteSpace: 'nowrap',
   },
   formInput: {
     padding: '10px 12px',
