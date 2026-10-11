@@ -76,9 +76,7 @@ export const InvestmentsView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'portfolio' | 'snapshots' | 'charts'>('portfolio');
 
   // Expanded asset rows (to view purchase tranches)
-  const [expandedAssetIds, setExpandedAssetIds] = useState<Record<string, boolean>>({
-    'inv-sample-user': true, // Open user sample by default
-  });
+  const [expandedAssetIds, setExpandedAssetIds] = useState<Record<string, boolean>>({});
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -139,160 +137,29 @@ export const InvestmentsView: React.FC = () => {
   // Periodic Snapshots State (stored in localStorage)
   const [snapshots, setSnapshots] = useState<InvestmentPeriodicSnapshot[]>(() => {
     try {
-      if (localStorage.getItem('demo_data_cleared') === 'true') {
-        const saved = localStorage.getItem('household_investment_snapshots');
-        return saved ? JSON.parse(saved) : [];
-      }
       const saved = localStorage.getItem('household_investment_snapshots');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          // Purge any mock/sample snapshots automatically
+          const userOnlySnapshots = parsed.filter(
+            (s: any) =>
+              s.id &&
+              !s.id.startsWith('snap-2026-') &&
+              !s.id.startsWith('snap-2025-') &&
+              !s.id.includes('sample')
+          );
+          if (userOnlySnapshots.length !== parsed.length) {
+            localStorage.setItem('household_investment_snapshots', JSON.stringify(userOnlySnapshots));
+          }
+          return userOnlySnapshots;
+        }
       }
     } catch (e) {
       console.error(e);
     }
-
-    if (localStorage.getItem('demo_data_cleared') === 'true') {
-      return [];
-    }
-
-    const defaultItems: InvestmentSnapshotItem[] = [
-      {
-        asset_id: 'sample-voo',
-        ticker: 'VOO',
-        security_number: '1159250',
-        name: 'Vanguard S&P 500 ETF',
-        currency: 'USD',
-        shares: 40,
-        avg_cost_price: 107.5,
-        total_cost: 4300,
-        market_price: 130,
-        market_value: 5200,
-        profit: 900,
-        return_pct: 20.93,
-        quote_source: 'Yahoo Finance',
-        quote_date: '2026-03-31',
-      },
-      {
-        asset_id: 'sample-ta125',
-        ticker: 'TA125',
-        security_number: '1159094',
-        name: 'ת״א 125 סל מחקה',
-        currency: 'ILS',
-        shares: 100,
-        avg_cost_price: 185,
-        total_cost: 18500,
-        market_price: 210,
-        market_value: 21000,
-        profit: 2500,
-        return_pct: 13.51,
-        quote_source: 'Bizportal (TASE)',
-        quote_date: '2026-03-31',
-      },
-      {
-        asset_id: 'sample-aapl',
-        ticker: 'AAPL',
-        name: 'Apple Inc.',
-        currency: 'USD',
-        shares: 15,
-        avg_cost_price: 180,
-        total_cost: 2700,
-        market_price: 224,
-        market_value: 3360,
-        profit: 660,
-        return_pct: 24.44,
-        quote_source: 'Yahoo Finance',
-        quote_date: '2026-03-31',
-      },
-    ];
-
-    // Default historical snapshots structured across Years, Quarters and Months
-    return [
-      {
-        id: 'snap-2026-q1',
-        household_id: 'hh-main',
-        period_type: 'quarter',
-        period_label: 'סיום רבעון Q1 2026 (סוף מרץ)',
-        date: '2026-03-31',
-        total_invested: 44200,
-        total_value: 51900,
-        total_profit: 7700,
-        total_return_pct: 17.42,
-        assets_count: 4,
-        notes: 'סגירת רבעון ראשון 2026 ומשיכת שערים',
-        items: defaultItems,
-      },
-      {
-        id: 'snap-2026-m2',
-        household_id: 'hh-main',
-        period_type: 'month',
-        period_label: 'סגירת חודש פברואר 2026',
-        date: '2026-02-28',
-        total_invested: 42000,
-        total_value: 48100,
-        total_profit: 6100,
-        total_return_pct: 14.52,
-        assets_count: 3,
-        notes: 'סגירת חודש פברואר',
-        items: defaultItems,
-      },
-      {
-        id: 'snap-2026-m1',
-        household_id: 'hh-main',
-        period_type: 'month',
-        period_label: 'סגירת חודש ינואר 2026',
-        date: '2026-01-31',
-        total_invested: 40500,
-        total_value: 44500,
-        total_profit: 4000,
-        total_return_pct: 9.88,
-        assets_count: 3,
-        notes: 'פתיחת שנה וסגירת חודש ינואר',
-        items: defaultItems,
-      },
-      {
-        id: 'snap-2025-year-end',
-        household_id: 'hh-main',
-        period_type: 'year',
-        period_label: 'סוף שנת 2025 (סגירה שנתית - 31/12)',
-        date: '2025-12-31',
-        total_invested: 35000,
-        total_value: 39800,
-        total_profit: 4800,
-        total_return_pct: 13.71,
-        assets_count: 3,
-        notes: 'סגירת שנת מס 2025 מלאה',
-        items: defaultItems,
-      },
-      {
-        id: 'snap-2025-m11',
-        household_id: 'hh-main',
-        period_type: 'month',
-        period_label: 'סגירת חודש נובמבר 2025',
-        date: '2025-11-30',
-        total_invested: 34000,
-        total_value: 37200,
-        total_profit: 3200,
-        total_return_pct: 9.41,
-        assets_count: 2,
-        notes: 'סגירת חודש נובמבר',
-        items: defaultItems,
-      },
-      {
-        id: 'snap-2025-m10',
-        household_id: 'hh-main',
-        period_type: 'month',
-        period_label: 'סגירת חודש אוקטובר 2025',
-        date: '2025-10-31',
-        total_invested: 33500,
-        total_value: 35600,
-        total_profit: 2100,
-        total_return_pct: 6.27,
-        assets_count: 2,
-        notes: 'סגירת חודש אוקטובר',
-        items: defaultItems,
-      },
-    ];
+    // Clean default slate - 0 snapshots by default
+    return [];
   });
 
   const saveSnapshots = (newList: InvestmentPeriodicSnapshot[]) => {

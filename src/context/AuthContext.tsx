@@ -167,19 +167,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [savings, setSavings] = useState<Savings[]>([]);
 
   const [isDemoDataCleared, setIsDemoDataCleared] = useState<boolean>(() => {
-    return localStorage.getItem('demo_data_cleared') === 'true';
+    const flag = localStorage.getItem('demo_data_cleared');
+    if (flag === null) {
+      localStorage.setItem('demo_data_cleared', 'true');
+      return true;
+    }
+    return flag === 'true';
   });
 
   const [investments, setInvestments] = useState<InvestmentAsset[]>(() => {
     try {
-      if (localStorage.getItem('demo_data_cleared') === 'true') {
-        const saved = localStorage.getItem('household_investments_data');
-        return saved ? JSON.parse(saved) : [];
-      }
       const saved = localStorage.getItem('household_investments_data');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          const realAssets = parsed.filter(
+            (a: any) =>
+              a.id &&
+              !a.id.includes('sample') &&
+              a.id !== 'inv-voo' &&
+              a.id !== 'inv-nvda' &&
+              a.id !== 'inv-ta125'
+          );
+          if (realAssets.length !== parsed.length) {
+            localStorage.setItem('household_investments_data', JSON.stringify(realAssets));
+          }
+          return realAssets;
+        }
       }
     } catch (e) {
       console.error(e);
@@ -334,6 +348,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     document.documentElement.dir = dir;
     document.documentElement.lang = language;
   }, [language, dir]);
+
+  // One-time self-healing check on mount to ensure existing browsers with legacy demo items get cleaned
+  useEffect(() => {
+    try {
+      const demoTxs = localStorage.getItem('demo_transactions');
+      if (demoTxs && (demoTxs.includes('POS TRAN C7718') || demoTxs.includes('tx-8'))) {
+        localStorage.removeItem('demo_transactions');
+      }
+      const rawSnaps = localStorage.getItem('household_investment_snapshots');
+      if (rawSnaps && (rawSnaps.includes('snap-2026-') || rawSnaps.includes('sample-voo') || rawSnaps.includes('snap-2025-'))) {
+        localStorage.removeItem('household_investment_snapshots');
+      }
+      const rawInvs = localStorage.getItem('household_investments_data');
+      if (rawInvs && (rawInvs.includes('inv-voo') || rawInvs.includes('sample') || rawInvs.includes('inv-ta125'))) {
+        localStorage.removeItem('household_investments_data');
+      }
+    } catch (e) {
+      console.error('Self-healing demo cleanup error:', e);
+    }
+  }, []);
 
   // Initial Auth Check
   useEffect(() => {
@@ -598,7 +632,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCategories(mockCategories);
     setBusinessMappings(mockBusinessMappings);
     setCardMappings(mockCardMappings);
-    const isCleared = localStorage.getItem('demo_data_cleared') === 'true';
+    const isCleared = localStorage.getItem('demo_data_cleared') !== 'false';
     if (isCleared) {
       setTransactions([]);
       setBudgets([]);

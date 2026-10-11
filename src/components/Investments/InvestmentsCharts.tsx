@@ -190,6 +190,26 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
     return segments;
   }, [chartDataPoints]);
 
+  if (investments.length === 0 && snapshots.length === 0) {
+    return (
+      <div style={chartStyles.container} className="animate-fade-in">
+        <div style={chartStyles.emptyCard}>
+          <div style={chartStyles.emptyIconWrap}>
+            <TrendingUp size={36} color="#94A3B8" />
+          </div>
+          <h3 style={chartStyles.emptyTitle}>
+            {isHe ? 'אין עדיין נתוני השקעות להצגת גרפים' : 'No Investment Data Available'}
+          </h3>
+          <p style={chartStyles.emptyText}>
+            {isHe
+              ? 'גרפי שווי מול עלות, רווח מצטבר והתפלגות אפיקי השקעה יופיעו כאן אוטומטית ברגע שתוסיף ניירות ערך או תבצע סגירת תקופה.'
+              : 'Growth, P&L, and allocation charts will appear here once you add assets or record milestones.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={chartStyles.container} className="animate-fade-in">
       {/* Header & Controls */}
@@ -1016,5 +1036,40 @@ const chartStyles: { [key: string]: React.CSSProperties } = {
     fontSize: '1rem',
     fontWeight: '800',
     color: '#0F172A',
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: '16px',
+    border: '1px solid #E2E8F0',
+    padding: '48px 24px',
+    textAlign: 'center',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)',
+  },
+  emptyIconWrap: {
+    width: '64px',
+    height: '64px',
+    borderRadius: '50%',
+    backgroundColor: '#F1F5F9',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '16px',
+  },
+  emptyTitle: {
+    fontSize: '1.125rem',
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: '8px',
+  },
+  emptyText: {
+    fontSize: '0.875rem',
+    color: '#64748B',
+    maxWidth: '480px',
+    lineHeight: '1.5',
+    margin: 0,
   },
 };

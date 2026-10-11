@@ -281,8 +281,30 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
 
       {/* Tree Hierarchy Root */}
       <div style={treeStyles.treeWrapper}>
-        {treeData.map((yNode) => {
-          const isYearOpen = Boolean(expandedYears[yNode.year]);
+        {snapshots.length === 0 ? (
+          <div style={treeStyles.emptyTreeCard}>
+            <div style={treeStyles.emptyTreeIcon}>
+              <Clock size={36} color="#94A3B8" />
+            </div>
+            <h4 style={treeStyles.emptyTreeTitle}>
+              {isHe ? 'אין עדיין סגירות תקופה שמורות' : 'No Periodic Milestones Yet'}
+            </h4>
+            <p style={treeStyles.emptyTreeText}>
+              {isHe
+                ? 'באפשרותך לבצע סגירת תקופה (חודש / רבעון / שנה) כדי לעקוב אחר ביצועי התיק לאורך זמן, או לפנות לסעיף משיכת שערי סגירה תקופתיים.'
+                : 'Create periodic milestones to monitor your portfolio growth over time.'}
+            </p>
+            <button
+              style={treeStyles.createFirstSnapshotBtn}
+              onClick={() => onOpenSnapshotModal('current')}
+            >
+              <Plus size={15} />
+              <span>{isHe ? '+ צור סגירת תקופה ראשונה' : '+ Create First Milestone'}</span>
+            </button>
+          </div>
+        ) : (
+          treeData.map((yNode) => {
+            const isYearOpen = Boolean(expandedYears[yNode.year]);
           const latest = yNode.latestSnapshot;
           const isYearProfit = latest ? latest.total_profit >= 0 : true;
 
@@ -720,7 +742,7 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
               )}
             </div>
           );
-        })}
+        }))}
       </div>
     </div>
   );
@@ -1183,5 +1205,54 @@ const treeStyles: { [key: string]: React.CSSProperties } = {
     borderRadius: '4px',
     fontWeight: '800',
     fontSize: '0.6875rem',
+  },
+  emptyTreeCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: '16px',
+    border: '1px solid #E2E8F0',
+    padding: '48px 24px',
+    textAlign: 'center',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)',
+  },
+  emptyTreeIcon: {
+    width: '64px',
+    height: '64px',
+    borderRadius: '50%',
+    backgroundColor: '#F1F5F9',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '16px',
+  },
+  emptyTreeTitle: {
+    fontSize: '1.125rem',
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: '8px',
+  },
+  emptyTreeText: {
+    fontSize: '0.875rem',
+    color: '#64748B',
+    maxWidth: '480px',
+    lineHeight: '1.5',
+    marginBottom: '20px',
+  },
+  createFirstSnapshotBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '9px 18px',
+    backgroundColor: '#2563EB',
+    color: '#FFFFFF',
+    borderRadius: '10px',
+    border: 'none',
+    fontWeight: '700',
+    fontSize: '0.875rem',
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(37, 99, 235, 0.25)',
   },
 };
