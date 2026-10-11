@@ -453,6 +453,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
+  const isDemoModeRef = useRef<boolean>(false);
+  useEffect(() => {
+    isDemoModeRef.current = isDemoMode;
+  }, [isDemoMode]);
   const [activeTab, setActiveTabState] = useState<AuthContextType['activeTab']>(() => {
     try {
       const saved = sessionStorage.getItem('active_tab') || localStorage.getItem('active_tab');
@@ -632,14 +636,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth state changes (OAuth Redirects, Logins, Logouts)
     if (isSupabaseConfigured) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'SIGNED_OUT') {
-          logout();
-        } else if (event === 'SIGNED_IN' && session?.user) {
-          // If already signed in as this exact user, ignore background token/focus events to prevent screen flashing
-          if (userRef.current?.id === session.user.id) {
-            return;
-          }
+        // If the user is already active in the app (either logged in or in demo mode),
+        // completely ignore all background visibility, focus, token refresh, and sign-out events.
+        if (userRef.current || isDemoModeRef.current) {
+          return;
+        }
+
+        if (event === 'SIGNED_IN' && session?.user) {
           try {
+            setIsLoading(true);
             await loadSupabaseUserData(session.user.id, session.user.email);
           } finally {
             setIsLoading(false);
@@ -655,6 +660,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   async function loadSupabaseUserData(userId: string, email?: string) {
     try {
+      isDemoModeRef.current = false;
       setIsDemoMode(false);
       // Fetch or Create Profile
       let { data: profile } = await supabase
@@ -853,8 +859,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginDemo = (userName: string = 'Micha') => {
     sessionStorage.removeItem('explicit_logout');
+    isDemoModeRef.current = true;
     setIsDemoMode(true);
-    setUser({ ...mockProfile, full_name: userName, email: 'michael.liarzi@gmail.com' });
+    const demoUser = { ...mockProfile, full_name: userName, email: 'michael.liarzi@gmail.com' };
+    userRef.current = demoUser;
+    setUser(demoUser);
     setHouseholds(mockHouseholds);
     setAllSystemHouseholds(mockHouseholds);
     setActiveHousehold(mockHouseholds[0]);
@@ -905,6 +914,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     userRef.current = null;
+    isDemoModeRef.current = false;
     setIsLoading(true);
     sessionStorage.setItem('explicit_logout', 'true');
     if (isSupabaseConfigured) {

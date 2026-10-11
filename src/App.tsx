@@ -38,7 +38,7 @@ const MainScreen: React.FC = () => {
   return (
     <div style={styles.appContainer}>
       <Header />
-      <main style={styles.mainContentContainer} className="animate-fade-in">
+      <main style={styles.mainContentContainer}>
         {activeTab === 'dashboard' && <MainDashboard />}
         {activeTab === 'transactions' && <TransactionsView />}
         {activeTab === 'manual-entry' && <ManualEntryScreen />}
