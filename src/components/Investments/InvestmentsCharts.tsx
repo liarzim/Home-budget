@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { InvestmentAsset, InvestmentPeriodicSnapshot } from '../../lib/types';
+import { formatDate } from '../../lib/i18n';
 import {
   TrendingUp,
   TrendingDown,
@@ -525,7 +526,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
               >
                 <div style={chartStyles.tooltipTitle}>
                   <Calendar size={13} color="#2563EB" />
-                  <span>{chartDataPoints[hoveredPointIndex].label} ({chartDataPoints[hoveredPointIndex].date})</span>
+                  <span>{chartDataPoints[hoveredPointIndex].label} ({formatDate(chartDataPoints[hoveredPointIndex].date)})</span>
                 </div>
                 <div style={chartStyles.tooltipGrid}>
                   <div>

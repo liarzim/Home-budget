@@ -32,6 +32,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { fetchAssetQuote, fetchBatchAssetQuotes, MarketQuoteResult } from '../../lib/quotesService';
+import { formatDate } from '../../lib/i18n';
 import { InvestmentsCharts } from './InvestmentsCharts';
 import { InvestmentsSnapshotsTree } from './InvestmentsSnapshotsTree';
 
@@ -482,8 +483,8 @@ export const InvestmentsView: React.FC = () => {
 
       setActionFeedbackMsg(
         isHe
-          ? `פעימת הרכישה עודכנה בהצלחה (תאריך: ${cleanDate})`
-          : `Tranche updated successfully (Date: ${cleanDate})`
+          ? `פעימת הרכישה עודכנה בהצלחה (תאריך: ${formatDate(cleanDate)})`
+          : `Tranche updated successfully (Date: ${formatDate(cleanDate)})`
       );
       setTimeout(() => setActionFeedbackMsg(null), 4000);
     }
@@ -1608,8 +1609,8 @@ export const InvestmentsView: React.FC = () => {
                                                         );
                                                         setActionFeedbackMsg(
                                                           isHe
-                                                            ? `תאריך פעימה #${idx + 1} עודכן בהצלחה ל-${d}`
-                                                            : `Tranche #${idx + 1} date updated to ${d}`
+                                                            ? `תאריך פעימה #${idx + 1} עודכן בהצלחה ל-${formatDate(d)}`
+                                                            : `Tranche #${idx + 1} date updated to ${formatDate(d)}`
                                                         );
                                                         setTimeout(() => setActionFeedbackMsg(null), 4000);
                                                       }
@@ -1637,7 +1638,7 @@ export const InvestmentsView: React.FC = () => {
                                                 </div>
                                               ) : (
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                                                  <span style={{ fontWeight: '700', color: '#1E293B' }}>{tr.date}</span>
+                                                  <span style={{ fontWeight: '700', color: '#1E293B' }}>{formatDate(tr.date)}</span>
                                                   <button
                                                     style={{
                                                       backgroundColor: '#EFF6FF',
@@ -2094,7 +2095,7 @@ export const InvestmentsView: React.FC = () => {
                                 {item.market_price.toFixed(2)}
                               </strong>
                             </td>
-                            <td style={styles.tdCell}>{item.quote_date || '—'}</td>
+                            <td style={styles.tdCell}>{formatDate(item.quote_date) || '—'}</td>
                             <td style={styles.tdCell}>{item.shares}</td>
                             <td style={styles.tdCell}>
                               {item.currency === 'USD' ? '$' : '₪'}

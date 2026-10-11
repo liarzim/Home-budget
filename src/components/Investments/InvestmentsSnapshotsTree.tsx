@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { InvestmentPeriodicSnapshot, InvestmentSnapshotItem } from '../../lib/types';
+import { formatDate } from '../../lib/i18n';
 import {
   Folder,
   FolderOpen,
@@ -517,7 +518,7 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                                               <div>
                                                 <div style={treeStyles.monthLabelTitle}>
                                                   <strong>{snap.period_label}</strong>
-                                                  <span style={treeStyles.monthDateText}>({snap.date})</span>
+                                                  <span style={treeStyles.monthDateText}>({formatDate(snap.date)})</span>
                                                 </div>
                                                 {snap.notes && (
                                                   <div style={treeStyles.snapshotNote}>{snap.notes}</div>
