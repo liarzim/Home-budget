@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Calendar,
   ChevronLeft,
@@ -11,6 +11,9 @@ import {
   ShieldCheck,
   EyeOff,
   RefreshCw,
+  Coins,
+  ArrowRight,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { t } from '../../lib/i18n';
@@ -39,6 +42,8 @@ export const MainDashboard: React.FC = () => {
     language,
     toggleTransactionVisibility,
     showHiddenNotice,
+    investments,
+    setActiveTab,
   } = useAuth();
 
   const [availableMonths, setAvailableMonths] = useState<string[]>(['2026-08', '2026-07']);
@@ -82,6 +87,36 @@ export const MainDashboard: React.FC = () => {
         setIsLoading(false);
       });
   }, [activeHousehold?.id, selectedMonth, categories, macroCategories, contextTransactions, isDemoMode]);
+
+  // Calculate live investments portfolio metrics for household
+  const investmentsSummary = useMemo(() => {
+    if (!investments || investments.length === 0) return null;
+    let totalInvestedILS = 0;
+    let currentValueILS = 0;
+    const usdRate = 3.70;
+
+    investments.forEach((asset) => {
+      const shares = asset.tranches.reduce((sum, tr) => sum + tr.shares, 0);
+      const cost = asset.tranches.reduce(
+        (sum, tr) => sum + tr.shares * tr.price_per_share + (tr.fee || 0),
+        0
+      );
+      const mult = asset.currency === 'USD' ? usdRate : 1;
+      totalInvestedILS += cost * mult;
+      currentValueILS += shares * asset.current_price * mult;
+    });
+
+    const profitILS = currentValueILS - totalInvestedILS;
+    const returnPct = totalInvestedILS > 0 ? (profitILS / totalInvestedILS) * 100 : 0;
+
+    return {
+      totalInvestedILS,
+      currentValueILS,
+      profitILS,
+      returnPct,
+      assetsCount: investments.length,
+    };
+  }, [investments]);
 
   // Month navigation helpers
   const handlePrevMonth = () => {
@@ -303,6 +338,102 @@ export const MainDashboard: React.FC = () => {
               currencySymbol={currencySymbol}
             />
           )}
+
+          {/* Capital Markets & Investments Card on Main Dashboard */}
+          {investmentsSummary && (
+            <div style={styles.investmentsWidgetCard}>
+              <div style={styles.investmentsWidgetHeader}>
+                <div style={styles.investmentsWidgetTitleGroup}>
+                  <div style={styles.investmentsWidgetIcon}>
+                    <TrendingUp size={18} color="#2563EB" />
+                  </div>
+                  <div>
+                    <h4 style={styles.investmentsWidgetTitle}>
+                      {language === 'he' ? 'תיק השקעות בשוק ההון' : 'Capital Markets Portfolio'}
+                    </h4>
+                    <span style={styles.investmentsWidgetSub}>
+                      {investmentsSummary.assetsCount} {language === 'he' ? 'ניירות ערך פעילים' : 'active assets'}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  style={styles.viewInvestmentsBtn}
+                  onClick={() => setActiveTab('investments')}
+                  title={language === 'he' ? 'מעבר לניהול תיק השקעות מלא, גרפים ועץ סגירות' : 'Go to Investments'}
+                >
+                  <span>{language === 'he' ? 'לתיק המלא' : 'View All'}</span>
+                  <ExternalLink size={13} />
+                </button>
+              </div>
+
+              {/* Main Metric & Yield Badge */}
+              <div style={styles.investmentsMetricRow}>
+                <div>
+                  <span style={styles.investmentsValLabel}>
+                    {language === 'he' ? 'שווי תיק נוכחי' : 'Current Valuation'}
+                  </span>
+                  <div style={styles.investmentsValAmount}>
+                    ₪{investmentsSummary.currentValueILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    ...styles.investmentsYieldBadge,
+                    backgroundColor: investmentsSummary.profitILS >= 0 ? '#DCFCE7' : '#FEE2E2',
+                    color: investmentsSummary.profitILS >= 0 ? '#15803D' : '#B91C1C',
+                  }}
+                >
+                  {investmentsSummary.profitILS >= 0 ? '+' : ''}
+                  ₪{investmentsSummary.profitILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                  <span style={{ fontSize: '0.75rem', fontWeight: '800', marginRight: '4px', marginLeft: '4px' }}>
+                    ({investmentsSummary.profitILS >= 0 ? '+' : ''}{investmentsSummary.returnPct.toFixed(2)}%)
+                  </span>
+                </div>
+              </div>
+
+              {/* Mini progress bar of Cost Basis vs Valuation */}
+              <div style={styles.investmentsBarWrap}>
+                <div style={styles.investmentsBarLabels}>
+                  <span>
+                    {language === 'he' ? 'עלות הקרן: ' : 'Cost: '}
+                    ₪{investmentsSummary.totalInvestedILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                  </span>
+                  <span style={{ color: investmentsSummary.profitILS >= 0 ? '#059669' : '#DC2626', fontWeight: '700' }}>
+                    {language === 'he' ? 'רווח מצטבר: ' : 'Profit: '}
+                    {investmentsSummary.profitILS >= 0 ? '+' : ''}
+                    ₪{investmentsSummary.profitILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+                <div style={styles.investmentsBarTrack}>
+                  <div
+                    style={{
+                      ...styles.investmentsBarFillCost,
+                      width: `${Math.min(100, (investmentsSummary.totalInvestedILS / Math.max(1, investmentsSummary.currentValueILS)) * 100)}%`,
+                    }}
+                  />
+                  {investmentsSummary.profitILS > 0 && (
+                    <div
+                      style={{
+                        ...styles.investmentsBarFillProfit,
+                        width: `${Math.min(100, (investmentsSummary.profitILS / Math.max(1, investmentsSummary.currentValueILS)) * 100)}%`,
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Action Banner */}
+              <div
+                style={styles.investmentsCtaBanner}
+                onClick={() => setActiveTab('investments')}
+              >
+                <span>{language === 'he' ? 'עבור לגרפי עלות מול שווי ועץ סגירות תקופה ⟵' : 'Go to Investments Charts & Tree View ⟶'}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -431,5 +562,131 @@ const styles: { [key: string]: React.CSSProperties } = {
   savingsColumn: {
     flex: 1,
     minWidth: '320px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '20px',
+  },
+  investmentsWidgetCard: {
+    backgroundColor: 'var(--bg-surface, #FFFFFF)',
+    borderRadius: 'var(--radius-lg, 16px)',
+    border: '1px solid var(--border-main, #E2E8F0)',
+    padding: '20px',
+    boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.05))',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  investmentsWidgetHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  investmentsWidgetTitleGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  investmentsWidgetIcon: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '10px',
+    backgroundColor: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  investmentsWidgetTitle: {
+    fontSize: '0.9375rem',
+    fontWeight: '800',
+    color: 'var(--text-primary, #0F172A)',
+    margin: '0 0 2px',
+  },
+  investmentsWidgetSub: {
+    fontSize: '0.6875rem',
+    color: 'var(--text-muted, #64748B)',
+  },
+  viewInvestmentsBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+    padding: '6px 10px',
+    backgroundColor: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    borderRadius: '8px',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: '#2563EB',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  investmentsMetricRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    flexWrap: 'wrap',
+    gap: '10px',
+  },
+  investmentsValLabel: {
+    fontSize: '0.75rem',
+    color: 'var(--text-secondary, #64748B)',
+    fontWeight: '600',
+  },
+  investmentsValAmount: {
+    fontSize: '1.5rem',
+    fontWeight: '800',
+    color: 'var(--text-primary, #0F172A)',
+    letterSpacing: '-0.02em',
+    marginTop: '2px',
+  },
+  investmentsYieldBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 10px',
+    borderRadius: '8px',
+    fontSize: '0.8125rem',
+    fontWeight: '800',
+  },
+  investmentsBarWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+  investmentsBarLabels: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.6875rem',
+    color: 'var(--text-secondary, #64748B)',
+  },
+  investmentsBarTrack: {
+    width: '100%',
+    height: '8px',
+    backgroundColor: '#F1F5F9',
+    borderRadius: '4px',
+    overflow: 'hidden',
+    display: 'flex',
+  },
+  investmentsBarFillCost: {
+    height: '100%',
+    backgroundColor: '#FACC15',
+    transition: 'width 0.3s ease',
+  },
+  investmentsBarFillProfit: {
+    height: '100%',
+    backgroundColor: '#10B981',
+    transition: 'width 0.3s ease',
+  },
+  investmentsCtaBanner: {
+    padding: '8px 12px',
+    backgroundColor: '#F8FAFC',
+    borderRadius: '8px',
+    border: '1px solid #E2E8F0',
+    textAlign: 'center',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: '#2563EB',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
 };
