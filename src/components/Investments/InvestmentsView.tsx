@@ -84,6 +84,7 @@ export const InvestmentsView: React.FC = () => {
   const [modalMode, setModalMode] = useState<'new_asset' | 'edit_asset' | 'add_tranche' | 'edit_tranche'>('new_asset');
   const [selectedAssetIdForTranche, setSelectedAssetIdForTranche] = useState<string>('');
   const [selectedTrancheId, setSelectedTrancheId] = useState<string>('');
+  const [selectedTrancheIndex, setSelectedTrancheIndex] = useState<number>(-1);
 
   // Snapshot Modal State
   const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
@@ -327,17 +328,31 @@ export const InvestmentsView: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleOpenEditTrancheModal = (asset: InvestmentAsset, tranche: InvestmentTranche) => {
+  const handleOpenEditTrancheModal = (
+    asset: InvestmentAsset,
+    tranche: InvestmentTranche,
+    trancheIndex: number
+  ) => {
     setModalMode('edit_tranche');
     setSelectedAssetIdForTranche(asset.id);
-    setSelectedTrancheId(tranche.id);
+    setSelectedTrancheId(tranche.id ? String(tranche.id) : String(trancheIndex));
+    setSelectedTrancheIndex(trancheIndex);
     setFormTicker(asset.ticker);
     setFormSecurityNumber(asset.security_number || '');
     setFormName(asset.name);
     setFormCurrency(asset.currency);
     setFormAssetType(asset.asset_type);
     setFormCurrentPrice(asset.current_price.toString());
-    setFormDate(tranche.date);
+
+    // Normalize date to YYYY-MM-DD
+    let d = tranche.date ? String(tranche.date).trim() : new Date().toISOString().split('T')[0];
+    if (d.includes('/')) {
+      const parts = d.split('/');
+      if (parts.length === 3 && parts[2].length === 4) {
+        d = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+    }
+    setFormDate(d);
     setFormShares(tranche.shares.toString());
     setFormPricePerShare(tranche.price_per_share.toString());
     const cost =
@@ -382,6 +397,17 @@ export const InvestmentsView: React.FC = () => {
       return;
     }
 
+    // Ensure date is formatted as YYYY-MM-DD
+    let cleanDate = formDate.trim();
+    if (!cleanDate) {
+      cleanDate = new Date().toISOString().split('T')[0];
+    } else if (cleanDate.includes('/')) {
+      const parts = cleanDate.split('/');
+      if (parts.length === 3 && parts[2].length === 4) {
+        cleanDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+    }
+
     if (modalMode === 'new_asset') {
       if (!formTicker.trim()) {
         alert(isHe ? 'אנא הזן סימול נייר' : 'Please enter a ticker');
@@ -399,7 +425,7 @@ export const InvestmentsView: React.FC = () => {
         tranches: [
           {
             id: `tr-${Date.now()}`,
-            date: formDate,
+            date: cleanDate,
             shares: sharesNum,
             price_per_share: priceNum,
             total_cost: totalCostNum,
@@ -412,7 +438,7 @@ export const InvestmentsView: React.FC = () => {
       addInvestmentTranche(
         selectedAssetIdForTranche,
         {
-          date: formDate,
+          date: cleanDate,
           shares: sharesNum,
           price_per_share: priceNum,
           total_cost: totalCostNum,
@@ -427,12 +453,13 @@ export const InvestmentsView: React.FC = () => {
         ...prev,
         [selectedAssetIdForTranche]: true,
       }));
-    } else if (modalMode === 'edit_tranche' && selectedAssetIdForTranche && selectedTrancheId) {
+    } else if (modalMode === 'edit_tranche' && selectedAssetIdForTranche) {
+      const targetTrancheKey = selectedTrancheId || (selectedTrancheIndex >= 0 ? String(selectedTrancheIndex) : '0');
       updateInvestmentTranche(
         selectedAssetIdForTranche,
-        selectedTrancheId,
+        targetTrancheKey,
         {
-          date: formDate,
+          date: cleanDate,
           shares: sharesNum,
           price_per_share: priceNum,
           total_cost: totalCostNum,
@@ -1555,7 +1582,7 @@ export const InvestmentsView: React.FC = () => {
                                               <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
                                                 <button
                                                   style={styles.editTrancheBtn}
-                                                  onClick={() => handleOpenEditTrancheModal(asset, tr)}
+                                                  onClick={() => handleOpenEditTrancheModal(asset, tr, idx)}
                                                   title={isHe ? 'ערוך פעימה (כולל תאריך ומחיר)' : 'Edit tranche'}
                                                 >
                                                   <Edit2 size={13} color="#2563EB" />
@@ -1570,7 +1597,7 @@ export const InvestmentsView: React.FC = () => {
                                                           : 'Delete this purchase tranche?'
                                                       )
                                                     ) {
-                                                      deleteInvestmentTranche(asset.id, tr.id);
+                                                      deleteInvestmentTranche(asset.id, tr.id ? String(tr.id) : String(idx));
                                                     }
                                                   }}
                                                   title={isHe ? 'מחק פעימה' : 'Delete tranche'}

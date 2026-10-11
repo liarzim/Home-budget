@@ -182,17 +182,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const realAssets = parsed.filter(
-            (a: any) =>
-              a.id &&
-              !a.id.includes('sample') &&
-              a.id !== 'inv-voo' &&
-              a.id !== 'inv-nvda' &&
-              a.id !== 'inv-ta125'
-          );
-          if (realAssets.length !== parsed.length) {
-            localStorage.setItem('household_investments_data', JSON.stringify(realAssets));
-          }
+          const realAssets = parsed
+            .filter(
+              (a: any) =>
+                a.id &&
+                !a.id.includes('sample') &&
+                a.id !== 'inv-voo' &&
+                a.id !== 'inv-nvda' &&
+                a.id !== 'inv-ta125'
+            )
+            .map((a: any) => ({
+              ...a,
+              tranches: (a.tranches || []).map((t: any, idx: number) => ({
+                ...t,
+                id: t.id ? String(t.id) : `tr-${a.id}-${idx}-${Date.now()}`,
+                date: t.date || new Date().toISOString().split('T')[0],
+              })),
+            }));
+
+          localStorage.setItem('household_investments_data', JSON.stringify(realAssets));
           return realAssets;
         }
       }
@@ -296,13 +304,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setInvestments((prev) => {
       const updated = prev.map((a) => {
         if (a.id === assetId) {
+          const list = a.tranches || [];
+          const updatedTranches = list.map((t, idx) => {
+            const isMatch =
+              (t.id && (t.id === trancheId || String(t.id) === String(trancheId))) ||
+              String(idx) === String(trancheId);
+
+            if (isMatch) {
+              return {
+                ...t,
+                ...updates,
+                id: t.id ? String(t.id) : (trancheId || `tr-${Date.now()}-${idx}`),
+              };
+            }
+            return t;
+          });
+
           return {
             ...a,
             current_price:
               newCurrentPrice !== undefined && newCurrentPrice > 0 ? newCurrentPrice : a.current_price,
-            tranches: (a.tranches || []).map((t) =>
-              t.id === trancheId ? { ...t, ...updates } : t
-            ),
+            tranches: updatedTranches,
             updated_at: new Date().toISOString(),
           };
         }
@@ -321,9 +343,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setInvestments((prev) => {
       const updated = prev.map((a) => {
         if (a.id === assetId) {
+          const list = a.tranches || [];
           return {
             ...a,
-            tranches: (a.tranches || []).filter((t) => t.id !== trancheId),
+            tranches: list.filter((t, idx) => {
+              const isMatch =
+                (t.id && (t.id === trancheId || String(t.id) === String(trancheId))) ||
+                String(idx) === String(trancheId);
+              return !isMatch;
+            }),
             updated_at: new Date().toISOString(),
           };
         }
@@ -365,6 +393,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSavings(mockSavings);
     setInvestments(mockInvestments);
   };
+
+  // Self-heal tranches on mount: ensure every tranche has a unique string id and valid date
+  useEffect(() => {
+    setInvestments((prev) => {
+      let changed = false;
+      const healed = prev.map((a) => {
+        const seenIds = new Set<string>();
+        let assetChanged = false;
+        const tranches = (a.tranches || []).map((t, idx) => {
+          let idStr = t.id ? String(t.id) : '';
+          if (!idStr || seenIds.has(idStr)) {
+            idStr = `tr-${a.id}-${idx}-${Date.now()}`;
+            assetChanged = true;
+          }
+          seenIds.add(idStr);
+          return {
+            ...t,
+            id: idStr,
+            date: t.date || new Date().toISOString().split('T')[0],
+          };
+        });
+        if (assetChanged) {
+          changed = true;
+          return { ...a, tranches };
+        }
+        return a;
+      });
+      if (changed) {
+        try {
+          localStorage.setItem('household_investments_data', JSON.stringify(healed));
+        } catch (e) {
+          console.error(e);
+        }
+        return healed;
+      }
+      return prev;
+    });
+  }, []);
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
