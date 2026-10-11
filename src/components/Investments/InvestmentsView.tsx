@@ -102,7 +102,7 @@ export const InvestmentsView: React.FC = () => {
   const [formCurrency, setFormCurrency] = useState<'USD' | 'ILS'>('USD');
   const [formAssetType, setFormAssetType] = useState<SecurityType>('stock');
   const [formCurrentPrice, setFormCurrentPrice] = useState<string>('');
-  const [formDate, setFormDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [formDate, setFormDate] = useState<string>(formatDate(new Date()));
   const [formShares, setFormShares] = useState<string>('');
   const [formPricePerShare, setFormPricePerShare] = useState<string>('');
   const [formTotalCost, setFormTotalCost] = useState<string>('');
@@ -262,6 +262,90 @@ export const InvestmentsView: React.FC = () => {
   };
 
   // Synchronize price per share and total cost in form
+
+  // Restore modal draft on mount if exists
+  useEffect(() => {
+    try {
+      const rawDraft = sessionStorage.getItem('investments_modal_draft');
+      if (rawDraft) {
+        const draft = JSON.parse(rawDraft);
+        if (draft && draft.isModalOpen) {
+          setIsModalOpen(true);
+          setModalMode(draft.modalMode || 'new_asset');
+          setSelectedAssetIdForTranche(draft.selectedAssetIdForTranche || '');
+          setSelectedTrancheId(draft.selectedTrancheId || '');
+          setSelectedTrancheIndex(draft.selectedTrancheIndex ?? -1);
+          setFormTicker(draft.formTicker || '');
+          setFormSecurityNumber(draft.formSecurityNumber || '');
+          setFormName(draft.formName || '');
+          setFormCurrency(draft.formCurrency || 'USD');
+          setFormAssetType(draft.formAssetType || 'stock');
+          setFormCurrentPrice(draft.formCurrentPrice || '');
+          setFormDate(draft.formDate || formatDate(new Date()));
+          setFormShares(draft.formShares || '');
+          setFormPricePerShare(draft.formPricePerShare || '');
+          setFormTotalCost(draft.formTotalCost || '');
+          setFormFee(draft.formFee || '0');
+          setFormNotes(draft.formNotes || '');
+        }
+      }
+    } catch (e) {
+      console.error('Failed to restore modal draft:', e);
+    }
+  }, []);
+
+  // Save modal draft whenever form changes
+  useEffect(() => {
+    try {
+      if (isModalOpen) {
+        sessionStorage.setItem(
+          'investments_modal_draft',
+          JSON.stringify({
+            isModalOpen: true,
+            modalMode,
+            selectedAssetIdForTranche,
+            selectedTrancheId,
+            selectedTrancheIndex,
+            formTicker,
+            formSecurityNumber,
+            formName,
+            formCurrency,
+            formAssetType,
+            formCurrentPrice,
+            formDate,
+            formShares,
+            formPricePerShare,
+            formTotalCost,
+            formFee,
+            formNotes,
+          })
+        );
+      } else {
+        sessionStorage.removeItem('investments_modal_draft');
+      }
+    } catch (e) {
+      console.error('Failed to save modal draft:', e);
+    }
+  }, [
+    isModalOpen,
+    modalMode,
+    selectedAssetIdForTranche,
+    selectedTrancheId,
+    selectedTrancheIndex,
+    formTicker,
+    formSecurityNumber,
+    formName,
+    formCurrency,
+    formAssetType,
+    formCurrentPrice,
+    formDate,
+    formShares,
+    formPricePerShare,
+    formTotalCost,
+    formFee,
+    formNotes,
+  ]);
+
   const handleSharesChange = (val: string) => {
     setFormShares(val);
     const s = parseFloat(val);
@@ -426,6 +510,13 @@ export const InvestmentsView: React.FC = () => {
           },
         ],
       });
+
+      setActionFeedbackMsg(
+        isHe
+          ? `הנייר ${formTicker.trim().toUpperCase()} נוסף בהצלחה לתיק!`
+          : `Asset ${formTicker.trim().toUpperCase()} added successfully!`
+      );
+      setTimeout(() => setActionFeedbackMsg(null), 4000);
     } else if (modalMode === 'add_tranche' && selectedAssetIdForTranche) {
       addInvestmentTranche(
         selectedAssetIdForTranche,
@@ -445,6 +536,13 @@ export const InvestmentsView: React.FC = () => {
         ...prev,
         [selectedAssetIdForTranche]: true,
       }));
+
+      setActionFeedbackMsg(
+        isHe
+          ? 'פעימת הרכישה נוספה בהצלחה לתיק!'
+          : 'Purchase tranche added successfully!'
+      );
+      setTimeout(() => setActionFeedbackMsg(null), 4000);
     } else if (modalMode === 'edit_tranche' && selectedAssetIdForTranche) {
       const targetTrancheKey = selectedTrancheId || (selectedTrancheIndex >= 0 ? String(selectedTrancheIndex) : '0');
       updateInvestmentTranche(

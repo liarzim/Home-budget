@@ -372,15 +372,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearDemoData = () => {
     localStorage.setItem('demo_data_cleared', 'true');
     localStorage.setItem('demo_transactions', '[]');
-    localStorage.setItem('household_investments_data', '[]');
-    localStorage.setItem('household_investment_snapshots', '[]');
     localStorage.setItem('demo_budgets', '[]');
     localStorage.setItem('demo_savings', '[]');
     setIsDemoDataCleared(true);
     setTransactions([]);
     setBudgets([]);
     setSavings([]);
-    setInvestments([]);
+    setInvestments((prev) => {
+      const real = prev.filter(
+        (a) =>
+          a &&
+          a.id &&
+          !String(a.id).includes('sample') &&
+          a.id !== 'inv-voo' &&
+          a.id !== 'inv-nvda' &&
+          a.id !== 'inv-ta125'
+      );
+      try {
+        localStorage.setItem('household_investments_data', JSON.stringify(real));
+      } catch (e) {}
+      return real;
+    });
   };
 
   const restoreDemoData = () => {
@@ -437,7 +449,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<AuthContextType['activeTab']>('dashboard');
+  const [activeTab, setActiveTabState] = useState<AuthContextType['activeTab']>(() => {
+    try {
+      const saved = sessionStorage.getItem('active_tab') || localStorage.getItem('active_tab');
+      if (
+        saved &&
+        [
+          'dashboard',
+          'transactions',
+          'budgets',
+          'savings',
+          'investments',
+          'mappings',
+          'schema',
+          'import',
+          'manual-entry',
+          'migration',
+          'bank-accounts',
+          'system-tables',
+          'users',
+        ].includes(saved)
+      ) {
+        return saved as AuthContextType['activeTab'];
+      }
+    } catch (e) {}
+    return 'dashboard';
+  });
+
+  const setActiveTab = (tab: AuthContextType['activeTab']) => {
+    setActiveTabState(tab);
+    try {
+      sessionStorage.setItem('active_tab', tab);
+      localStorage.setItem('active_tab', tab);
+    } catch (e) {}
+  };
 
   // Role & Permissions calculation
   const isSuperUser = Boolean(
@@ -499,12 +544,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('demo_transactions');
       }
       const rawSnaps = localStorage.getItem('household_investment_snapshots');
-      if (rawSnaps && (rawSnaps.includes('snap-2026-') || rawSnaps.includes('sample-voo') || rawSnaps.includes('snap-2025-'))) {
-        localStorage.removeItem('household_investment_snapshots');
+      if (rawSnaps) {
+        try {
+          const parsedSnaps = JSON.parse(rawSnaps);
+          if (Array.isArray(parsedSnaps)) {
+            const realSnaps = parsedSnaps.filter(
+              (s: any) =>
+                s &&
+                s.id &&
+                !String(s.id).includes('sample') &&
+                !String(s.id).includes('snap-2026-') &&
+                !String(s.id).includes('snap-2025-')
+            );
+            if (realSnaps.length !== parsedSnaps.length) {
+              localStorage.setItem('household_investment_snapshots', JSON.stringify(realSnaps));
+            }
+          }
+        } catch {}
       }
       const rawInvs = localStorage.getItem('household_investments_data');
-      if (rawInvs && (rawInvs.includes('inv-voo') || rawInvs.includes('sample') || rawInvs.includes('inv-ta125'))) {
-        localStorage.removeItem('household_investments_data');
+      if (rawInvs) {
+        try {
+          const parsedInvs = JSON.parse(rawInvs);
+          if (Array.isArray(parsedInvs)) {
+            const realInvs = parsedInvs.filter(
+              (a: any) =>
+                a &&
+                a.id &&
+                !String(a.id).includes('sample') &&
+                a.id !== 'inv-voo' &&
+                a.id !== 'inv-nvda' &&
+                a.id !== 'inv-ta125'
+            );
+            if (realInvs.length !== parsedInvs.length) {
+              localStorage.setItem('household_investments_data', JSON.stringify(realInvs));
+              setInvestments(realInvs);
+            }
+          }
+        } catch {}
       }
     } catch (e) {
       console.error('Self-healing demo cleanup error:', e);

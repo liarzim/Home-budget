@@ -48,7 +48,9 @@ const MainScreen: React.FC = () => {
         {activeTab === 'migration' && <HistoricalMigrationScreen />}
         {activeTab === 'budgets' && <BudgetsView />}
         {activeTab === 'savings' && <SavingsView />}
-        {activeTab === 'investments' && <InvestmentsView />}
+        <div style={{ display: activeTab === 'investments' ? 'block' : 'none' }}>
+          <InvestmentsView />
+        </div>
         {activeTab === 'schema' && <SchemaViewer />}
       </main>
       {/* Desktop Floating Action Button */}
