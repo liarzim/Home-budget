@@ -17,7 +17,7 @@ import {
   Info,
 } from 'lucide-react';
 import { InvestmentAsset, InvestmentTranche, SecurityType } from '../../lib/types';
-import { formatDate, normalizeToISODate } from '../../lib/i18n';
+import { formatDate, normalizeToISODate, isDuplicateTranche } from '../../lib/i18n';
 
 interface ParsedTrancheRow {
   id: string;
@@ -44,7 +44,7 @@ interface TranchesImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   investments: InvestmentAsset[];
-  onImportComplete: (updatedAssets: InvestmentAsset[], importedCount: number) => void;
+  onImportComplete: (updatedAssets: InvestmentAsset[], importedCount: number, skippedDuplicatesCount?: number) => void;
   defaultTargetAsset?: InvestmentAsset | null;
   isHe: boolean;
   usdRate?: number;
@@ -154,15 +154,13 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
     asset: InvestmentAsset | undefined,
     date: string,
     shares: number,
-    price: number
+    price: number,
+    totalCost?: number
   ): boolean => {
     if (!asset || !asset.tranches) return false;
-    return asset.tranches.some((t) => {
-      const sameDate = t.date === date;
-      const sameShares = Math.abs(t.shares - shares) < 0.0001;
-      const samePrice = Math.abs(t.price_per_share - price) < 0.01;
-      return sameDate && sameShares && samePrice;
-    });
+    return asset.tranches.some((t) =>
+      isDuplicateTranche(t, { date, shares, price_per_share: price, total_cost: totalCost })
+    );
   };
 
   // Core processing of raw tabular data (array of objects with header keys)
@@ -283,7 +281,16 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
 
       const assignedAssetId = newTargetMap[symbolKeyNorm];
       const assignedAsset = investments.find((a) => a.id === assignedAssetId);
-      const isDup = checkIfDuplicate(assignedAsset, isoDate, shares, price);
+      const isDupInAsset = checkIfDuplicate(assignedAsset, isoDate, shares, price, totalCost);
+      const isDupInBatch = parsed.some(
+        (p) =>
+          p.symbol === symbolKeyNorm &&
+          isDuplicateTranche(
+            { date: p.date, shares: p.shares, price_per_share: p.price, total_cost: p.totalCost },
+            { date: isoDate, shares, price_per_share: price, total_cost: totalCost }
+          )
+      );
+      const isDup = isDupInAsset || isDupInBatch;
 
       parsed.push({
         id: `parsed-${index}-${Date.now()}`,
@@ -382,7 +389,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
       prev.map((r) => {
         if (r.symbol === symbol) {
           const assignedAsset = investments.find((a) => a.id === newAssetId);
-          const isDup = checkIfDuplicate(assignedAsset, r.date, r.shares, r.price);
+          const isDup = checkIfDuplicate(assignedAsset, r.date, r.shares, r.price, r.totalCost);
           return {
             ...r,
             targetAssetId: newAssetId,
@@ -424,7 +431,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
         const newPrice = newIsAgorot ? r.rawPrice / 100 : r.rawPrice;
         const newTotalCost = r.shares * newPrice;
         const assignedAsset = investments.find((a) => a.id === r.targetAssetId);
-        const isDup = checkIfDuplicate(assignedAsset, r.date, r.shares, newPrice);
+        const isDup = checkIfDuplicate(assignedAsset, r.date, r.shares, newPrice, newTotalCost);
         return {
           ...r,
           isAgorot: newIsAgorot,
@@ -444,7 +451,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
         const newPrice = agVal ? r.rawPrice / 100 : r.rawPrice;
         const newTotalCost = r.shares * newPrice;
         const assignedAsset = investments.find((a) => a.id === r.targetAssetId);
-        const isDup = checkIfDuplicate(assignedAsset, r.date, r.shares, newPrice);
+        const isDup = checkIfDuplicate(assignedAsset, r.date, r.shares, newPrice, newTotalCost);
         return {
           ...r,
           isAgorot: agVal,
@@ -530,13 +537,15 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
     });
 
     let updatedAssets = [...investments];
+    let totalImported = 0;
+    let totalSkippedDuplicates = 0;
 
     Object.entries(groupsBySymbol).forEach(([symbol, rows]) => {
       const targetId = targetAssetMap[symbol] || 'new_asset';
       const latestPrice = rows.reduce((latest, r) => (r.price > 0 ? r.price : latest), 0);
 
       // Convert rows to InvestmentTranche
-      const newTranches: InvestmentTranche[] = rows.map((r, idx) => ({
+      const candidateTranches: InvestmentTranche[] = rows.map((r, idx) => ({
         id: `tr-imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
         date: r.date,
         shares: r.shares,
@@ -547,7 +556,16 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
       }));
 
       if (targetId === 'new_asset') {
-        // Create new asset
+        // Prevent duplicates within the batch itself
+        const uniqueTranches: InvestmentTranche[] = [];
+        candidateTranches.forEach((tr) => {
+          if (!uniqueTranches.some((u) => isDuplicateTranche(u, tr))) {
+            uniqueTranches.push(tr);
+          } else {
+            totalSkippedDuplicates++;
+          }
+        });
+
         const firstRow = rows[0];
         const newAsset: InvestmentAsset = {
           id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -557,20 +575,36 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
           currency: firstRow.currency || 'USD',
           current_price: latestPrice || firstRow.price || 100,
           asset_type: (firstRow.currency === 'USD' ? 'foreign_security' : 'stock') as SecurityType,
-          tranches: newTranches,
+          tranches: uniqueTranches,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
         updatedAssets = [newAsset, ...updatedAssets];
+        totalImported += uniqueTranches.length;
       } else {
-        // Append to existing asset
+        // Append to existing asset, strictly filtering out any duplicate of existing tranches or within batch
         updatedAssets = updatedAssets.map((asset) => {
           if (asset.id === targetId) {
+            const existing = asset.tranches || [];
+            const uniqueToAdd: InvestmentTranche[] = [];
+
+            candidateTranches.forEach((tr) => {
+              const alreadyInAsset = existing.some((ex) => isDuplicateTranche(ex, tr));
+              const alreadyInBatch = uniqueToAdd.some((added) => isDuplicateTranche(added, tr));
+              if (alreadyInAsset || alreadyInBatch) {
+                totalSkippedDuplicates++;
+              } else {
+                uniqueToAdd.push(tr);
+              }
+            });
+
+            totalImported += uniqueToAdd.length;
+
             return {
               ...asset,
               current_price:
                 asset.current_price && asset.current_price > 0 ? asset.current_price : latestPrice,
-              tranches: [...(asset.tranches || []), ...newTranches],
+              tranches: [...existing, ...uniqueToAdd],
               updated_at: new Date().toISOString(),
             };
           }
@@ -579,7 +613,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
       }
     });
 
-    onImportComplete(updatedAssets, selectedRows.length);
+    onImportComplete(updatedAssets, totalImported, totalSkippedDuplicates);
     onClose();
   };
 

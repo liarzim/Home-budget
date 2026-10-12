@@ -454,3 +454,42 @@ export function normalizeToISODate(input: string | Date | null | undefined): str
   return new Date().toISOString().split('T')[0];
 }
 
+/**
+ * Checks if two investment tranches are duplicates based on date, shares, price (handling Shekel/Agorot) or total cost.
+ */
+export function isDuplicateTranche(
+  t1: { date: string; shares: number; price_per_share: number; total_cost?: number },
+  t2: { date: string; shares: number; price_per_share: number; total_cost?: number }
+): boolean {
+  if (!t1 || !t2) return false;
+  // Dates must match (normalized)
+  const d1 = normalizeToISODate(t1.date);
+  const d2 = normalizeToISODate(t2.date);
+  if (d1 !== d2) return false;
+
+  // Shares must match
+  if (Math.abs(t1.shares - t2.shares) >= 0.001) return false;
+
+  // Price match (checks direct equality, or 100x/0.01x for Agorot conversion)
+  const p1 = t1.price_per_share;
+  const p2 = t2.price_per_share;
+  const priceMatches =
+    Math.abs(p1 - p2) < 0.02 ||
+    (p1 > 0 && p2 > 0 && (Math.abs(p1 * 100 - p2) < 0.02 || Math.abs(p1 - p2 * 100) < 0.02));
+
+  if (priceMatches) return true;
+
+  // If price had tiny float rounding variance, verify against total_cost
+  if (t1.total_cost && t2.total_cost && t1.total_cost > 0 && t2.total_cost > 0) {
+    const c1 = t1.total_cost;
+    const c2 = t2.total_cost;
+    const costMatches =
+      Math.abs(c1 - c2) < 0.5 ||
+      Math.abs(c1 * 100 - c2) < 0.5 ||
+      Math.abs(c1 - c2 * 100) < 0.5;
+    if (costMatches) return true;
+  }
+
+  return false;
+}
+

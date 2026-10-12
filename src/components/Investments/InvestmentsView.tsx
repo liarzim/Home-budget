@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  AlertCircle,
   Calendar,
   Layers,
   ArrowRight,
@@ -32,7 +33,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { fetchAssetQuote, fetchBatchAssetQuotes, fetchUsdIlsRate, MarketQuoteResult } from '../../lib/quotesService';
-import { formatDate, normalizeToISODate } from '../../lib/i18n';
+import { formatDate, normalizeToISODate, isDuplicateTranche } from '../../lib/i18n';
 import { IsraeliDateInput } from '../common/IsraeliDateInput';
 import { InvestmentsCharts } from './InvestmentsCharts';
 import { InvestmentsSnapshotsTree } from './InvestmentsSnapshotsTree';
@@ -783,6 +784,87 @@ export const InvestmentsView: React.FC = () => {
         : `Current price divided by 100 to ₪${newPrice.toFixed(2)}!`
     );
     setTimeout(() => setActionFeedbackMsg(null), 4000);
+  };
+
+  // Count duplicate tranches in a specific asset
+  const getAssetDuplicateCount = (asset: InvestmentAsset): number => {
+    const seen: InvestmentTranche[] = [];
+    let dups = 0;
+    (asset.tranches || []).forEach((t) => {
+      if (seen.some((s) => isDuplicateTranche(s, t))) {
+        dups++;
+      } else {
+        seen.push(t);
+      }
+    });
+    return dups;
+  };
+
+  // Remove duplicate tranches from a specific asset
+  const handleRemoveDuplicateTranches = (assetId: string) => {
+    const asset = investments.find((a) => a.id === assetId);
+    if (!asset) return;
+    const seen: InvestmentTranche[] = [];
+    const uniqueTranches: InvestmentTranche[] = [];
+    let removedCount = 0;
+
+    (asset.tranches || []).forEach((t) => {
+      if (seen.some((s) => isDuplicateTranche(s, t))) {
+        removedCount++;
+      } else {
+        seen.push(t);
+        uniqueTranches.push(t);
+      }
+    });
+
+    if (removedCount === 0) return;
+
+    const updated = investments.map((a) =>
+      a.id === assetId ? { ...a, tranches: uniqueTranches } : a
+    );
+    saveInvestments(updated);
+    setActionFeedbackMsg(
+      isHe
+        ? `נוקו בהצלחה ${removedCount} פעימות כפולות עבור ${asset.ticker}!`
+        : `Successfully removed ${removedCount} duplicate tranches for ${asset.ticker}!`
+    );
+    setTimeout(() => setActionFeedbackMsg(null), 4000);
+  };
+
+  // Total duplicate tranches across all assets in portfolio
+  const totalDuplicateTranchesCount = useMemo(() => {
+    let count = 0;
+    investments.forEach((asset) => {
+      count += getAssetDuplicateCount(asset);
+    });
+    return count;
+  }, [investments]);
+
+  // Batch remove all duplicate tranches across the whole portfolio
+  const handleRemoveAllDuplicateTranches = () => {
+    let totalRemoved = 0;
+    const updated = investments.map((asset) => {
+      const seen: InvestmentTranche[] = [];
+      const uniqueTranches: InvestmentTranche[] = [];
+      (asset.tranches || []).forEach((t) => {
+        if (seen.some((s) => isDuplicateTranche(s, t))) {
+          totalRemoved++;
+        } else {
+          seen.push(t);
+          uniqueTranches.push(t);
+        }
+      });
+      return { ...asset, tranches: uniqueTranches };
+    });
+
+    if (totalRemoved === 0) return;
+    saveInvestments(updated);
+    setActionFeedbackMsg(
+      isHe
+        ? `נוקו בהצלחה ${totalRemoved} פעימות כפולות מכל תיק ההשקעות!`
+        : `Successfully removed ${totalRemoved} duplicate tranches from portfolio!`
+    );
+    setTimeout(() => setActionFeedbackMsg(null), 5000);
   };
 
   // Fix a single tranche
@@ -1723,6 +1805,70 @@ export const InvestmentsView: React.FC = () => {
               </div>
             )}
 
+            {totalDuplicateTranchesCount > 0 && (
+              <div
+                style={{
+                  backgroundColor: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  color: '#991B1B',
+                  padding: '12px 18px',
+                  borderRadius: '10px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                  fontSize: '0.875rem',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertCircle size={18} color="#DC2626" />
+                  <div>
+                    <strong style={{ fontSize: '0.9375rem', color: '#991B1B' }}>
+                      {isHe
+                        ? `שים לב: זוהו ${totalDuplicateTranchesCount} פעימות רכישה כפולות בתיק ההשקעות!`
+                        : `Notice: ${totalDuplicateTranchesCount} duplicate purchase tranches detected in portfolio!`}
+                    </strong>
+                    <div style={{ fontSize: '0.78rem', color: '#B91C1C', marginTop: '2px' }}>
+                      {isHe
+                        ? 'ניתן להסיר את הרשומות הכפולות בלחיצה אחת ולשמור רק רשומה מקורית אחת מכל פעימה.'
+                        : 'You can remove duplicates with one click, keeping only one original record for each tranche.'}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRemoveAllDuplicateTranches}
+                  style={{
+                    backgroundColor: '#DC2626',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '7px 16px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    fontSize: '0.8125rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                    transition: 'background-color 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B91C1C')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#DC2626')}
+                  title={isHe ? 'הסר את כל הפעימות הכפולות ושמור עותק יחיד בלבד' : 'Remove all duplicate tranches'}
+                >
+                  <Trash2 size={14} color="#FFFFFF" />
+                  <span>
+                    {isHe ? '🧹 נקה את כל הכפילויות' : '🧹 Remove All Duplicates'}
+                  </span>
+                </button>
+              </div>
+            )}
+
             {(suspectedAgorotTranches.length > 0 || suspectedAgorotCurrentPrices.length > 0) && (
               <div
                 style={{
@@ -2305,6 +2451,34 @@ export const InvestmentsView: React.FC = () => {
                                       </span>
                                     </div>
                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                      {getAssetDuplicateCount(asset) > 0 && (
+                                        <button
+                                          type="button"
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            padding: '4px 10px',
+                                            backgroundColor: '#FEF2F2',
+                                            border: '1px solid #FECACA',
+                                            borderRadius: '6px',
+                                            color: '#DC2626',
+                                            fontSize: '0.72rem',
+                                            fontWeight: '700',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease',
+                                          }}
+                                          onClick={() => handleRemoveDuplicateTranches(asset.id)}
+                                          title={isHe ? 'הסר פעימות כפולות באופן אוטומטי' : 'Remove duplicate tranches'}
+                                        >
+                                          <Trash2 size={13} color="#DC2626" />
+                                          <span>
+                                            {isHe
+                                              ? `נקה ${getAssetDuplicateCount(asset)} כפילויות 🧹`
+                                              : `Remove ${getAssetDuplicateCount(asset)} Duplicates 🧹`}
+                                          </span>
+                                        </button>
+                                      )}
                                       <button
                                         style={styles.importTrancheSubBtn}
                                         onClick={() => {
@@ -3551,12 +3725,16 @@ export const InvestmentsView: React.FC = () => {
         }}
         investments={investments}
         defaultTargetAsset={importTargetAsset}
-        onImportComplete={(updatedAssets, importedCount) => {
+        onImportComplete={(updatedAssets, importedCount, skippedCount) => {
           saveInvestments(updatedAssets);
           setActionFeedbackMsg(
             isHe
-              ? `הצלחה! נקלטו ${importedCount} פעימות רכישה בהצלחה לתיק ההשקעות.`
-              : `Successfully imported ${importedCount} purchase tranches into portfolio.`
+              ? skippedCount && skippedCount > 0
+                ? `נקלטו בהצלחה ${importedCount} פעימות חדשות (דולגו ${skippedCount} פעימות כפולות שכבר היו קיימות בתיק).`
+                : `הצלחה! נקלטו ${importedCount} פעימות רכישה בהצלחה לתיק ההשקעות.`
+              : skippedCount && skippedCount > 0
+                ? `Successfully imported ${importedCount} new tranches (${skippedCount} duplicates skipped).`
+                : `Successfully imported ${importedCount} purchase tranches into portfolio.`
           );
           setTimeout(() => setActionFeedbackMsg(null), 5000);
         }}
