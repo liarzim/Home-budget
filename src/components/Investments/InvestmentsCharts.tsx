@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { InvestmentAsset, InvestmentPeriodicSnapshot } from '../../lib/types';
-import { formatDate } from '../../lib/i18n';
+import { formatDate, normalizeToISODate } from '../../lib/i18n';
 import {
   TrendingUp,
   TrendingDown,
@@ -14,6 +14,32 @@ import {
   Layers,
 } from 'lucide-react';
 import { SECURITY_TYPE_LABELS } from './InvestmentsView';
+
+export interface TranchePointDetail {
+  id: string;
+  ticker: string;
+  name: string;
+  date: string;
+  shares: number;
+  price: number;
+  currency: string;
+  costILS: number;
+  valueILS: number;
+  profitILS: number;
+  yieldPct: number;
+}
+
+export interface ChartDataPoint {
+  id: string;
+  label: string;
+  date: string;
+  cost: number;
+  value: number;
+  profit: number;
+  returnPct: number;
+  isLive?: boolean;
+  tranchesInPoint?: TranchePointDetail[];
+}
 
 interface InvestmentsChartsProps {
   investments: InvestmentAsset[];
@@ -39,46 +65,227 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   const [simulationMode, setSimulationMode] = useState<'normal' | 'loss'>('normal');
   const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
   const [activeChartTab, setActiveChartTab] = useState<'growth' | 'allocation' | 'all'>('all');
+  const [timelineViewMode, setTimelineViewMode] = useState<'cumulative' | 'tranches'>('cumulative');
 
-  // 1. Prepare timeline points from snapshots + current point
-  const chartDataPoints = useMemo(() => {
-    // Sort snapshots by date ascending
-    const sorted = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+  // 1. Flatten all purchase tranches from investments table with costs and current profits
+  const allPurchases = useMemo(() => {
+    const list: TranchePointDetail[] = [];
 
-    const points = sorted.map((s) => ({
-      id: s.id,
-      label: s.period_label.replace('סגירת חודש ', '').replace('סיום רבעון ', ''),
-      date: s.date,
-      cost: s.total_invested,
-      value: simulationMode === 'loss' ? s.total_invested * 0.88 : s.total_value,
-      profit: simulationMode === 'loss' ? -s.total_invested * 0.12 : s.total_profit,
-      returnPct: simulationMode === 'loss' ? -12.0 : s.total_return_pct,
-    }));
+    investments.forEach((asset) => {
+      const rate = asset.currency === 'USD' ? usdRate : 1;
+      asset.tranches.forEach((tr, trIdx) => {
+        const iso = normalizeToISODate(tr.date);
+        const costILS =
+          (tr.total_cost && tr.total_cost > 0
+            ? tr.total_cost
+            : tr.shares * tr.price_per_share) * rate;
+        const valueILS = tr.shares * asset.current_price * rate;
+        const profitILS = valueILS - costILS;
+        const yieldPct = costILS > 0 ? (profitILS / costILS) * 100 : 0;
 
-    // Add current live point at the end
-    const now = new Date().toISOString().split('T')[0];
-    const liveVal =
-      simulationMode === 'loss'
-        ? portfolioSummary.totalInvestedILS * 0.85
-        : portfolioSummary.currentValueILS;
-    const liveProfit = liveVal - portfolioSummary.totalInvestedILS;
-    const liveReturnPct =
-      portfolioSummary.totalInvestedILS > 0
-        ? (liveProfit / portfolioSummary.totalInvestedILS) * 100
-        : 0;
-
-    points.push({
-      id: 'current-live',
-      label: isHe ? 'מצב נוכחי (חי)' : 'Current Live',
-      date: now,
-      cost: portfolioSummary.totalInvestedILS,
-      value: liveVal,
-      profit: liveProfit,
-      returnPct: liveReturnPct,
+        list.push({
+          id: tr.id ? String(tr.id) : `${asset.id}_tr_${trIdx}`,
+          ticker: asset.ticker,
+          name: asset.name || asset.ticker,
+          date: iso,
+          shares: tr.shares,
+          price: tr.price_per_share,
+          currency: asset.currency,
+          costILS,
+          valueILS,
+          profitILS,
+          yieldPct,
+        });
+      });
     });
 
+    list.sort((a, b) => a.date.localeCompare(b.date));
+    return list;
+  }, [investments, usdRate]);
+
+  // 2. Prepare timeline points from purchases table + snapshots + current live point
+  const chartDataPoints = useMemo<ChartDataPoint[]>(() => {
+    const todayISO = new Date().toISOString().split('T')[0];
+
+    // MODE B: Standalone per-tranche breakdown (shows each purchase from table with its date, cost & profit)
+    if (timelineViewMode === 'tranches') {
+      if (allPurchases.length === 0) {
+        return [
+          {
+            id: 'current-live-empty',
+            label: isHe ? 'מצב נוכחי (חי)' : 'Current Live',
+            date: todayISO,
+            cost: portfolioSummary.totalInvestedILS,
+            value: portfolioSummary.currentValueILS,
+            profit: portfolioSummary.totalProfitILS,
+            returnPct: portfolioSummary.totalReturnPct,
+            isLive: true,
+          },
+        ];
+      }
+
+      const points: ChartDataPoint[] = allPurchases.map((tr) => {
+        const val = simulationMode === 'loss' ? tr.costILS * 0.85 : tr.valueILS;
+        const prof = val - tr.costILS;
+        const retPct = tr.costILS > 0 ? (prof / tr.costILS) * 100 : 0;
+        return {
+          id: tr.id,
+          label: `${formatDate(tr.date)} (${tr.ticker})`,
+          date: tr.date,
+          cost: tr.costILS,
+          value: val,
+          profit: prof,
+          returnPct: simulationMode === 'loss' ? -15.0 : retPct,
+          tranchesInPoint: [tr],
+        };
+      });
+
+      // Total portfolio summary point at the end
+      const totalCost = portfolioSummary.totalInvestedILS;
+      const liveVal =
+        simulationMode === 'loss' ? totalCost * 0.85 : portfolioSummary.currentValueILS;
+      const liveProfit = liveVal - totalCost;
+      const liveReturnPct = totalCost > 0 ? (liveProfit / totalCost) * 100 : 0;
+
+      points.push({
+        id: 'total-portfolio-live',
+        label: isHe ? 'סה"כ התיק (חי)' : 'Total Portfolio (Live)',
+        date: todayISO,
+        cost: totalCost,
+        value: liveVal,
+        profit: liveProfit,
+        returnPct: simulationMode === 'loss' ? -15.0 : liveReturnPct,
+        isLive: true,
+      });
+
+      return points;
+    }
+
+    // MODE A: Cumulative timeline over purchase dates (Default)
+    // Group purchases by date
+    const tranchesByDate = new Map<string, TranchePointDetail[]>();
+    allPurchases.forEach((p) => {
+      if (!tranchesByDate.has(p.date)) {
+        tranchesByDate.set(p.date, []);
+      }
+      tranchesByDate.get(p.date)!.push(p);
+    });
+
+    const sortedPurchaseDates = Array.from(tranchesByDate.keys()).sort((a, b) =>
+      a.localeCompare(b)
+    );
+
+    const sortedSnapshots = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+
+    const points: ChartDataPoint[] = [];
+
+    if (sortedPurchaseDates.length > 0) {
+      // If there's only 1 purchase date across the whole portfolio
+      if (sortedPurchaseDates.length === 1 && sortedSnapshots.length === 0) {
+        const singleDate = sortedPurchaseDates[0];
+        const trs = tranchesByDate.get(singleDate)!;
+        const totalCost = trs.reduce((s, t) => s + t.costILS, 0);
+        const totalVal = trs.reduce((s, t) => s + t.valueILS, 0);
+        const totalProfit = totalVal - totalCost;
+        const retPct = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
+
+        // Point 1: At the moment of purchase (Cost = Value, Profit = 0)
+        points.push({
+          id: `initial-purchase-${singleDate}`,
+          label: `${isHe ? 'מועד הרכישה' : 'Purchase Date'} (${formatDate(singleDate)})`,
+          date: singleDate,
+          cost: totalCost,
+          value: simulationMode === 'loss' ? totalCost * 0.95 : totalCost,
+          profit: simulationMode === 'loss' ? -totalCost * 0.05 : 0,
+          returnPct: simulationMode === 'loss' ? -5.0 : 0,
+          tranchesInPoint: trs,
+        });
+
+        // Point 2: Current Live
+        const liveVal = simulationMode === 'loss' ? totalCost * 0.85 : totalVal;
+        points.push({
+          id: 'current-live',
+          label: isHe ? 'מצב נוכחי (חי)' : 'Current Live',
+          date: todayISO,
+          cost: totalCost,
+          value: liveVal,
+          profit: liveVal - totalCost,
+          returnPct: simulationMode === 'loss' ? -15.0 : retPct,
+          isLive: true,
+          tranchesInPoint: trs,
+        });
+
+        return points;
+      }
+
+      // Multiple purchase dates: build cumulative timeline
+      let runningCost = 0;
+      let runningValue = 0;
+
+      sortedPurchaseDates.forEach((d) => {
+        const trs = tranchesByDate.get(d)!;
+        const dayCost = trs.reduce((s, t) => s + t.costILS, 0);
+        const dayVal = trs.reduce((s, t) => s + t.valueILS, 0);
+
+        runningCost += dayCost;
+        runningValue += dayVal;
+
+        const prof = runningValue - runningCost;
+        const retPct = runningCost > 0 ? (prof / runningCost) * 100 : 0;
+
+        const val = simulationMode === 'loss' ? runningCost * 0.85 : runningValue;
+        const p = val - runningCost;
+        const r = simulationMode === 'loss' ? -15.0 : retPct;
+
+        points.push({
+          id: `cum-tranche-${d}`,
+          label: formatDate(d),
+          date: d,
+          cost: runningCost,
+          value: val,
+          profit: p,
+          returnPct: r,
+          tranchesInPoint: trs,
+        });
+      });
+    } else if (sortedSnapshots.length > 0) {
+      // Fallback if only snapshots exist without tranches
+      sortedSnapshots.forEach((s) => {
+        points.push({
+          id: s.id,
+          label: s.period_label.replace('סגירת חודש ', '').replace('סיום רבעון ', ''),
+          date: s.date,
+          cost: s.total_invested,
+          value: simulationMode === 'loss' ? s.total_invested * 0.88 : s.total_value,
+          profit: simulationMode === 'loss' ? -s.total_invested * 0.12 : s.total_profit,
+          returnPct: simulationMode === 'loss' ? -12.0 : s.total_return_pct,
+        });
+      });
+    }
+
+    // Current live point at the end
+    const totalCost = portfolioSummary.totalInvestedILS;
+    const liveVal =
+      simulationMode === 'loss' ? totalCost * 0.85 : portfolioSummary.currentValueILS;
+    const liveProfit = liveVal - totalCost;
+    const liveReturnPct = totalCost > 0 ? (liveProfit / totalCost) * 100 : 0;
+
+    const lastPt = points[points.length - 1];
+    if (!lastPt || lastPt.date !== todayISO) {
+      points.push({
+        id: 'current-live',
+        label: isHe ? 'מצב נוכחי (חי)' : 'Current Live',
+        date: todayISO,
+        cost: totalCost,
+        value: liveVal,
+        profit: liveProfit,
+        returnPct: simulationMode === 'loss' ? -15.0 : liveReturnPct,
+        isLive: true,
+      });
+    }
+
     return points;
-  }, [snapshots, portfolioSummary, simulationMode, isHe]);
+  }, [allPurchases, snapshots, portfolioSummary, simulationMode, timelineViewMode, isHe]);
 
   // 2. Asset Allocation Breakdown
   const allocationData = useMemo(() => {
@@ -161,8 +368,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   const valPoints = chartDataPoints.map((p, i) => `${getX(i)},${getY(p.value)}`);
   const valPathD = `M ${valPoints.join(' L ')}`;
 
-  // D. Profit / Loss Areas between Value and Cost Line
-  // For each adjacent pair, compute polygon between value and cost
+  // D. Profit / Loss Areas between Value and Cost Line (with zero-crossing split)
   const areaSegments = useMemo(() => {
     const segments: { type: 'profit' | 'loss'; path: string }[] = [];
     for (let i = 0; i < chartDataPoints.length - 1; i++) {
@@ -178,15 +384,33 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
       const yVal2 = getY(p2.value);
       const yCost2 = getY(p2.cost);
 
-      const avgProfit = ((p1.value - p1.cost) + (p2.value - p2.cost)) / 2;
+      const d1 = p1.value - p1.cost;
+      const d2 = p2.value - p2.cost;
 
-      // Polygon between line 1 (val) and line 2 (cost)
-      const pathD = `M ${x1},${yVal1} L ${x2},${yVal2} L ${x2},${yCost2} L ${x1},${yCost1} Z`;
+      // Check if lines cross each other between p1 and p2 (one is positive, one is negative)
+      if ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) {
+        const t = d1 / (d1 - d2);
+        const xMid = x1 + t * (x2 - x1);
+        const yMid = yCost1 + t * (yCost2 - yCost1);
 
-      segments.push({
-        type: avgProfit >= 0 ? 'profit' : 'loss',
-        path: pathD,
-      });
+        // Segment 1 (from x1 to xMid)
+        segments.push({
+          type: d1 >= 0 ? 'profit' : 'loss',
+          path: `M ${x1},${yVal1} L ${xMid},${yMid} L ${x1},${yCost1} Z`,
+        });
+
+        // Segment 2 (from xMid to x2)
+        segments.push({
+          type: d2 >= 0 ? 'profit' : 'loss',
+          path: `M ${xMid},${yMid} L ${x2},${yVal2} L ${x2},${yCost2} Z`,
+        });
+      } else {
+        // Standard non-crossing quad polygon
+        segments.push({
+          type: d1 >= 0 || d2 >= 0 ? 'profit' : 'loss',
+          path: `M ${x1},${yVal1} L ${x2},${yVal2} L ${x2},${yCost2} L ${x1},${yCost1} Z`,
+        });
+      }
     }
     return segments;
   }, [chartDataPoints]);
@@ -317,38 +541,110 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
               </div>
             </div>
 
-            {/* Simulation Toggle */}
-            <div style={chartStyles.simToggleBox}>
-              <span style={chartStyles.simLabel}>
-                {isHe ? 'הדמיית צמיחה שלילית:' : 'Simulate Loss:'}
-              </span>
-              <button
-                type="button"
+            {/* Controls: View Mode Toggle & Simulation Toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {/* View Mode Toggle */}
+              <div
                 style={{
-                  ...chartStyles.simToggleBtn,
-                  backgroundColor: simulationMode === 'loss' ? '#FEE2E2' : '#F1F5F9',
-                  color: simulationMode === 'loss' ? '#B91C1C' : '#475569',
-                  borderColor: simulationMode === 'loss' ? '#F87171' : '#CBD5E1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  backgroundColor: '#F1F5F9',
+                  borderRadius: '8px',
+                  padding: '3px',
+                  border: '1px solid #CBD5E1',
+                  gap: '2px',
                 }}
-                onClick={() => setSimulationMode(simulationMode === 'normal' ? 'loss' : 'normal')}
-                title={
-                  isHe
-                    ? 'לחץ לבדיקת הצביעה באדום בוהק במצב של הפסד / שווי מתחת לעלות הקרן'
-                    : 'Toggle negative growth to verify the bright red fill'
-                }
               >
-                {simulationMode === 'loss' ? (
-                  <>
-                    <AlertTriangle size={13} color="#DC2626" />
-                    <span>{isHe ? 'תרחיש ירידת שווקים (אדום בוהק)' : 'Loss Mode Active (Bright Red)'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={13} color="#2563EB" />
-                    <span>{isHe ? 'תרחיש רגיל (ברווח ירוק)' : 'Normal Portfolio Mode'}</span>
-                  </>
-                )}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setTimelineViewMode('cumulative')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '5px 11px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: timelineViewMode === 'cumulative' ? '#FFFFFF' : 'transparent',
+                    color: timelineViewMode === 'cumulative' ? '#2563EB' : '#64748B',
+                    fontWeight: timelineViewMode === 'cumulative' ? '700' : '600',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    boxShadow: timelineViewMode === 'cumulative' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title={
+                    isHe
+                      ? 'התפתחות מצטברת של שווי התיק ועלות הקרן לאורך מועדי הרכישות'
+                      : 'Cumulative Growth Timeline'
+                  }
+                >
+                  <TrendingUp size={13} color={timelineViewMode === 'cumulative' ? '#2563EB' : '#64748B'} />
+                  <span>{isHe ? 'ציר זמן מצטבר' : 'Cumulative'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTimelineViewMode('tranches')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '5px 11px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: timelineViewMode === 'tranches' ? '#FFFFFF' : 'transparent',
+                    color: timelineViewMode === 'tranches' ? '#2563EB' : '#64748B',
+                    fontWeight: timelineViewMode === 'tranches' ? '700' : '600',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    boxShadow: timelineViewMode === 'tranches' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title={
+                    isHe
+                      ? 'הצגת רווח/הפסד ועלות לכל פעימת רכישה בודדת מטבלת הקניות'
+                      : 'Per-tranche breakdown'
+                  }
+                >
+                  <Layers size={13} color={timelineViewMode === 'tranches' ? '#2563EB' : '#64748B'} />
+                  <span>{isHe ? 'לפי פעימות בודדות' : 'By Tranches'}</span>
+                </button>
+              </div>
+
+              {/* Simulation Toggle */}
+              <div style={chartStyles.simToggleBox}>
+                <span style={chartStyles.simLabel}>
+                  {isHe ? 'הדמיית צמיחה שלילית:' : 'Simulate Loss:'}
+                </span>
+                <button
+                  type="button"
+                  style={{
+                    ...chartStyles.simToggleBtn,
+                    backgroundColor: simulationMode === 'loss' ? '#FEE2E2' : '#F1F5F9',
+                    color: simulationMode === 'loss' ? '#B91C1C' : '#475569',
+                    borderColor: simulationMode === 'loss' ? '#F87171' : '#CBD5E1',
+                  }}
+                  onClick={() => setSimulationMode(simulationMode === 'normal' ? 'loss' : 'normal')}
+                  title={
+                    isHe
+                      ? 'לחץ לבדיקת הצביעה באדום בוהק במצב של הפסד / שווי מתחת לעלות הקרן'
+                      : 'Toggle negative growth to verify the bright red fill'
+                  }
+                >
+                  {simulationMode === 'loss' ? (
+                    <>
+                      <AlertTriangle size={13} color="#DC2626" />
+                      <span>{isHe ? 'תרחיש ירידת שווקים (אדום בוהק)' : 'Loss Mode Active (Bright Red)'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={13} color="#2563EB" />
+                      <span>{isHe ? 'תרחיש רגיל (ברווח ירוק)' : 'Normal Portfolio Mode'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -521,24 +817,36 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
               <div
                 style={{
                   ...chartStyles.tooltipCard,
-                  left: `${Math.min(75, Math.max(15, (hoveredPointIndex / (chartDataPoints.length - 1)) * 100))}%`,
+                  left: `${Math.min(
+                    80,
+                    Math.max(
+                      15,
+                      (hoveredPointIndex / Math.max(1, chartDataPoints.length - 1)) * 100
+                    )
+                  )}%`,
+                  minWidth: '220px',
                 }}
               >
                 <div style={chartStyles.tooltipTitle}>
                   <Calendar size={13} color="#2563EB" />
-                  <span>{chartDataPoints[hoveredPointIndex].label} ({formatDate(chartDataPoints[hoveredPointIndex].date)})</span>
+                  <span>
+                    {chartDataPoints[hoveredPointIndex].label}{' '}
+                    {chartDataPoints[hoveredPointIndex].date
+                      ? `(${formatDate(chartDataPoints[hoveredPointIndex].date)})`
+                      : ''}
+                  </span>
                 </div>
                 <div style={chartStyles.tooltipGrid}>
                   <div>
                     <span style={chartStyles.tooltipLabel}>{isHe ? 'שווי תיק:' : 'Valuation:'}</span>
                     <strong style={{ color: '#0F172A' }}>
-                      ₪{chartDataPoints[hoveredPointIndex].value.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                      ₪{Math.round(chartDataPoints[hoveredPointIndex].value).toLocaleString('en-US')}
                     </strong>
                   </div>
                   <div>
                     <span style={chartStyles.tooltipLabel}>{isHe ? 'עלות הקרן:' : 'Cost Basis:'}</span>
                     <strong style={{ color: '#D97706' }}>
-                      ₪{chartDataPoints[hoveredPointIndex].cost.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                      ₪{Math.round(chartDataPoints[hoveredPointIndex].cost).toLocaleString('en-US')}
                     </strong>
                   </div>
                   <div>
@@ -556,13 +864,60 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                           }}
                         >
                           {isPtProfit
-                            ? `+₪${pt.profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-                            : `-₪${Math.abs(pt.profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}`}{' '}
+                            ? `+₪${Math.round(pt.profit).toLocaleString('en-US')}`
+                            : `-₪${Math.abs(Math.round(pt.profit)).toLocaleString('en-US')}`}{' '}
                           ({pt.returnPct >= 0 ? '+' : '-'}{Math.abs(pt.returnPct).toFixed(2)}%)
                         </strong>
                       );
                     })()}
                   </div>
+
+                  {chartDataPoints[hoveredPointIndex].tranchesInPoint &&
+                    chartDataPoints[hoveredPointIndex].tranchesInPoint!.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: '8px',
+                          paddingTop: '8px',
+                          borderTop: '1px dashed #E2E8F0',
+                          fontSize: '0.72rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '3px',
+                        }}
+                      >
+                        <div style={{ fontWeight: '700', color: '#475569', marginBottom: '2px' }}>
+                          {isHe ? 'פעימות רכישה במועד זה:' : 'Purchases on this date:'}
+                        </div>
+                        {chartDataPoints[hoveredPointIndex].tranchesInPoint!.map((t, tIdx) => (
+                          <div
+                            key={tIdx}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: '8px',
+                              color: '#334155',
+                              padding: '1px 0',
+                            }}
+                          >
+                            <span>
+                              <strong>{t.ticker}</strong> ({t.shares} יח' @{' '}
+                              {t.currency === 'USD' ? '$' : '₪'}{t.price})
+                            </span>
+                            <span
+                              dir="ltr"
+                              style={{
+                                fontWeight: '700',
+                                color: t.profitILS >= 0 ? '#059669' : '#DC2626',
+                                direction: 'ltr',
+                              }}
+                            >
+                              {t.profitILS >= 0 ? '+' : ''}₪{Math.round(t.profitILS).toLocaleString('en-US')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                 </div>
               </div>
             )}
