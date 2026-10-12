@@ -36,6 +36,7 @@ import { formatDate, normalizeToISODate } from '../../lib/i18n';
 import { IsraeliDateInput } from '../common/IsraeliDateInput';
 import { InvestmentsCharts } from './InvestmentsCharts';
 import { InvestmentsSnapshotsTree } from './InvestmentsSnapshotsTree';
+import { TranchesImportModal } from './TranchesImportModal';
 
 export const SECURITY_TYPE_LABELS: Record<SecurityType, { he: string; en: string; icon: string }> = {
   stock: { he: 'מניה', en: 'Stock', icon: '📈' },
@@ -60,6 +61,7 @@ export const InvestmentsView: React.FC = () => {
     addInvestmentTranche,
     updateInvestmentTranche,
     deleteInvestmentTranche,
+    saveInvestments,
     clearDemoData,
     restoreDemoData,
     isDemoDataCleared,
@@ -126,6 +128,10 @@ export const InvestmentsView: React.FC = () => {
   // Inline Quick Date Edit for Tranches
   const [editingDateTrancheKey, setEditingDateTrancheKey] = useState<string | null>(null);
   const [inlineDateInput, setInlineDateInput] = useState<string>('');
+
+  // Tranches Excel / CSV Import Modal
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importTargetAsset, setImportTargetAsset] = useState<InvestmentAsset | null>(null);
   const [actionFeedbackMsg, setActionFeedbackMsg] = useState<string | null>(null);
 
   // Info Accordion toggle
@@ -1098,6 +1104,19 @@ export const InvestmentsView: React.FC = () => {
             )}
           </button>
 
+          {/* Import Tranches Excel / CSV Button */}
+          <button
+            style={styles.importTranchesBtn}
+            onClick={() => {
+              setImportTargetAsset(null);
+              setIsImportModalOpen(true);
+            }}
+            title={isHe ? 'ייבוא פעימות רכישה מקובץ אקסל או CSV' : 'Import tranches from Excel / CSV'}
+          >
+            <FileSpreadsheet size={16} color="#0284C7" />
+            <span>{isHe ? 'טעינת פעימות מאקסל' : 'Import Excel'}</span>
+          </button>
+
           {/* Add New Stock / Tranche Button */}
           <button
             style={styles.addAssetBtn}
@@ -1594,13 +1613,30 @@ export const InvestmentsView: React.FC = () => {
                                           : `Purchase Tranche History for ${asset.ticker}:`}
                                       </span>
                                     </div>
-                                    <button
-                                      style={styles.addTrancheSubBtn}
-                                      onClick={() => handleOpenAddModal('add_tranche', asset)}
-                                    >
-                                      <Plus size={13} color="#2563EB" />
-                                      <span>{isHe ? '+ הוסף פעימה חדשה' : '+ Add Tranche'}</span>
-                                    </button>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                      <button
+                                        style={styles.importTrancheSubBtn}
+                                        onClick={() => {
+                                          setImportTargetAsset(asset);
+                                          setIsImportModalOpen(true);
+                                        }}
+                                        title={
+                                          isHe
+                                            ? `טעינת פעימות מאקסל עבור ${asset.ticker}`
+                                            : `Import tranches from Excel for ${asset.ticker}`
+                                        }
+                                      >
+                                        <FileSpreadsheet size={13} color="#0284C7" />
+                                        <span>{isHe ? 'טעינת אקסל' : 'Import Excel'}</span>
+                                      </button>
+                                      <button
+                                        style={styles.addTrancheSubBtn}
+                                        onClick={() => handleOpenAddModal('add_tranche', asset)}
+                                      >
+                                        <Plus size={13} color="#2563EB" />
+                                        <span>{isHe ? '+ הוסף פעימה חדשה' : '+ Add Tranche'}</span>
+                                      </button>
+                                    </div>
                                   </div>
 
                                   <table style={styles.trancheTable}>
@@ -2727,6 +2763,28 @@ export const InvestmentsView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* MODAL: TRANCHES IMPORT FROM EXCEL / CSV */}
+      <TranchesImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setImportTargetAsset(null);
+        }}
+        investments={investments}
+        defaultTargetAsset={importTargetAsset}
+        onImportComplete={(updatedAssets, importedCount) => {
+          saveInvestments(updatedAssets);
+          setActionFeedbackMsg(
+            isHe
+              ? `הצלחה! נקלטו ${importedCount} פעימות רכישה בהצלחה לתיק ההשקעות.`
+              : `Successfully imported ${importedCount} purchase tranches into portfolio.`
+          );
+          setTimeout(() => setActionFeedbackMsg(null), 5000);
+        }}
+        isHe={isHe}
+        usdRate={usdRate}
+      />
     </div>
   );
 };
@@ -2873,6 +2931,20 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '10px',
     color: '#2563EB',
     fontSize: '0.8125rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  importTranchesBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '9px 16px',
+    backgroundColor: '#F0F9FF',
+    border: '1px solid #BAE6FD',
+    borderRadius: '10px',
+    color: '#0369A1',
+    fontSize: '0.875rem',
     fontWeight: '700',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
@@ -3271,6 +3343,20 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.84rem',
     fontWeight: '800',
     color: '#1E293B',
+  },
+  importTrancheSubBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 8px',
+    backgroundColor: '#F0F9FF',
+    border: '1px solid #BAE6FD',
+    borderRadius: '6px',
+    color: '#0369A1',
+    fontSize: '0.72rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   addTrancheSubBtn: {
     display: 'flex',

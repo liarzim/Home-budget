@@ -72,6 +72,7 @@ interface AuthContextType {
   addInvestmentTranche: (assetId: string, tranche: Omit<InvestmentTranche, 'id'>, newCurrentPrice?: number) => void;
   updateInvestmentTranche: (assetId: string, trancheId: string, updates: Partial<InvestmentTranche>, newCurrentPrice?: number, trancheIndex?: number) => void;
   deleteInvestmentTranche: (assetId: string, trancheId: string, trancheIndex?: number) => void;
+  saveInvestments: (newList: InvestmentAsset[]) => void;
   isLoading: boolean;
   isDemoMode: boolean;
   isSupabaseReady: boolean;
@@ -1986,6 +1987,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addInvestmentTranche,
         updateInvestmentTranche,
         deleteInvestmentTranche,
+        saveInvestments,
         clearDemoData,
         restoreDemoData,
         isDemoDataCleared,
