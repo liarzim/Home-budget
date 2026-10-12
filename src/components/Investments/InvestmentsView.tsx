@@ -211,10 +211,12 @@ export const InvestmentsView: React.FC = () => {
   // Helper calculation for an asset
   const calculateAssetMetrics = (asset: InvestmentAsset) => {
     const totalShares = asset.tranches.reduce((sum, tr) => sum + tr.shares, 0);
+    // Purchase fee is paid separately in account and excluded from security P&L
     const totalCost = asset.tranches.reduce(
-      (sum, tr) => sum + tr.shares * tr.price_per_share + (tr.fee || 0),
+      (sum, tr) => sum + tr.shares * tr.price_per_share,
       0
     );
+    const totalFees = asset.tranches.reduce((sum, tr) => sum + (tr.fee || 0), 0);
     const avgPrice = totalShares > 0 ? totalCost / totalShares : 0;
     const currentValue = totalShares * asset.current_price;
     const profit = currentValue - totalCost;
@@ -223,6 +225,7 @@ export const InvestmentsView: React.FC = () => {
     return {
       totalShares,
       totalCost,
+      totalFees,
       avgPrice,
       currentValue,
       profit,
@@ -337,9 +340,8 @@ export const InvestmentsView: React.FC = () => {
     setFormShares(val);
     const s = parseFloat(val);
     const p = parseFloat(formPricePerShare);
-    const f = parseFloat(formFee) || 0;
     if (s > 0 && p >= 0) {
-      setFormTotalCost((s * p + f).toFixed(2));
+      setFormTotalCost((s * p).toFixed(2));
     }
   };
 
@@ -347,9 +349,8 @@ export const InvestmentsView: React.FC = () => {
     setFormPricePerShare(val);
     const s = parseFloat(formShares);
     const p = parseFloat(val);
-    const f = parseFloat(formFee) || 0;
     if (s > 0 && p >= 0) {
-      setFormTotalCost((s * p + f).toFixed(2));
+      setFormTotalCost((s * p).toFixed(2));
     }
   };
 
@@ -357,9 +358,8 @@ export const InvestmentsView: React.FC = () => {
     setFormTotalCost(val);
     const s = parseFloat(formShares);
     const total = parseFloat(val);
-    const f = parseFloat(formFee) || 0;
     if (s > 0 && total >= 0) {
-      const unitPrice = Math.max(0, (total - f) / s);
+      const unitPrice = total / s;
       setFormPricePerShare(unitPrice.toFixed(2));
     }
   };
@@ -426,9 +426,7 @@ export const InvestmentsView: React.FC = () => {
     setFormDate(tranche.date ? formatDate(tranche.date) : formatDate(new Date()));
     setFormShares(tranche.shares.toString());
     setFormPricePerShare(tranche.price_per_share.toString());
-    const cost =
-      tranche.total_cost ||
-      tranche.shares * tranche.price_per_share + (tranche.fee || 0);
+    const cost = tranche.shares * tranche.price_per_share;
     setFormTotalCost(cost.toString());
     setFormFee((tranche.fee || 0).toString());
     setFormNotes(tranche.notes || '');
@@ -461,7 +459,7 @@ export const InvestmentsView: React.FC = () => {
     const priceNum = parseFloat(formPricePerShare);
     const feeNum = parseFloat(formFee) || 0;
     const currentPriceNum = parseFloat(formCurrentPrice) || priceNum;
-    const totalCostNum = parseFloat(formTotalCost) || (sharesNum * priceNum + feeNum);
+    const totalCostNum = parseFloat(formTotalCost) || (sharesNum * priceNum);
 
     if (isNaN(sharesNum) || sharesNum <= 0 || isNaN(priceNum) || priceNum < 0) {
       alert(isHe ? 'אנא הזן כמות מניות ומחיר רכישה תקינים' : 'Please enter valid shares and price');
@@ -1117,7 +1115,7 @@ export const InvestmentsView: React.FC = () => {
             ₪{portfolioSummary.totalInvestedILS.toLocaleString('en-US', { maximumFractionDigits: 0 })}
           </div>
           <div style={styles.kpiSubText}>
-            {isHe ? 'סך כל פעימות הרכישה כולל עמלות' : 'Sum of all purchase tranches + fees'}
+            {isHe ? 'סך עלות הקרן שנרכשה (ללא עמלות)' : 'Total cost basis (excluding fees)'}
           </div>
         </div>
 
@@ -1634,9 +1632,7 @@ export const InvestmentsView: React.FC = () => {
                                     </thead>
                                     <tbody>
                                       {asset.tranches.map((tr, idx) => {
-                                        const trCost =
-                                          tr.total_cost ||
-                                          tr.shares * tr.price_per_share + (tr.fee || 0);
+                                        const trCost = tr.shares * tr.price_per_share;
                                         const trVal = tr.shares * asset.current_price;
                                         const trProfit = trVal - trCost;
                                         const trYield =
@@ -2504,7 +2500,7 @@ export const InvestmentsView: React.FC = () => {
                         onChange={(e) => handleTotalCostChange(e.target.value)}
                       />
                       <span style={styles.inputHelper}>
-                        {isHe ? 'סכום כולל מחושב אוטומטית (כמות × מחיר + עמלה)' : 'Auto calculated: shares × price + fee'}
+                        {isHe ? 'סכום רכישה (קרן): כמות × מחיר' : 'Cost basis: shares × price'}
                       </span>
                     </div>
 
@@ -2520,16 +2516,10 @@ export const InvestmentsView: React.FC = () => {
                         step="any"
                         placeholder="0"
                         value={formFee}
-                        onChange={(e) => {
-                          setFormFee(e.target.value);
-                          const s = parseFloat(formShares);
-                          const p = parseFloat(formPricePerShare);
-                          const f = parseFloat(e.target.value) || 0;
-                          if (s > 0 && p >= 0) setFormTotalCost((s * p + f).toFixed(2));
-                        }}
+                        onChange={(e) => setFormFee(e.target.value)}
                       />
                       <span style={styles.inputHelper}>
-                        {isHe ? 'תווסף לעלות הרכישה להקטנת מס רווחי הון' : 'Added to cost basis'}
+                        {isHe ? 'משולמת בנפרד בחשבון (אינה נכללת בחישוב רווח/הפסד)' : 'Paid separately in account (excluded from P&L)'}
                       </span>
                     </div>
                   </div>
@@ -2556,12 +2546,11 @@ export const InvestmentsView: React.FC = () => {
                       </div>
                       <div style={styles.calcPreviewRow}>
                         <span>
-                          {isHe ? 'עלות רכישה כוללת:' : 'Total Cost:'}{' '}
+                          {isHe ? 'עלות רכישה (קרן):' : 'Cost Basis:'}{' '}
                           <strong>
                             {formCurrency === 'USD' ? '$' : '₪'}
                             {(
-                              parseFloat(formShares) * parseFloat(formPricePerShare) +
-                              (parseFloat(formFee) || 0)
+                              parseFloat(formShares) * parseFloat(formPricePerShare)
                             ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </strong>
                         </span>
@@ -2569,19 +2558,26 @@ export const InvestmentsView: React.FC = () => {
                           <span>
                             {isHe ? 'רווח נוכחי לפעימה:' : 'Current Tranche Gain:'}{' '}
                             <strong
+                              dir="ltr"
                               style={{
                                 color:
                                   parseFloat(formCurrentPrice) >= parseFloat(formPricePerShare)
                                     ? '#059669'
                                     : '#DC2626',
+                                direction: 'ltr',
+                                display: 'inline-block',
                               }}
                             >
-                              {formCurrency === 'USD' ? '$' : '₪'}
-                              {(
-                                parseFloat(formShares) * parseFloat(formCurrentPrice) -
-                                (parseFloat(formShares) * parseFloat(formPricePerShare) +
-                                  (parseFloat(formFee) || 0))
-                              ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              {(() => {
+                                const trShares = parseFloat(formShares);
+                                const trPrice = parseFloat(formPricePerShare);
+                                const trCurPrice = parseFloat(formCurrentPrice);
+                                const trProfit = trShares * (trCurPrice - trPrice);
+                                const sym = formCurrency === 'USD' ? '$' : '₪';
+                                return trProfit >= 0
+                                  ? `+${sym}${trProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                                  : `-${sym}${Math.abs(trProfit).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+                              })()}
                             </strong>
                           </span>
                         )}

@@ -255,21 +255,8 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
       const feeExtraVal = feeExtraKey ? parseFloat(String(row[feeExtraKey] || '0').replace(/,/g, '').replace(/[$₪]/g, '')) || 0 : 0;
       const totalFee = Math.max(0, feeVal + feeExtraVal);
 
-      // Total Cost
-      let totalCost = 0;
-      const foreignVal = foreignCostKey ? parseFloat(String(row[foreignCostKey] || '0').replace(/,/g, '').replace(/[$₪]/g, '')) : NaN;
-      const ilsVal = ilsCostKey ? parseFloat(String(row[ilsCostKey] || '0').replace(/,/g, '').replace(/[$₪]/g, '')) : NaN;
-      const genericVal = genericCostKey ? parseFloat(String(row[genericCostKey] || '0').replace(/,/g, '').replace(/[$₪]/g, '')) : NaN;
-
-      if (!isNaN(foreignVal) && foreignVal !== 0) {
-        totalCost = Math.abs(foreignVal);
-      } else if (!isNaN(ilsVal) && ilsVal !== 0 && currency === 'ILS') {
-        totalCost = Math.abs(ilsVal);
-      } else if (!isNaN(genericVal) && genericVal !== 0) {
-        totalCost = Math.abs(genericVal);
-      } else {
-        totalCost = shares * price + totalFee;
-      }
+      // Purchase cost basis of the tranche (fee is tracked separately and excluded from P&L)
+      const totalCost = shares * price;
 
       // Notes
       const notesParts: string[] = [];
