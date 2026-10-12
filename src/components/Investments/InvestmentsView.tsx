@@ -62,8 +62,6 @@ export const InvestmentsView: React.FC = () => {
     updateInvestmentTranche,
     deleteInvestmentTranche,
     saveInvestments,
-    clearDemoData,
-    restoreDemoData,
     isDemoDataCleared,
     activeHousehold,
     language,
@@ -1070,39 +1068,6 @@ export const InvestmentsView: React.FC = () => {
             <span>{isRefreshingQuotes ? (isHe ? 'מעדכן שערים...' : 'Fetching...') : (isHe ? 'רענן שערי שוק' : 'Live Quotes')}</span>
           </button>
 
-          {/* Clear / Restore Demo Data Button */}
-          <button
-            style={isDemoDataCleared ? styles.restoreDemoBtn : styles.clearDemoBtn}
-            onClick={() => {
-              if (isDemoDataCleared) {
-                if (confirm(isHe ? 'האם לשחזר את נתוני הדמו להדגמה?' : 'Restore demo data?')) {
-                  restoreDemoData();
-                }
-              } else {
-                if (confirm(isHe ? 'האם לנקות את כל נתוני הדמו מהמערכת (כולל עסקאות, תיק השקעות, תקציבים וחסכונות) ולהתחיל מלוח נקי לחלוטין?' : 'Clear all demo data and start fresh?')) {
-                  clearDemoData();
-                  setSnapshots([]);
-                }
-              }
-            }}
-            title={
-              isDemoDataCleared
-                ? (isHe ? 'שחזר נתוני דמו לדוגמה' : 'Restore demo data')
-                : (isHe ? 'נקה את כל נתוני הדמו מהמערכת והתחל מלוח חלק' : 'Clear demo data')
-            }
-          >
-            {isDemoDataCleared ? (
-              <>
-                <RotateCcw size={15} color="#2563EB" />
-                <span>{isHe ? 'שחזר דמו' : 'Restore Demo'}</span>
-              </>
-            ) : (
-              <>
-                <Trash2 size={15} color="#DC2626" />
-                <span>{isHe ? 'נקה נתוני דמו' : 'Clear Demo'}</span>
-              </>
-            )}
-          </button>
 
           {/* Import Tranches Excel / CSV Button */}
           <button
