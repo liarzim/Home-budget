@@ -2352,8 +2352,8 @@ export const InvestmentsView: React.FC = () => {
                                           {isHe ? 'רווח / הפסד' : 'P&L'}
                                         </th>
                                         <th style={{ ...styles.trancheTh, textAlign: 'center' }}>{isHe ? 'תשואה' : 'Yield'}</th>
-                                        <th style={styles.trancheTh}>{isHe ? 'הערות' : 'Notes'}</th>
-                                        <th style={{ ...styles.trancheTh, textAlign: 'center', width: '55px' }}>
+                                        <th style={{ ...styles.trancheTh, maxWidth: '240px', minWidth: '130px' }}>{isHe ? 'הערות' : 'Notes'}</th>
+                                        <th style={{ ...styles.trancheTh, ...styles.actionsStickyTh }}>
                                           {isHe ? 'פעולות' : 'Actions'}
                                         </th>
                                       </tr>
@@ -2556,11 +2556,11 @@ export const InvestmentsView: React.FC = () => {
                                                 {Math.abs(trYield).toFixed(2)}%
                                               </span>
                                             </td>
-                                            <td style={styles.trancheTd}>
+                                            <td style={styles.trancheNotesTd} title={tr.notes || ''}>
                                               <span style={styles.notesText}>{tr.notes || '—'}</span>
                                             </td>
-                                            <td style={{ ...styles.trancheTd, textAlign: 'center' }}>
-                                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                                            <td style={styles.actionsStickyTd}>
+                                              <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
                                                 <button
                                                   style={styles.editTrancheBtn}
                                                   onClick={() => handleOpenEditTrancheModal(asset, tr, idx)}
@@ -4104,7 +4104,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: '1px solid #E2E8F0',
     padding: '12px 14px',
     boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-    overflowX: 'hidden',
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
     width: '100%',
     boxSizing: 'border-box',
   },
@@ -4170,6 +4171,28 @@ const styles: { [key: string]: React.CSSProperties } = {
     lineHeight: '1.25',
     verticalAlign: 'bottom',
   },
+  actionsStickyTh: {
+    position: 'sticky',
+    left: 0,
+    backgroundColor: '#F1F5F9',
+    zIndex: 3,
+    boxShadow: '2px 0 6px rgba(0, 0, 0, 0.08)',
+    minWidth: '75px',
+    width: '75px',
+    textAlign: 'center',
+  },
+  actionsStickyTd: {
+    position: 'sticky',
+    left: 0,
+    backgroundColor: '#FFFFFF',
+    zIndex: 2,
+    boxShadow: '2px 0 6px rgba(0, 0, 0, 0.08)',
+    minWidth: '75px',
+    width: '75px',
+    textAlign: 'center',
+    padding: '7px 6px',
+    verticalAlign: 'middle',
+  },
   trancheTr: {
     borderBottom: '1px solid #F1F5F9',
   },
@@ -4178,6 +4201,15 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#1E293B',
     whiteSpace: 'nowrap',
     verticalAlign: 'middle',
+  },
+  trancheNotesTd: {
+    padding: '7px 8px',
+    color: '#1E293B',
+    verticalAlign: 'middle',
+    whiteSpace: 'normal',
+    maxWidth: '240px',
+    minWidth: '130px',
+    wordBreak: 'break-word',
   },
   trancheIndexPill: {
     width: '18px',
@@ -4198,9 +4230,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '800',
   },
   notesText: {
-    fontSize: '0.75rem',
+    fontSize: '0.73rem',
     color: '#64748B',
     fontStyle: 'italic',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    lineHeight: '1.3',
+    wordBreak: 'break-word',
+    cursor: 'help',
   },
   editTrancheBtn: {
     padding: '4px 6px',
@@ -4215,11 +4254,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     transition: 'all 0.15s ease',
   },
   deleteTrancheBtn: {
-    background: 'none',
-    border: 'none',
+    padding: '4px 6px',
+    backgroundColor: '#FEF2F2',
+    border: '1px solid #FECACA',
     cursor: 'pointer',
-    padding: '4px',
     borderRadius: '4px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#EF4444',
+    transition: 'all 0.15s ease',
   },
   emptyTd: {
     padding: '40px 20px',
