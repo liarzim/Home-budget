@@ -72,12 +72,20 @@ export async function fetchAssetQuote(
         const result = data?.chart?.result?.[0];
         if (result) {
           const meta = result.meta || {};
-          const currency = meta.currency || 'USD';
+          let currency = meta.currency || 'USD';
           const quotes = result.indicators?.quote?.[0]?.close || [];
           const timestamps = result.timestamp || [];
 
+          const isAgorot = currency === 'ILA' || currency === 'ILX' || cleanSym.toUpperCase().endsWith('.TA');
+          if (isAgorot) {
+            currency = 'ILS';
+          }
+
           if (!isHistorical || timestamps.length === 0) {
-            const currentPrice = meta.regularMarketPrice ?? quotes[quotes.length - 1] ?? 0;
+            let currentPrice = meta.regularMarketPrice ?? quotes[quotes.length - 1] ?? 0;
+            if (isAgorot) {
+              currentPrice = currentPrice / 100;
+            }
             return {
               price: Number(currentPrice.toFixed(4)),
               date: new Date().toISOString().split('T')[0],
@@ -103,8 +111,10 @@ export async function fetchAssetQuote(
               const y = d.getUTCFullYear();
               const m = d.getUTCMonth() + 1;
               if (y === targetYear && m === targetMonth) {
+                let p = quotes[i];
+                if (isAgorot) p = p / 100;
                 return {
-                  price: Number(quotes[i].toFixed(4)),
+                  price: Number(p.toFixed(4)),
                   date: d.toISOString().split('T')[0],
                   currency,
                   source: 'Yahoo Finance (Direct)',

@@ -26,18 +26,27 @@ async function fetchYahooQuote(symbol, periodType, year, month, quarter) {
     }
 
     const meta = result.meta || {};
-    const currency = meta.currency || 'USD';
-    const currentPrice = meta.regularMarketPrice ?? null;
+    let currency = meta.currency || 'USD';
+    let currentPrice = meta.regularMarketPrice ?? null;
     const timestamps = result.timestamp || [];
     const quotes = result.indicators?.quote?.[0]?.close || [];
 
+    const isAgorot = currency === 'ILA' || currency === 'ILX' || symbol.toUpperCase().endsWith('.TA');
+    if (isAgorot) {
+      currency = 'ILS';
+    }
+
     // If current is requested or no timestamps
     if (!isHistorical || timestamps.length === 0) {
+      let finalPrice = currentPrice ?? quotes[quotes.length - 1] ?? null;
+      if (finalPrice != null && isAgorot) {
+        finalPrice = Number((finalPrice / 100).toFixed(4));
+      }
       return {
         symbol,
         source: 'Yahoo Finance',
         currency,
-        price: currentPrice ?? quotes[quotes.length - 1] ?? null,
+        price: finalPrice,
         date: new Date().toISOString().split('T')[0],
         success: true
       };
@@ -70,11 +79,13 @@ async function fetchYahooQuote(symbol, periodType, year, month, quarter) {
     const matchedPoint = points.find(p => p.year === targetYear && p.month === targetMonth);
 
     if (matchedPoint) {
+      let hp = matchedPoint.price;
+      if (isAgorot) hp = hp / 100;
       return {
         symbol,
         source: 'Yahoo Finance',
         currency,
-        price: Number(matchedPoint.price.toFixed(4)),
+        price: Number(hp.toFixed(4)),
         date: matchedPoint.date,
         periodType,
         targetYear,
@@ -86,11 +97,13 @@ async function fetchYahooQuote(symbol, periodType, year, month, quarter) {
     // Fallback if not found in that exact month: find nearest earlier point
     const earlierPoint = points.find(p => p.year < targetYear || (p.year === targetYear && p.month <= targetMonth));
     if (earlierPoint) {
+      let ep = earlierPoint.price;
+      if (isAgorot) ep = ep / 100;
       return {
         symbol,
         source: 'Yahoo Finance (Fallback Nearest)',
         currency,
-        price: Number(earlierPoint.price.toFixed(4)),
+        price: Number(ep.toFixed(4)),
         date: earlierPoint.date,
         periodType,
         success: true
@@ -98,11 +111,13 @@ async function fetchYahooQuote(symbol, periodType, year, month, quarter) {
     }
 
     // Otherwise return latest price
+    let lp = currentPrice ?? quotes[quotes.length - 1] ?? null;
+    if (lp != null && isAgorot) lp = lp / 100;
     return {
       symbol,
       source: 'Yahoo Finance',
       currency,
-      price: currentPrice ?? quotes[quotes.length - 1] ?? null,
+      price: lp != null ? Number(lp.toFixed(4)) : null,
       date: points[0]?.date || new Date().toISOString().split('T')[0],
       periodType,
       success: true
@@ -144,6 +159,15 @@ async function fetchBizportalQuote(securityNumber, periodType, year, month, quar
       throw new Error('No historical points from Bizportal');
     }
 
+    function formatBizportalPrice(rawCp) {
+      let price = rawCp / 100;
+      // If price is >= 500, on TASE index certificates / ETFs have C_p in hundredths of agorot (e.g. 257400 -> 25.74 ILS)
+      if (price >= 500) {
+        price = price / 100;
+      }
+      return Number(price.toFixed(4));
+    }
+
     // Points are sorted latest to oldest: [{ D_p: 'DD/MM/YYYY', C_p: agorot }, ...]
     // Note: C_p is in Agorot -> divide by 100 to get ILS
     const isHistorical = periodType && periodType !== 'current';
@@ -154,7 +178,7 @@ async function fetchBizportalQuote(securityNumber, periodType, year, month, quar
         securityNumber,
         source: 'Bizportal TASE',
         currency: 'ILS',
-        price: Number((latest.C_p / 100).toFixed(4)),
+        price: formatBizportalPrice(latest.C_p),
         date: latest.D_p,
         success: true
       };
@@ -185,7 +209,7 @@ async function fetchBizportalQuote(securityNumber, periodType, year, month, quar
         securityNumber,
         source: 'Bizportal TASE',
         currency: 'ILS',
-        price: Number((match.C_p / 100).toFixed(4)),
+        price: formatBizportalPrice(match.C_p),
         date: match.D_p,
         periodType,
         targetYear,
@@ -208,7 +232,7 @@ async function fetchBizportalQuote(securityNumber, periodType, year, month, quar
       securityNumber,
       source: 'Bizportal TASE',
       currency: 'ILS',
-      price: Number((selected.C_p / 100).toFixed(4)),
+      price: formatBizportalPrice(selected.C_p),
       date: selected.D_p,
       periodType,
       success: true

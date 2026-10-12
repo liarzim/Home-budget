@@ -484,7 +484,10 @@ export const InvestmentsView: React.FC = () => {
         alert(isHe ? 'אנא הזן סימול נייר' : 'Please enter a ticker');
         return;
       }
-      const curPrice = parseFloat(formCurrentPrice);
+      let curPrice = parseFloat(formCurrentPrice);
+      if (formCurrency === 'ILS' && !isNaN(curPrice) && (isPriceInAgorot || curPrice >= 100)) {
+        curPrice = Number((curPrice / 100).toFixed(4));
+      }
       updateInvestmentAsset(selectedAssetIdForTranche, {
         ticker: formTicker.trim().toUpperCase(),
         security_number: formSecurityNumber.trim() || undefined,
@@ -644,6 +647,22 @@ export const InvestmentsView: React.FC = () => {
     return list;
   }, [investments]);
 
+  // Detect any ILS assets whose current_price appears to be in Agorot (e.g. >= 100 or >= 40x avg buy price)
+  const suspectedAgorotCurrentPrices = useMemo(() => {
+    return investments.filter((asset) => {
+      if (asset.currency !== 'ILS') return false;
+      if (!asset.current_price || asset.current_price <= 0) return false;
+      const validTranches = asset.tranches.filter((t) => t.shares > 0 && t.price_per_share > 0);
+      const totalCost = validTranches.reduce((sum, t) => sum + t.shares * t.price_per_share, 0);
+      const totalShares = validTranches.reduce((sum, t) => sum + t.shares, 0);
+      const avgBuy = totalShares > 0 ? totalCost / totalShares : 0;
+
+      if (asset.current_price >= 100) return true;
+      if (avgBuy > 0 && asset.current_price / avgBuy >= 40) return true;
+      return false;
+    });
+  }, [investments]);
+
   // Group suspected items by asset for clear display in list
   const suspectedAssetsSummary = useMemo(() => {
     const map = new Map<
@@ -652,16 +671,23 @@ export const InvestmentsView: React.FC = () => {
         assetId: string;
         ticker: string;
         name: string;
+        currentPriceSuspected: boolean;
+        currentPrice: number;
+        avgBuyPrice: number;
         tranches: { trancheId: string; trancheIndex: number; date: string; shares: number; price: number }[];
       }
     >();
 
     suspectedAgorotTranches.forEach((item) => {
       if (!map.has(item.assetId)) {
+        const asset = investments.find(a => a.id === item.assetId);
         map.set(item.assetId, {
           assetId: item.assetId,
           ticker: item.assetTicker,
           name: item.assetName,
+          currentPriceSuspected: false,
+          currentPrice: asset?.current_price || 0,
+          avgBuyPrice: 0,
           tranches: [],
         });
       }
@@ -674,14 +700,43 @@ export const InvestmentsView: React.FC = () => {
       });
     });
 
-    return Array.from(map.values());
-  }, [suspectedAgorotTranches]);
+    suspectedAgorotCurrentPrices.forEach((asset) => {
+      const validTranches = asset.tranches.filter((t) => t.shares > 0 && t.price_per_share > 0);
+      const totalCost = validTranches.reduce((sum, t) => sum + t.shares * t.price_per_share, 0);
+      const totalShares = validTranches.reduce((sum, t) => sum + t.shares, 0);
+      const avgBuy = totalShares > 0 ? totalCost / totalShares : 0;
 
-  // One-click batch repair for all suspected Agorot tranches in existing portfolio
+      if (!map.has(asset.id)) {
+        map.set(asset.id, {
+          assetId: asset.id,
+          ticker: asset.ticker,
+          name: asset.name || asset.ticker,
+          currentPriceSuspected: true,
+          currentPrice: asset.current_price,
+          avgBuyPrice: avgBuy,
+          tranches: [],
+        });
+      } else {
+        const entry = map.get(asset.id)!;
+        entry.currentPriceSuspected = true;
+        entry.currentPrice = asset.current_price;
+        entry.avgBuyPrice = avgBuy;
+      }
+    });
+
+    return Array.from(map.values());
+  }, [suspectedAgorotTranches, suspectedAgorotCurrentPrices, investments]);
+
+  // One-click batch repair for all suspected Agorot tranches and current prices in existing portfolio
   const handleAutoFixAgorotTranches = () => {
-    if (suspectedAgorotTranches.length === 0) return;
+    if (suspectedAgorotTranches.length === 0 && suspectedAgorotCurrentPrices.length === 0) return;
     const updated = investments.map((asset) => {
       if (asset.currency !== 'ILS') return asset;
+      const validTranches = asset.tranches.filter((t) => t.shares > 0 && t.price_per_share > 0);
+      const totalCost = validTranches.reduce((sum, t) => sum + t.shares * t.price_per_share, 0);
+      const totalShares = validTranches.reduce((sum, t) => sum + t.shares, 0);
+      const avgBuy = totalShares > 0 ? totalCost / totalShares : 0;
+
       const newTranches = asset.tranches.map((tr) => {
         if (!tr.ignore_agorot_fix && (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40))) {
           const newPrice = Number((tr.price_per_share / 100).toFixed(4));
@@ -696,9 +751,9 @@ export const InvestmentsView: React.FC = () => {
         return tr;
       });
 
-      // Also fix current_price if it was saved in Agorot (>= 100)
+      // Also fix current_price if it was saved in Agorot (>= 100 or >= 40x avgBuy)
       let newCurrentPrice = asset.current_price;
-      if (newCurrentPrice >= 100) {
+      if (newCurrentPrice >= 100 || (avgBuy > 0 && newCurrentPrice / avgBuy >= 40)) {
         newCurrentPrice = Number((newCurrentPrice / 100).toFixed(4));
       }
 
@@ -712,10 +767,22 @@ export const InvestmentsView: React.FC = () => {
     saveInvestments(updated);
     setActionFeedbackMsg(
       isHe
-        ? `תוקנו בהצלחה ${suspectedAgorotTranches.length} פעימות שקליות (חולקו ב-100 לשקלים)!`
-        : `Successfully converted ${suspectedAgorotTranches.length} Shekel tranches to ILS (divided by 100)!`
+        ? `תוקנו בהצלחה שערי השוק והפעימות השקליות (חולקו ב-100 לשקלים)!`
+        : `Successfully converted Shekel prices and tranches to ILS (divided by 100)!`
     );
     setTimeout(() => setActionFeedbackMsg(null), 5000);
+  };
+
+  // Fix a single asset current price
+  const handleFixCurrentPriceOnly = (assetId: string, currentPrice: number) => {
+    const newPrice = Number((currentPrice / 100).toFixed(4));
+    updateInvestmentAsset(assetId, { current_price: newPrice });
+    setActionFeedbackMsg(
+      isHe
+        ? `שער נוכחי חולק ב-100 ועודכן לשקלים (₪${newPrice.toFixed(2)})!`
+        : `Current price divided by 100 to ₪${newPrice.toFixed(2)}!`
+    );
+    setTimeout(() => setActionFeedbackMsg(null), 4000);
   };
 
   // Fix a single tranche
@@ -908,7 +975,41 @@ export const InvestmentsView: React.FC = () => {
       investments.forEach((asset) => {
         const res = resultsMap.get(asset.id);
         if (res && res.success && res.price > 0) {
-          updateInvestmentAsset(asset.id, { current_price: res.price });
+          let newPrice = res.price;
+
+          // If asset is ILS, ensure quote is in Shekels (not Agorot)
+          if (asset.currency === 'ILS' || res.currency === 'ILA' || res.currency === 'ILX') {
+            if (res.currency === 'ILA' || res.currency === 'ILX') {
+              newPrice = newPrice / 100;
+            } else if (
+              asset.current_price > 0 &&
+              newPrice / asset.current_price >= 70 &&
+              newPrice / asset.current_price <= 130
+            ) {
+              // Quote came in ~100x existing current_price which user already fixed/divided
+              newPrice = newPrice / 100;
+            } else if (asset.tranches.length > 0) {
+              const validTranches = asset.tranches.filter(
+                (t) => t.shares > 0 && t.price_per_share > 0
+              );
+              if (validTranches.length > 0) {
+                const totalCost = validTranches.reduce(
+                  (sum, t) => sum + t.shares * t.price_per_share,
+                  0
+                );
+                const totalShares = validTranches.reduce((sum, t) => sum + t.shares, 0);
+                const avgBuy = totalCost / totalShares;
+                if (avgBuy > 0 && newPrice / avgBuy >= 40) {
+                  newPrice = newPrice / 100;
+                }
+              }
+            } else if (newPrice >= 500) {
+              newPrice = newPrice / 100;
+            }
+          }
+
+          newPrice = Number(newPrice.toFixed(4));
+          updateInvestmentAsset(asset.id, { current_price: newPrice });
           updatedCount++;
         }
       });
@@ -1005,9 +1106,29 @@ export const InvestmentsView: React.FC = () => {
 
       const items: InvestmentSnapshotItem[] = investments.map((asset) => {
         const quote = resultsMap.get(asset.id);
-        const { totalShares, totalCost, avgPrice } = calculateAssetMetrics(asset);
-        const priceToUse = quote && quote.success && quote.price > 0 ? quote.price : asset.current_price;
-        const quoteDate = quote?.date || new Date().toISOString().split('T')[0];
+        const quoteDate = quote?.date || '';
+        const validTranches = asset.tranches.filter((t) => t.shares > 0 && t.price_per_share > 0);
+        const totalCost = validTranches.reduce((sum, t) => sum + t.shares * t.price_per_share, 0);
+        const totalShares = validTranches.reduce((sum, t) => sum + t.shares, 0);
+        const avgPrice = totalShares > 0 ? totalCost / totalShares : 0;
+
+        let priceToUse = quote && quote.success && quote.price > 0 ? quote.price : asset.current_price;
+        if (asset.currency === 'ILS' || quote?.currency === 'ILA' || quote?.currency === 'ILX') {
+          if (quote?.currency === 'ILA' || quote?.currency === 'ILX') {
+            priceToUse = priceToUse / 100;
+          } else if (
+            asset.current_price > 0 &&
+            priceToUse / asset.current_price >= 70 &&
+            priceToUse / asset.current_price <= 130
+          ) {
+            priceToUse = priceToUse / 100;
+          } else if (avgPrice > 0 && priceToUse / avgPrice >= 40) {
+            priceToUse = priceToUse / 100;
+          } else if (priceToUse >= 500) {
+            priceToUse = priceToUse / 100;
+          }
+        }
+        priceToUse = Number(priceToUse.toFixed(4));
         if (quoteDate && (!latestDateFound || quoteDate > latestDateFound)) {
           latestDateFound = quoteDate;
         }
@@ -1602,7 +1723,7 @@ export const InvestmentsView: React.FC = () => {
               </div>
             )}
 
-            {suspectedAgorotTranches.length > 0 && (
+            {(suspectedAgorotTranches.length > 0 || suspectedAgorotCurrentPrices.length > 0) && (
               <div
                 style={{
                   backgroundColor: '#FFFBEB',
@@ -1632,8 +1753,8 @@ export const InvestmentsView: React.FC = () => {
                     <div>
                       <strong style={{ fontSize: '0.9375rem', color: '#78350F' }}>
                         {isHe
-                          ? `שים לב: זוהו ${suspectedAgorotTranches.length} פעימות שקליות ב-${suspectedAssetsSummary.length} ניירות ערך שערכן הוזן כנראה באגורות (ללא חלוקה ב-100):`
-                          : `Notice: ${suspectedAgorotTranches.length} tranches in ${suspectedAssetsSummary.length} assets appear to be recorded in Agorot:`}
+                          ? `שים לב: זוהו נתונים שקליים ב-${suspectedAssetsSummary.length} ניירות ערך שמוצגים כנראה באגורות (ללא חלוקה ב-100 לשקלים):`
+                          : `Notice: Agorot prices detected in ${suspectedAssetsSummary.length} assets (not divided by 100):`}
                       </strong>
                     </div>
                   </div>
@@ -1658,7 +1779,7 @@ export const InvestmentsView: React.FC = () => {
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B45309')}
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#D97706')}
-                      title={isHe ? 'חלק את כל הפעימות המוצגות ב-100 לשקלים' : 'Fix all tranches (divide by 100)'}
+                      title={isHe ? 'חלק את כל שערי השוק והפעימות המוצגות ב-100 לשקלים' : 'Fix all prices and tranches (divide by 100)'}
                     >
                       <RotateCcw size={14} color="#FFFFFF" />
                       <span>
@@ -1710,7 +1831,7 @@ export const InvestmentsView: React.FC = () => {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700', color: '#92400E', fontSize: '0.8125rem' }}>
                     <Info size={14} color="#B45309" />
-                    <span>{isHe ? 'רשימת המניות והפעימות שזוהו לבחירתך האם לתקן:' : 'Identified Securities & Tranches (Choose to Fix or Keep):'}</span>
+                    <span>{isHe ? 'רשימת המניות והשערים שזוהו לבחירתך האם לתקן:' : 'Identified Securities & Prices (Choose to Fix or Keep):'}</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1746,12 +1867,66 @@ export const InvestmentsView: React.FC = () => {
                           <span style={{ fontWeight: '600', color: '#1E293B', fontSize: '0.875rem' }}>
                             {assetItem.name}
                           </span>
-                          <span style={{ color: '#64748B', fontSize: '0.78rem' }}>
-                            ({assetItem.tranches.length} {isHe ? 'פעימות' : 'tranches'})
-                          </span>
+                          {assetItem.tranches.length > 0 && (
+                            <span style={{ color: '#64748B', fontSize: '0.78rem' }}>
+                              ({assetItem.tranches.length} {isHe ? 'פעימות' : 'tranches'})
+                            </span>
+                          )}
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          {/* If current_price is suspected in Agorot */}
+                          {assetItem.currentPriceSuspected && (
+                            <div
+                              style={{
+                                backgroundColor: '#FEF2F2',
+                                border: '1px solid #FECACA',
+                                borderRadius: '6px',
+                                padding: '5px 10px',
+                                fontSize: '0.78rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                flexWrap: 'wrap',
+                              }}
+                            >
+                              <span style={{ color: '#991B1B', fontWeight: '700' }}>
+                                {isHe ? 'שער נוכחי:' : 'Current Price:'}
+                              </span>
+                              <span style={{ color: '#DC2626', fontWeight: '700' }}>
+                                ₪{assetItem.currentPrice.toLocaleString('en-US')}
+                              </span>
+                              <span style={{ color: '#B45309' }}>⬅️</span>
+                              <span style={{ color: '#059669', fontWeight: '700' }}>
+                                ₪{(assetItem.currentPrice / 100).toFixed(2)}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => handleFixCurrentPriceOnly(assetItem.assetId, assetItem.currentPrice)}
+                                style={{
+                                  backgroundColor: '#DC2626',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  padding: '2px 8px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: '700',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  marginInlineStart: '4px',
+                                }}
+                                title={isHe ? 'תקן שער נוכחי (חלק ב-100 לשקלים)' : 'Fix current price (divide by 100)'}
+                              >
+                                <Check size={11} color="#FFFFFF" />
+                                <span>{isHe ? 'תקן שער' : 'Fix Price'}</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Tranches */}
                           {assetItem.tranches.map((tr, trIdx) => (
                             <div
                               key={tr.trancheId || trIdx}
@@ -1978,6 +2153,37 @@ export const InvestmentsView: React.FC = () => {
                                   >
                                     <Edit2 size={12} color="var(--primary)" />
                                   </button>
+                                  {asset.currency === 'ILS' &&
+                                    (asset.current_price >= 100 ||
+                                      (metrics.avgPrice > 0 && asset.current_price / metrics.avgPrice >= 40)) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newPrice = Number((asset.current_price / 100).toFixed(4));
+                                          updateInvestmentAsset(asset.id, { current_price: newPrice });
+                                          setActionFeedbackMsg(
+                                            isHe
+                                              ? `שער נוכחי עבור ${asset.ticker} חולק ב-100 ועודכן לשקלים (₪${newPrice.toFixed(2)})!`
+                                              : `Current price for ${asset.ticker} divided by 100 to ₪${newPrice.toFixed(2)}!`
+                                          );
+                                          setTimeout(() => setActionFeedbackMsg(null), 4000);
+                                        }}
+                                        style={{
+                                          fontSize: '0.68rem',
+                                          backgroundColor: '#FEF3C7',
+                                          color: '#B45309',
+                                          border: '1px solid #FCD34D',
+                                          borderRadius: '4px',
+                                          padding: '1px 5px',
+                                          cursor: 'pointer',
+                                          fontWeight: 700,
+                                          marginInlineStart: '4px',
+                                        }}
+                                        title={isHe ? 'שער נוכחי זה נראה באגורות - לחץ לחלוקה ב-100' : 'Price appears to be in Agorot - divide by 100'}
+                                      >
+                                        {isHe ? 'חלק שער ב-100 ⚡' : '➗ 100 ⚡'}
+                                      </button>
+                                    )}
                                 </div>
                               )}
                             </td>
