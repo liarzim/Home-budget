@@ -354,6 +354,41 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
 
   const zeroY = getY(minVal);
 
+  // Visible ticks on X-axis (Smart sampling so labels never collide)
+  const visibleTickIndices = useMemo(() => {
+    const total = chartDataPoints.length;
+    if (total <= 6) {
+      return new Set(chartDataPoints.map((_, i) => i));
+    }
+    const targetTicks = 6;
+    const set = new Set<number>();
+    set.add(0);
+    set.add(total - 1);
+    const step = (total - 1) / (targetTicks - 1);
+    for (let k = 1; k < targetTicks - 1; k++) {
+      set.add(Math.round(k * step));
+    }
+    return set;
+  }, [chartDataPoints]);
+
+  const formatAxisDate = (dateStr?: string, label?: string) => {
+    if (label && (label.includes('מצב נוכחי') || label.includes('Current Live') || label.includes('סה"כ התיק'))) {
+      return isHe ? 'מצב נוכחי' : 'Current';
+    }
+    if (!dateStr) {
+      if (label && label.length > 12) return label.slice(0, 10);
+      return label || '';
+    }
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const yr = parts[0].slice(-2);
+      const mo = parts[1];
+      const da = parts[2];
+      return `${da}/${mo}/${yr}`;
+    }
+    return label || dateStr;
+  };
+
   // Generate SVG path strings
   // A. Cost line (Dashed)
   const costPoints = chartDataPoints.map((p, i) => `${getX(i)},${getY(p.cost)}`);
@@ -700,8 +735,9 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                       y1={y}
                       x2={padding.left + innerWidth}
                       y2={y}
-                      stroke="#E2E8F0"
-                      strokeDasharray="2 2"
+                      stroke={ratio === 1 ? '#CBD5E1' : '#E2E8F0'}
+                      strokeDasharray={ratio === 1 ? undefined : '2 2'}
+                      strokeWidth={ratio === 1 ? 1.5 : 1}
                     />
                     <text
                       x={padding.left - 10}
@@ -796,17 +832,79 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                       strokeWidth="2.5"
                     />
 
-                    {/* X-axis Label */}
-                    <text
-                      x={x}
-                      y={padding.top + innerHeight + 20}
-                      fill={isHovered ? '#0F172A' : '#64748B'}
-                      fontSize={isHovered ? '11' : '10'}
-                      fontWeight={isHovered ? '800' : '600'}
-                      textAnchor="middle"
-                    >
-                      {p.label}
-                    </text>
+                    {/* X-axis Label & Tick Mark */}
+                    {(() => {
+                      const isTickVisible = visibleTickIndices.has(idx);
+                      const axisLabel = formatAxisDate(p.date, p.label);
+                      const isFirst = idx === 0;
+                      const isLast = idx === chartDataPoints.length - 1;
+                      const textAnchor = isFirst ? 'start' : isLast ? 'end' : 'middle';
+                      const tickX = isFirst ? x + 2 : isLast ? x - 2 : x;
+
+                      if (isTickVisible) {
+                        return (
+                          <g key={`tick-${p.id}`}>
+                            {/* Tick line mark */}
+                            <line
+                              x1={x}
+                              y1={padding.top + innerHeight}
+                              x2={x}
+                              y2={padding.top + innerHeight + 5}
+                              stroke="#CBD5E1"
+                              strokeWidth="1.5"
+                            />
+                            {/* Milestone Text */}
+                            <text
+                              x={tickX}
+                              y={padding.top + innerHeight + 19}
+                              fill={isHovered ? '#0F172A' : '#64748B'}
+                              fontSize={isHovered ? '11' : '10'}
+                              fontWeight={isHovered ? '800' : '600'}
+                              textAnchor={textAnchor}
+                            >
+                              {axisLabel}
+                            </text>
+                          </g>
+                        );
+                      }
+
+                      // If point is not a milestone tick, but is hovered: render dynamic hover pill tag
+                      if (isHovered) {
+                        const pillW = Math.max(56, axisLabel.length * 7.5 + 12);
+                        return (
+                          <g key={`hover-tick-${p.id}`}>
+                            <line
+                              x1={x}
+                              y1={padding.top + innerHeight}
+                              x2={x}
+                              y2={padding.top + innerHeight + 6}
+                              stroke="#1E293B"
+                              strokeWidth="2"
+                            />
+                            <rect
+                              x={x - pillW / 2}
+                              y={padding.top + innerHeight + 7}
+                              width={pillW}
+                              height={19}
+                              rx={4}
+                              fill="#1E293B"
+                            />
+                            <text
+                              x={x}
+                              y={padding.top + innerHeight + 20}
+                              fill="#FFFFFF"
+                              fontSize="10"
+                              fontWeight="700"
+                              textAnchor="middle"
+                            >
+                              {axisLabel}
+                            </text>
+                          </g>
+                        );
+                      }
+
+                      return null;
+                    })()}
                   </g>
                 );
               })}
@@ -830,10 +928,17 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                 <div style={chartStyles.tooltipTitle}>
                   <Calendar size={13} color="#2563EB" />
                   <span>
-                    {chartDataPoints[hoveredPointIndex].label}{' '}
-                    {chartDataPoints[hoveredPointIndex].date
-                      ? `(${formatDate(chartDataPoints[hoveredPointIndex].date)})`
-                      : ''}
+                    {(() => {
+                      const pt = chartDataPoints[hoveredPointIndex];
+                      const formattedD = pt.date ? formatDate(pt.date) : '';
+                      if (pt.label.includes('מצב נוכחי') || pt.label.includes('Current Live') || pt.label.includes('סה"כ התיק')) {
+                        return `${pt.label} (${formattedD})`;
+                      }
+                      if (formattedD && pt.label.includes(formattedD)) {
+                        return pt.label;
+                      }
+                      return formattedD ? `${pt.label} (${formattedD})` : pt.label;
+                    })()}
                   </span>
                 </div>
                 <div style={chartStyles.tooltipGrid}>
