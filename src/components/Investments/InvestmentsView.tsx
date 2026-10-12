@@ -31,7 +31,7 @@ import {
   ExternalLink,
   RotateCcw,
 } from 'lucide-react';
-import { fetchAssetQuote, fetchBatchAssetQuotes, MarketQuoteResult } from '../../lib/quotesService';
+import { fetchAssetQuote, fetchBatchAssetQuotes, fetchUsdIlsRate, MarketQuoteResult } from '../../lib/quotesService';
 import { formatDate, normalizeToISODate } from '../../lib/i18n';
 import { IsraeliDateInput } from '../common/IsraeliDateInput';
 import { InvestmentsCharts } from './InvestmentsCharts';
@@ -72,7 +72,14 @@ export const InvestmentsView: React.FC = () => {
 
   // Currency view toggle: 'original' | 'ILS' | 'USD'
   const [currencyMode, setCurrencyMode] = useState<'original' | 'ILS' | 'USD'>('original');
-  const [usdRate, setUsdRate] = useState<number>(3.70); // 1 USD = 3.70 ILS
+  const [usdRate, setUsdRate] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('investments_usd_rate');
+      return saved ? parseFloat(saved) || 3.70 : 3.70;
+    } catch {
+      return 3.70;
+    }
+  }); // 1 USD = X ILS
   const [isRateEditing, setIsRateEditing] = useState<boolean>(false);
 
   // Active view tab: 'portfolio' (תיק שוטף) | 'snapshots' (סגירות תקופה ודוחות) | 'charts' (גרפים וניתוח תשואות)
@@ -644,13 +651,20 @@ export const InvestmentsView: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // 1. Live Quotes Refresh Handler (main screen)
+  // 1. Live Quotes & USD Exchange Rate Refresh Handler (main screen)
   const handleRefreshLiveQuotes = async () => {
-    if (investments.length === 0) return;
     setIsRefreshingQuotes(true);
     setQuotesRefreshMessage(null);
     try {
-      const resultsMap = await fetchBatchAssetQuotes(investments, { periodType: 'current' });
+      // 1. Fetch live USD/ILS exchange rate and asset quotes concurrently
+      const fxPromise = fetchUsdIlsRate();
+      const quotesPromise =
+        investments.length > 0
+          ? fetchBatchAssetQuotes(investments, { periodType: 'current' })
+          : Promise.resolve(new Map<string, MarketQuoteResult>());
+
+      const [fxRes, resultsMap] = await Promise.all([fxPromise, quotesPromise]);
+
       let updatedCount = 0;
       investments.forEach((asset) => {
         const res = resultsMap.get(asset.id);
@@ -659,17 +673,49 @@ export const InvestmentsView: React.FC = () => {
           updatedCount++;
         }
       });
-      setQuotesRefreshMessage(
-        isHe
-          ? `✓ עודכנו בהצלחה ${updatedCount} ניירות לפי שערי שוק עדכניים מאתרי הבורסה!`
-          : `✓ Successfully updated ${updatedCount} assets from market sources!`
-      );
+
+      let rateUpdated = false;
+      if (fxRes && fxRes.success && fxRes.rate > 0) {
+        setUsdRate(fxRes.rate);
+        try {
+          localStorage.setItem('investments_usd_rate', fxRes.rate.toString());
+        } catch (e) {
+          console.error(e);
+        }
+        rateUpdated = true;
+      }
+
+      // Build informative feedback message
+      const parts: string[] = [];
+      if (rateUpdated) {
+        parts.push(
+          isHe
+            ? `שער הדולר עודכן ל-₪${fxRes.rate.toFixed(2)}`
+            : `USD rate updated to ₪${fxRes.rate.toFixed(2)}`
+        );
+      }
+      if (updatedCount > 0) {
+        parts.push(
+          isHe
+            ? `עודכנו ${updatedCount} ניירות ערך משערי שוק`
+            : `${updatedCount} assets updated`
+        );
+      }
+
+      const finalMsg =
+        parts.length > 0
+          ? `✓ ${parts.join(' | ')}`
+          : isHe
+          ? 'שערי השוק ושער הדולר מעודכנים.'
+          : 'Market quotes and USD rate are up to date.';
+
+      setQuotesRefreshMessage(finalMsg);
       setTimeout(() => setQuotesRefreshMessage(null), 6000);
     } catch (e) {
       console.error(e);
       setQuotesRefreshMessage(
         isHe
-          ? 'שגיאה במשיכת נתונים מהאתר. אנא נסה שוב מאוחר יותר.'
+          ? 'שגיאה ברענון שערי שוק ושער הדולר. אנא נסה שוב מאוחר יותר.'
           : 'Failed to fetch live quotes. Please try again.'
       );
       setTimeout(() => setQuotesRefreshMessage(null), 5000);
@@ -1035,7 +1081,15 @@ export const InvestmentsView: React.FC = () => {
                 type="number"
                 step="0.01"
                 value={usdRate}
-                onChange={(e) => setUsdRate(parseFloat(e.target.value) || 3.7)}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 3.7;
+                  setUsdRate(val);
+                  try {
+                    localStorage.setItem('investments_usd_rate', val.toString());
+                  } catch (err) {
+                    console.error(err);
+                  }
+                }}
                 onBlur={() => setIsRateEditing(false)}
                 autoFocus
                 style={styles.usdRateInput}

@@ -188,3 +188,53 @@ export async function fetchBatchAssetQuotes(
 
   return resultsMap;
 }
+
+/**
+ * Fetch current USD/ILS exchange rate from reliable sources:
+ * 1. open.er-api.com (Free, real-time FX, CORS enabled)
+ * 2. api.frankfurter.app (European Central Bank data)
+ * 3. Yahoo Finance (ILS=X)
+ * 4. Fallback default
+ */
+export async function fetchUsdIlsRate(): Promise<{ rate: number; source: string; success: boolean }> {
+  // Source 1: open.er-api.com
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    if (res.ok) {
+      const data = await res.json();
+      const ils = data?.rates?.ILS;
+      if (typeof ils === 'number' && ils > 2.0 && ils < 6.0) {
+        return { rate: Number(ils.toFixed(4)), source: 'Exchange Rate API', success: true };
+      }
+    }
+  } catch (e) {
+    console.warn('open.er-api failed:', e);
+  }
+
+  // Source 2: api.frankfurter.app
+  try {
+    const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=ILS');
+    if (res.ok) {
+      const data = await res.json();
+      const ils = data?.rates?.ILS;
+      if (typeof ils === 'number' && ils > 2.0 && ils < 6.0) {
+        return { rate: Number(ils.toFixed(4)), source: 'Frankfurter (ECB)', success: true };
+      }
+    }
+  } catch (e) {
+    console.warn('frankfurter failed:', e);
+  }
+
+  // Source 3: Yahoo Finance ILS=X
+  try {
+    const quote = await fetchAssetQuote('ILS=X');
+    if (quote.success && quote.price > 2.0 && quote.price < 6.0) {
+      return { rate: Number(quote.price.toFixed(4)), source: 'Yahoo Finance (ILS=X)', success: true };
+    }
+  } catch (e) {
+    console.warn('Yahoo ILS=X failed:', e);
+  }
+
+  return { rate: 3.70, source: 'Default Fallback', success: false };
+}
+
