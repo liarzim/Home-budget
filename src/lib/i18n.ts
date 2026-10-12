@@ -493,3 +493,14 @@ export function isDuplicateTranche(
   return false;
 }
 
+/**
+ * Sorts investment tranches descending by purchase date (newest/most recent first, earliest last).
+ */
+export function sortTranchesByDateDesc<T extends { date: string }>(tranches: T[]): T[] {
+  if (!tranches || !Array.isArray(tranches)) return [];
+  return [...tranches].sort((a, b) => {
+    const d1 = normalizeToISODate(a.date);
+    const d2 = normalizeToISODate(b.date);
+    return d2.localeCompare(d1);
+  });
+}

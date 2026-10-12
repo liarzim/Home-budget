@@ -30,7 +30,7 @@ import {
   mockInvestments,
 } from '../lib/mockData';
 
-import { Language } from '../lib/i18n';
+import { Language, sortTranchesByDateDesc } from '../lib/i18n';
 
 // UUID generator helper ensuring 100% valid UUID format for PostgreSQL UUID columns
 export const generateUUID = (): string => {
@@ -198,11 +198,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             )
             .map((a: any) => ({
               ...a,
-              tranches: (a.tranches || []).map((t: any, idx: number) => ({
-                ...t,
-                id: t.id ? String(t.id) : `tr-${a.id}-${idx}-${Date.now()}`,
-                date: t.date || new Date().toISOString().split('T')[0],
-              })),
+              tranches: sortTranchesByDateDesc(
+                (a.tranches || []).map((t: any, idx: number) => ({
+                  ...t,
+                  id: t.id ? String(t.id) : `tr-${a.id}-${idx}-${Date.now()}`,
+                  date: t.date || new Date().toISOString().split('T')[0],
+                }))
+              ),
             }));
 
           localStorage.setItem('household_investments_data', JSON.stringify(realAssets));
@@ -217,9 +219,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const saveInvestments = (newList: InvestmentAsset[]) => {
-    setInvestments(newList);
+    const sortedList = newList.map((a) => ({
+      ...a,
+      tranches: a.tranches ? sortTranchesByDateDesc(a.tranches) : [],
+    }));
+    setInvestments(sortedList);
     try {
-      localStorage.setItem('household_investments_data', JSON.stringify(newList));
+      localStorage.setItem('household_investments_data', JSON.stringify(sortedList));
     } catch (e) {
       console.error(e);
     }
@@ -285,7 +291,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ...a,
             current_price:
               newCurrentPrice !== undefined && newCurrentPrice > 0 ? newCurrentPrice : a.current_price,
-            tranches: [...(a.tranches || []), newTranche],
+            tranches: sortTranchesByDateDesc([...(a.tranches || []), newTranche]),
             updated_at: new Date().toISOString(),
           };
         }
@@ -313,8 +319,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const list = a.tranches || [];
           const updatedTranches = list.map((t, idx) => {
             const isMatch =
-              (trancheIndex !== undefined && trancheIndex >= 0 && idx === trancheIndex) ||
               (t.id && (t.id === trancheId || String(t.id) === String(trancheId))) ||
+              (trancheIndex !== undefined && trancheIndex >= 0 && idx === trancheIndex) ||
               String(idx) === String(trancheId);
 
             if (isMatch) {
@@ -331,7 +337,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ...a,
             current_price:
               newCurrentPrice !== undefined && newCurrentPrice > 0 ? newCurrentPrice : a.current_price,
-            tranches: updatedTranches,
+            tranches: sortTranchesByDateDesc(updatedTranches),
             updated_at: new Date().toISOString(),
           };
         }
@@ -353,13 +359,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const list = a.tranches || [];
           return {
             ...a,
-            tranches: list.filter((t, idx) => {
+            tranches: sortTranchesByDateDesc(list.filter((t, idx) => {
               const isMatch =
-                (trancheIndex !== undefined && trancheIndex >= 0 && idx === trancheIndex) ||
                 (t.id && (t.id === trancheId || String(t.id) === String(trancheId))) ||
+                (trancheIndex !== undefined && trancheIndex >= 0 && idx === trancheIndex) ||
                 String(idx) === String(trancheId);
               return !isMatch;
-            }),
+            })),
             updated_at: new Date().toISOString(),
           };
         }

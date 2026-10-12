@@ -33,7 +33,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { fetchAssetQuote, fetchBatchAssetQuotes, fetchUsdIlsRate, MarketQuoteResult } from '../../lib/quotesService';
-import { formatDate, normalizeToISODate, isDuplicateTranche } from '../../lib/i18n';
+import { formatDate, normalizeToISODate, isDuplicateTranche, sortTranchesByDateDesc } from '../../lib/i18n';
 import { IsraeliDateInput } from '../common/IsraeliDateInput';
 import { InvestmentsCharts } from './InvestmentsCharts';
 import { InvestmentsSnapshotsTree } from './InvestmentsSnapshotsTree';
@@ -2533,7 +2533,7 @@ export const InvestmentsView: React.FC = () => {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {asset.tranches.map((tr, idx) => {
+                                      {sortTranchesByDateDesc(asset.tranches).map((tr, idx) => {
                                         const trCost = tr.shares * tr.price_per_share;
                                         const trVal = tr.shares * asset.current_price;
                                         const trProfit = trVal - trCost;
@@ -2547,7 +2547,7 @@ export const InvestmentsView: React.FC = () => {
                                               <span style={styles.trancheIndexPill}>{idx + 1}</span>
                                             </td>
                                             <td style={styles.trancheTd}>
-                                              {editingDateTrancheKey === `${asset.id}_${idx}` ? (
+                                              {editingDateTrancheKey === `${asset.id}_${tr.id || idx}` ? (
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                                   <IsraeliDateInput
                                                     value={inlineDateInput}
@@ -2629,7 +2629,7 @@ export const InvestmentsView: React.FC = () => {
                                                       gap: '2px',
                                                     }}
                                                     onClick={() => {
-                                                      setEditingDateTrancheKey(`${asset.id}_${idx}`);
+                                                      setEditingDateTrancheKey(`${asset.id}_${tr.id || idx}`);
                                                       setInlineDateInput(formatDate(tr.date));
                                                     }}
                                                     title={isHe ? 'עריכה מהירה של תאריך הרכישה' : 'Quick edit date'}

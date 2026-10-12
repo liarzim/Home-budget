@@ -17,7 +17,7 @@ import {
   Info,
 } from 'lucide-react';
 import { InvestmentAsset, InvestmentTranche, SecurityType } from '../../lib/types';
-import { formatDate, normalizeToISODate, isDuplicateTranche } from '../../lib/i18n';
+import { formatDate, normalizeToISODate, isDuplicateTranche, sortTranchesByDateDesc } from '../../lib/i18n';
 
 interface ParsedTrancheRow {
   id: string;
@@ -575,7 +575,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
           currency: firstRow.currency || 'USD',
           current_price: latestPrice || firstRow.price || 100,
           asset_type: (firstRow.currency === 'USD' ? 'foreign_security' : 'stock') as SecurityType,
-          tranches: uniqueTranches,
+          tranches: sortTranchesByDateDesc(uniqueTranches),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
@@ -604,7 +604,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
               ...asset,
               current_price:
                 asset.current_price && asset.current_price > 0 ? asset.current_price : latestPrice,
-              tranches: [...existing, ...uniqueToAdd],
+              tranches: sortTranchesByDateDesc([...existing, ...uniqueToAdd]),
               updated_at: new Date().toISOString(),
             };
           }
