@@ -27,8 +27,10 @@ interface ParsedTrancheRow {
   securityName: string;
   symbol: string;
   shares: number;
-  price: number;
+  rawPrice: number; // Raw price from file (Agorot for ILS securities)
+  price: number; // Effective price per share in currency units (ILS if converted)
   currency: 'USD' | 'ILS';
+  isAgorot: boolean; // Whether raw price is in Agorot and divided by 100
   fee: number;
   totalCost: number;
   notes: string;
@@ -223,11 +225,11 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
       const shares = Math.abs(parseFloat(rawShares) || 0);
 
       // Price
-      const rawPrice = priceKey !== undefined ? String(row[priceKey] || '').replace(/,/g, '').replace(/[$₪]/g, '').trim() : '0';
-      const price = Math.abs(parseFloat(rawPrice) || 0);
+      const rawPriceStr = priceKey !== undefined ? String(row[priceKey] || '').replace(/,/g, '').replace(/[$₪]/g, '').trim() : '0';
+      const rawPrice = Math.abs(parseFloat(rawPriceStr) || 0);
 
       // Skip row if shares and price are zero
-      if (shares <= 0 && price <= 0) {
+      if (shares <= 0 && rawPrice <= 0) {
         return;
       }
 
@@ -245,10 +247,18 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
           currency = matched.currency;
         } else if (name.toUpperCase().includes('US') || symbol.toUpperCase().endsWith('US')) {
           currency = 'USD';
+        } else if (/^\d{6,8}$/.test(symbol)) {
+          // Israeli 6-8 digit TASE security number (e.g. 1159250)
+          currency = 'ILS';
         } else {
           currency = 'USD';
         }
       }
+
+      // In Israeli stocks (TASE / Shekel securities), prices in broker reports are quoted in Agorot (100 Agorot = 1 ILS)
+      // Therefore, if currency is ILS, default isAgorot = true, meaning price in ILS = rawPrice / 100
+      const isAgorot = currency === 'ILS';
+      const price = isAgorot ? rawPrice / 100 : rawPrice;
 
       // Fees
       const feeVal = feeKey ? parseFloat(String(row[feeKey] || '0').replace(/,/g, '').replace(/[$₪]/g, '')) || 0 : 0;
@@ -261,6 +271,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
       // Notes
       const notesParts: string[] = [];
       if (action) notesParts.push(`פעולה: ${action}`);
+      if (isAgorot) notesParts.push(`שער מקורי: ${rawPrice} אג' (חולק ב-100)`);
       if (row['יתרה שקלית']) notesParts.push(`יתרה שקלית: ${row['יתרה שקלית']}`);
 
       // Target asset matching
@@ -282,8 +293,10 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
         securityName: name,
         symbol: symbol.toUpperCase(),
         shares,
+        rawPrice,
         price,
         currency,
+        isAgorot,
         fee: totalFee,
         totalCost,
         notes: notesParts.join(' | '),
@@ -400,6 +413,47 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
 
   const handleDeselectAll = () => {
     setParsedRows((prev) => prev.map((r) => ({ ...r, selected: false })));
+  };
+
+  // Toggle Agorot (➗ 100) for a single row
+  const toggleRowAgorot = (rowId: string) => {
+    setParsedRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const newIsAgorot = !r.isAgorot;
+        const newPrice = newIsAgorot ? r.rawPrice / 100 : r.rawPrice;
+        const newTotalCost = r.shares * newPrice;
+        const assignedAsset = investments.find((a) => a.id === r.targetAssetId);
+        const isDup = checkIfDuplicate(assignedAsset, r.date, r.shares, newPrice);
+        return {
+          ...r,
+          isAgorot: newIsAgorot,
+          price: newPrice,
+          totalCost: newTotalCost,
+          isDuplicate: isDup,
+        };
+      })
+    );
+  };
+
+  // Toggle all ILS rows between Agorot (➗ 100) and Shekels
+  const toggleAllIlsAgorot = (agVal: boolean) => {
+    setParsedRows((prev) =>
+      prev.map((r) => {
+        if (r.currency !== 'ILS') return r;
+        const newPrice = agVal ? r.rawPrice / 100 : r.rawPrice;
+        const newTotalCost = r.shares * newPrice;
+        const assignedAsset = investments.find((a) => a.id === r.targetAssetId);
+        const isDup = checkIfDuplicate(assignedAsset, r.date, r.shares, newPrice);
+        return {
+          ...r,
+          isAgorot: agVal,
+          price: newPrice,
+          totalCost: newTotalCost,
+          isDuplicate: isDup,
+        };
+      })
+    );
   };
 
   // Download Sample Template
@@ -533,6 +587,8 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
   const distinctSymbols = Array.from(new Set(parsedRows.map((r) => r.symbol)));
   const totalSelectedCount = parsedRows.filter((r) => r.selected).length;
   const duplicatesCount = parsedRows.filter((r) => r.isDuplicate).length;
+  const hasIlsRows = parsedRows.some((r) => r.currency === 'ILS');
+  const allIlsInAgorot = hasIlsRows && parsedRows.filter((r) => r.currency === 'ILS').every((r) => r.isAgorot);
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
@@ -824,6 +880,33 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
                 </span>
               </div>
               <div style={styles.previewToolbarRight}>
+                {hasIlsRows && (
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.miniToolBtn,
+                      color: allIlsInAgorot ? '#2563EB' : '#475569',
+                      borderColor: allIlsInAgorot ? '#93C5FD' : '#CBD5E1',
+                      backgroundColor: allIlsInAgorot ? '#EFF6FF' : '#FFFFFF',
+                      fontWeight: 600,
+                    }}
+                    onClick={() => toggleAllIlsAgorot(!allIlsInAgorot)}
+                    title={
+                      isHe
+                        ? 'החלף לכל השורות השקליות בין שער באגורות (חלוקה ב-100 לשקלים) לשער ישיר בשקלים'
+                        : 'Toggle all ILS rows between Agorot (➗ 100 to ILS) and direct Shekels'
+                    }
+                  >
+                    💱{' '}
+                    {isHe
+                      ? allIlsInAgorot
+                        ? 'שערים שקליים: באגורות (חולקו ב-100 ✓)'
+                        : 'שערים שקליים: בשקלים (ללא חלוקה)'
+                      : allIlsInAgorot
+                      ? 'ILS: in Agorot (➗ 100 ✓)'
+                      : 'ILS: in Shekels'}
+                  </button>
+                )}
                 <button type="button" style={styles.miniToolBtn} onClick={handleSelectAll}>
                   {isHe ? 'בחר הכל' : 'Select All'}
                 </button>
@@ -905,10 +988,36 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
                           {r.shares}
                         </td>
                         <td style={{ ...styles.previewTd, textAlign: 'right' }}>
-                          <span dir="ltr" style={{ direction: 'ltr', display: 'inline-block', fontWeight: '600' }}>
-                            {currSymbol}
-                            {r.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                            <span dir="ltr" style={{ direction: 'ltr', display: 'inline-block', fontWeight: '700', color: '#0F172A' }}>
+                              {currSymbol}
+                              {r.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                            </span>
+                            {r.currency === 'ILS' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleRowAgorot(r.id);
+                                }}
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  border: '1px solid',
+                                  borderColor: r.isAgorot ? '#93C5FD' : '#CBD5E1',
+                                  backgroundColor: r.isAgorot ? '#EFF6FF' : '#F8FAFC',
+                                  color: r.isAgorot ? '#1D4ED8' : '#475569',
+                                  cursor: 'pointer',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={isHe ? 'לחץ להחלפה בין שער באגורות (חלוקה ב-100) לשער ישיר בשקלים' : 'Toggle Agorot (➗ 100) / Shekels'}
+                              >
+                                {r.isAgorot ? `${r.rawPrice} אג' (➗ 100)` : 'שער ישיר בש"ח'}
+                              </button>
+                            )}
+                          </div>
                         </td>
                         <td style={{ ...styles.previewTd, textAlign: 'center', color: '#64748B' }}>
                           <span dir="ltr" style={{ direction: 'ltr', display: 'inline-block' }}>

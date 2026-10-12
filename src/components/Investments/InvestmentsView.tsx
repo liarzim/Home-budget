@@ -125,6 +125,12 @@ export const InvestmentsView: React.FC = () => {
   const [formTotalCost, setFormTotalCost] = useState<string>(() => initialModalDraft?.formTotalCost || '');
   const [formFee, setFormFee] = useState<string>(() => initialModalDraft?.formFee || '0');
   const [formNotes, setFormNotes] = useState<string>(() => initialModalDraft?.formNotes || '');
+  const [isPriceInAgorot, setIsPriceInAgorot] = useState<boolean>(() => {
+    if (initialModalDraft?.isPriceInAgorot !== undefined) {
+      return Boolean(initialModalDraft.isPriceInAgorot);
+    }
+    return (initialModalDraft?.formCurrency || 'USD') === 'ILS';
+  });
 
   // Inline Quick Price Edit
   const [editingPriceAssetId, setEditingPriceAssetId] = useState<string | null>(null);
@@ -315,6 +321,7 @@ export const InvestmentsView: React.FC = () => {
             formTotalCost,
             formFee,
             formNotes,
+            isPriceInAgorot,
           })
         );
       } else {
@@ -341,6 +348,7 @@ export const InvestmentsView: React.FC = () => {
     formTotalCost,
     formFee,
     formNotes,
+    isPriceInAgorot,
   ]);
 
   const handleSharesChange = (val: string) => {
@@ -348,7 +356,8 @@ export const InvestmentsView: React.FC = () => {
     const s = parseFloat(val);
     const p = parseFloat(formPricePerShare);
     if (s > 0 && p >= 0) {
-      setFormTotalCost((s * p).toFixed(2));
+      const effectiveUnitPrice = (formCurrency === 'ILS' && isPriceInAgorot) ? p / 100 : p;
+      setFormTotalCost((s * effectiveUnitPrice).toFixed(2));
     }
   };
 
@@ -357,7 +366,8 @@ export const InvestmentsView: React.FC = () => {
     const s = parseFloat(formShares);
     const p = parseFloat(val);
     if (s > 0 && p >= 0) {
-      setFormTotalCost((s * p).toFixed(2));
+      const effectiveUnitPrice = (formCurrency === 'ILS' && isPriceInAgorot) ? p / 100 : p;
+      setFormTotalCost((s * effectiveUnitPrice).toFixed(2));
     }
   };
 
@@ -367,7 +377,25 @@ export const InvestmentsView: React.FC = () => {
     const total = parseFloat(val);
     if (s > 0 && total >= 0) {
       const unitPrice = total / s;
-      setFormPricePerShare(unitPrice.toFixed(2));
+      if (formCurrency === 'ILS' && isPriceInAgorot) {
+        setFormPricePerShare((unitPrice * 100).toFixed(2));
+      } else {
+        setFormPricePerShare(unitPrice.toFixed(2));
+      }
+    }
+  };
+
+  const handleTogglePriceInAgorot = (checked: boolean) => {
+    setIsPriceInAgorot(checked);
+    const currentPrice = parseFloat(formPricePerShare);
+    if (!isNaN(currentPrice) && currentPrice > 0) {
+      if (checked) {
+        // From Shekels to Agorot: multiply by 100 (e.g. 19.40 -> 1940)
+        setFormPricePerShare((currentPrice * 100).toFixed(2));
+      } else {
+        // From Agorot to Shekels: divide by 100 (e.g. 1940 -> 19.40)
+        setFormPricePerShare((currentPrice / 100).toFixed(2));
+      }
     }
   };
 
@@ -382,6 +410,7 @@ export const InvestmentsView: React.FC = () => {
       setFormCurrency(asset.currency);
       setFormCurrentPrice(asset.current_price.toString());
       setFormAssetType(asset.asset_type);
+      setIsPriceInAgorot(asset.currency === 'ILS');
     } else {
       setSelectedAssetIdForTranche('');
       setFormTicker('');
@@ -390,6 +419,7 @@ export const InvestmentsView: React.FC = () => {
       setFormCurrency('USD');
       setFormAssetType('stock');
       setFormCurrentPrice('');
+      setIsPriceInAgorot(false);
     }
     setFormDate(formatDate(new Date()));
     setFormShares('');
@@ -432,9 +462,14 @@ export const InvestmentsView: React.FC = () => {
     // Set formDate in user-friendly DD/MM/YYYY
     setFormDate(tranche.date ? formatDate(tranche.date) : formatDate(new Date()));
     setFormShares(tranche.shares.toString());
+
+    // Check if tranche was recorded prior to division (e.g. price_per_share >= 100 for ILS)
+    const likelyAgorot = asset.currency === 'ILS' && tranche.price_per_share >= 100;
+    setIsPriceInAgorot(likelyAgorot);
     setFormPricePerShare(tranche.price_per_share.toString());
-    const cost = tranche.shares * tranche.price_per_share;
-    setFormTotalCost(cost.toString());
+    const effectiveUnitPrice = likelyAgorot ? tranche.price_per_share / 100 : tranche.price_per_share;
+    const cost = tranche.shares * effectiveUnitPrice;
+    setFormTotalCost(cost.toFixed(2));
     setFormFee((tranche.fee || 0).toString());
     setFormNotes(tranche.notes || '');
     setIsModalOpen(true);
@@ -465,8 +500,13 @@ export const InvestmentsView: React.FC = () => {
     const sharesNum = parseFloat(formShares);
     const priceNum = parseFloat(formPricePerShare);
     const feeNum = parseFloat(formFee) || 0;
-    const currentPriceNum = parseFloat(formCurrentPrice) || priceNum;
-    const totalCostNum = parseFloat(formTotalCost) || (sharesNum * priceNum);
+    const effectivePrice = (formCurrency === 'ILS' && isPriceInAgorot) ? priceNum / 100 : priceNum;
+    const curPriceInput = parseFloat(formCurrentPrice);
+    let currentPriceNum = !isNaN(curPriceInput) && curPriceInput > 0 ? curPriceInput : effectivePrice;
+    if (formCurrency === 'ILS' && isPriceInAgorot && currentPriceNum >= 100) {
+      currentPriceNum = Number((currentPriceNum / 100).toFixed(4));
+    }
+    const totalCostNum = parseFloat(formTotalCost) || (sharesNum * effectivePrice);
 
     if (isNaN(sharesNum) || sharesNum <= 0 || isNaN(priceNum) || priceNum < 0) {
       alert(isHe ? 'אנא הזן כמות מניות ומחיר רכישה תקינים' : 'Please enter valid shares and price');
@@ -495,10 +535,10 @@ export const InvestmentsView: React.FC = () => {
             id: `tr-${Date.now()}`,
             date: cleanDate,
             shares: sharesNum,
-            price_per_share: priceNum,
+            price_per_share: effectivePrice,
             total_cost: totalCostNum,
             fee: feeNum,
-            notes: formNotes.trim() || undefined,
+            notes: formNotes.trim() || (formCurrency === 'ILS' && isPriceInAgorot ? `שער מקורי: ${priceNum} אג'` : undefined),
           },
         ],
       });
@@ -515,10 +555,10 @@ export const InvestmentsView: React.FC = () => {
         {
           date: cleanDate,
           shares: sharesNum,
-          price_per_share: priceNum,
+          price_per_share: effectivePrice,
           total_cost: totalCostNum,
           fee: feeNum,
-          notes: formNotes.trim() || undefined,
+          notes: formNotes.trim() || (formCurrency === 'ILS' && isPriceInAgorot ? `שער מקורי: ${priceNum} אג'` : undefined),
         },
         !isNaN(currentPriceNum) && currentPriceNum > 0 ? currentPriceNum : undefined
       );
@@ -543,7 +583,7 @@ export const InvestmentsView: React.FC = () => {
         {
           date: cleanDate,
           shares: sharesNum,
-          price_per_share: priceNum,
+          price_per_share: effectivePrice,
           total_cost: totalCostNum,
           fee: feeNum,
           notes: formNotes.trim() || undefined,
@@ -566,6 +606,68 @@ export const InvestmentsView: React.FC = () => {
     }
 
     setIsModalOpen(false);
+  };
+
+  // Detect any ILS tranches that were saved in Agorot (e.g. price_per_share >= 100 or 40x current market price)
+  const suspectedAgorotTranches = useMemo(() => {
+    const list: { assetId: string; assetTicker: string; trancheId: string; trancheIndex: number; price: number; shares: number }[] = [];
+    investments.forEach((asset) => {
+      if (asset.currency === 'ILS') {
+        asset.tranches.forEach((tr, idx) => {
+          if (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40)) {
+            list.push({
+              assetId: asset.id,
+              assetTicker: asset.ticker,
+              trancheId: tr.id ? String(tr.id) : String(idx),
+              trancheIndex: idx,
+              price: tr.price_per_share,
+              shares: tr.shares,
+            });
+          }
+        });
+      }
+    });
+    return list;
+  }, [investments]);
+
+  // One-click batch repair for all suspected Agorot tranches in existing portfolio
+  const handleAutoFixAgorotTranches = () => {
+    if (suspectedAgorotTranches.length === 0) return;
+    const updated = investments.map((asset) => {
+      if (asset.currency !== 'ILS') return asset;
+      const newTranches = asset.tranches.map((tr) => {
+        if (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40)) {
+          const newPrice = Number((tr.price_per_share / 100).toFixed(4));
+          return {
+            ...tr,
+            price_per_share: newPrice,
+            total_cost: Number((tr.shares * newPrice).toFixed(2)),
+            notes: tr.notes ? `${tr.notes} | תוקן מאגורות (${tr.price_per_share})` : `שער מקורי: ${tr.price_per_share} אגורות`,
+          };
+        }
+        return tr;
+      });
+
+      // Also fix current_price if it was saved in Agorot (>= 100)
+      let newCurrentPrice = asset.current_price;
+      if (newCurrentPrice >= 100) {
+        newCurrentPrice = Number((newCurrentPrice / 100).toFixed(4));
+      }
+
+      return {
+        ...asset,
+        current_price: newCurrentPrice,
+        tranches: newTranches,
+      };
+    });
+
+    saveInvestments(updated);
+    setActionFeedbackMsg(
+      isHe
+        ? `תוקנו בהצלחה ${suspectedAgorotTranches.length} פעימות שקליות (חולקו ב-100 לשקלים)!`
+        : `Successfully converted ${suspectedAgorotTranches.length} Shekel tranches to ILS (divided by 100)!`
+    );
+    setTimeout(() => setActionFeedbackMsg(null), 5000);
   };
 
   const handleSaveInlinePrice = (assetId: string) => {
@@ -1363,6 +1465,56 @@ export const InvestmentsView: React.FC = () => {
               </div>
             )}
 
+            {suspectedAgorotTranches.length > 0 && (
+              <div
+                style={{
+                  backgroundColor: '#FFFBEB',
+                  border: '1px solid #FCD34D',
+                  color: '#92400E',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                  fontSize: '0.875rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sparkles size={18} color="#D97706" />
+                  <span>
+                    {isHe
+                      ? `שים לב: זוהו ${suspectedAgorotTranches.length} פעימות שקליות שערכן הוזן כנראה באגורות (ללא חלוקה ב-100). לחץ לתיקון:`
+                      : `Notice: ${suspectedAgorotTranches.length} Shekel tranches appear to be saved in Agorot without dividing by 100.`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAutoFixAgorotTranches}
+                  style={{
+                    backgroundColor: '#D97706',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '6px 14px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    fontSize: '0.8125rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <RotateCcw size={14} color="#FFFFFF" />
+                  <span>
+                    {isHe ? 'חלק פעימות אלו ב-100 ותקן שווי ורווח/הפסד' : 'Divide by 100 & Fix Portfolio'}
+                  </span>
+                </button>
+              </div>
+            )}
+
             <div style={styles.tableResponsiveWrap}>
               <table style={styles.table}>
                 <thead>
@@ -1795,7 +1947,53 @@ export const InvestmentsView: React.FC = () => {
                                               <strong>{tr.shares}</strong>
                                             </td>
                                             <td style={styles.trancheTd}>
-                                              {formatVal(tr.price_per_share, asset.currency)}
+                                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                                <span style={{ fontWeight: '600' }}>{formatVal(tr.price_per_share, asset.currency)}</span>
+                                                {asset.currency === 'ILS' && (
+                                                  <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                                    ({Number((tr.price_per_share * 100).toFixed(0)).toLocaleString('en-US')} אג')
+                                                  </span>
+                                                )}
+                                                {asset.currency === 'ILS' && (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40)) && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      const newPrice = Number((tr.price_per_share / 100).toFixed(4));
+                                                      updateInvestmentTranche(
+                                                        asset.id,
+                                                        tr.id ? String(tr.id) : String(idx),
+                                                        {
+                                                          price_per_share: newPrice,
+                                                          total_cost: Number((tr.shares * newPrice).toFixed(2)),
+                                                          notes: tr.notes ? `${tr.notes} | תוקן מאגורות` : `שער מקורי: ${tr.price_per_share} אגורות`,
+                                                        },
+                                                        undefined,
+                                                        idx
+                                                      );
+                                                      setActionFeedbackMsg(
+                                                        isHe
+                                                          ? `שער פעימה #${idx + 1} חולק ב-100 ותוקן לשקלים!`
+                                                          : `Tranche #${idx + 1} divided by 100!`
+                                                      );
+                                                      setTimeout(() => setActionFeedbackMsg(null), 4000);
+                                                    }}
+                                                    style={{
+                                                      fontSize: '0.68rem',
+                                                      backgroundColor: '#FEF3C7',
+                                                      color: '#B45309',
+                                                      border: '1px solid #FCD34D',
+                                                      borderRadius: '4px',
+                                                      padding: '1px 5px',
+                                                      cursor: 'pointer',
+                                                      fontWeight: 700,
+                                                      marginTop: '2px',
+                                                    }}
+                                                    title={isHe ? 'שער זה נראה באגורות - לחץ לחלוקה ב-100' : 'Price appears to be in Agorot - click to divide by 100'}
+                                                  >
+                                                    {isHe ? 'חלק ב-100 ⚡' : '➗ 100 ⚡'}
+                                                  </button>
+                                                )}
+                                              </div>
                                             </td>
                                             <td style={styles.trancheTd}>
                                               {tr.fee ? formatVal(tr.fee, asset.currency) : '—'}
@@ -2448,7 +2646,11 @@ export const InvestmentsView: React.FC = () => {
                       <select
                         style={styles.formSelect}
                         value={formCurrency}
-                        onChange={(e) => setFormCurrency(e.target.value as any)}
+                        onChange={(e) => {
+                          const newCurr = e.target.value as 'USD' | 'ILS';
+                          setFormCurrency(newCurr);
+                          setIsPriceInAgorot(newCurr === 'ILS');
+                        }}
                       >
                         <option value="USD">USD ($) - דולר ארה״ב</option>
                         <option value="ILS">ILS (₪) - שקל ישראלי</option>
@@ -2521,20 +2723,52 @@ export const InvestmentsView: React.FC = () => {
                     </div>
 
                     <div style={styles.formGroup}>
-                      <label style={styles.formLabel}>
-                        {isHe
-                          ? `מחיר ליחידה (${formCurrency === 'USD' ? '$' : '₪'}) *`
-                          : `Price per Share (${formCurrency === 'USD' ? '$' : '₪'}) *`}
-                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <label style={styles.formLabel}>
+                          {isHe
+                            ? formCurrency === 'ILS' && isPriceInAgorot
+                              ? 'שער ביצוע (באגורות) *'
+                              : `מחיר ליחידה (${formCurrency === 'USD' ? '$' : '₪'}) *`
+                            : formCurrency === 'ILS' && isPriceInAgorot
+                            ? 'Price in Agorot *'
+                            : `Price per Share (${formCurrency === 'USD' ? '$' : '₪'}) *`}
+                        </label>
+                        {formCurrency === 'ILS' && (
+                          <label
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '0.75rem',
+                              color: '#2563EB',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                              userSelect: 'none',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isPriceInAgorot}
+                              onChange={(e) => handleTogglePriceInAgorot(e.target.checked)}
+                            />
+                            <span>{isHe ? 'שער באגורות (➗ 100)' : 'In Agorot (➗ 100)'}</span>
+                          </label>
+                        )}
+                      </div>
                       <input
                         style={styles.formInput}
                         type="number"
                         step="any"
-                        placeholder="e.g. 100"
+                        placeholder={formCurrency === 'ILS' && isPriceInAgorot ? 'לדוגמה: 1940' : 'e.g. 100'}
                         value={formPricePerShare}
                         onChange={(e) => handlePricePerShareChange(e.target.value)}
                         required
                       />
+                      {formCurrency === 'ILS' && isPriceInAgorot && parseFloat(formPricePerShare) > 0 && (
+                        <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600, marginTop: '2px', display: 'block' }}>
+                          = ₪{(parseFloat(formPricePerShare) / 100).toFixed(2)} ליחידה בשקלים
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -2599,42 +2833,49 @@ export const InvestmentsView: React.FC = () => {
                         <span>{isHe ? 'סיכום פעימה זו:' : 'Tranche Calculation Preview:'}</span>
                       </div>
                       <div style={styles.calcPreviewRow}>
-                        <span>
-                          {isHe ? 'עלות רכישה (קרן):' : 'Cost Basis:'}{' '}
-                          <strong>
-                            {formCurrency === 'USD' ? '$' : '₪'}
-                            {(
-                              parseFloat(formShares) * parseFloat(formPricePerShare)
-                            ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </strong>
-                        </span>
-                        {parseFloat(formCurrentPrice) > 0 && (
-                          <span>
-                            {isHe ? 'רווח נוכחי לפעימה:' : 'Current Tranche Gain:'}{' '}
-                            <strong
-                              dir="ltr"
-                              style={{
-                                color:
-                                  parseFloat(formCurrentPrice) >= parseFloat(formPricePerShare)
-                                    ? '#059669'
-                                    : '#DC2626',
-                                direction: 'ltr',
-                                display: 'inline-block',
-                              }}
-                            >
-                              {(() => {
-                                const trShares = parseFloat(formShares);
-                                const trPrice = parseFloat(formPricePerShare);
-                                const trCurPrice = parseFloat(formCurrentPrice);
-                                const trProfit = trShares * (trCurPrice - trPrice);
-                                const sym = formCurrency === 'USD' ? '$' : '₪';
-                                return trProfit >= 0
-                                  ? `+${sym}${trProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-                                  : `-${sym}${Math.abs(trProfit).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-                              })()}
-                            </strong>
-                          </span>
-                        )}
+                        {(() => {
+                          const trShares = parseFloat(formShares);
+                          const rawPrice = parseFloat(formPricePerShare);
+                          const effectiveUnitPrice = (formCurrency === 'ILS' && isPriceInAgorot) ? rawPrice / 100 : rawPrice;
+                          const effectiveCost = trShares * effectiveUnitPrice;
+                          const sym = formCurrency === 'USD' ? '$' : '₪';
+                          let trCurPrice = parseFloat(formCurrentPrice);
+                          if (formCurrency === 'ILS' && isPriceInAgorot && trCurPrice >= 100) {
+                            trCurPrice = trCurPrice / 100;
+                          }
+                          const hasCurPrice = !isNaN(trCurPrice) && trCurPrice > 0;
+                          const trProfit = hasCurPrice ? trShares * (trCurPrice - effectiveUnitPrice) : 0;
+                          const isProfit = trProfit >= 0;
+
+                          return (
+                            <>
+                              <span>
+                                {isHe ? 'עלות רכישה (קרן):' : 'Cost Basis:'}{' '}
+                                <strong>
+                                  {sym}
+                                  {effectiveCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </strong>
+                              </span>
+                              {hasCurPrice && (
+                                <span>
+                                  {isHe ? 'רווח נוכחי לפעימה:' : 'Current Tranche Gain:'}{' '}
+                                  <strong
+                                    dir="ltr"
+                                    style={{
+                                      color: isProfit ? '#059669' : '#DC2626',
+                                      direction: 'ltr',
+                                      display: 'inline-block',
+                                    }}
+                                  >
+                                    {isProfit
+                                      ? `+${sym}${trProfit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : `-${sym}${Math.abs(trProfit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                  </strong>
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   )}
