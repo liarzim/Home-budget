@@ -623,6 +623,9 @@ export const InvestmentsView: React.FC = () => {
     investments.forEach((asset) => {
       if (asset.currency === 'ILS') {
         asset.tranches.forEach((tr, idx) => {
+          // If user previously chose NOT to fix this tranche, skip it permanently
+          if (tr.ignore_agorot_fix) return;
+
           if (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40)) {
             list.push({
               assetId: asset.id,
@@ -649,7 +652,7 @@ export const InvestmentsView: React.FC = () => {
         assetId: string;
         ticker: string;
         name: string;
-        tranches: { trancheId: string; date: string; shares: number; price: number }[];
+        tranches: { trancheId: string; trancheIndex: number; date: string; shares: number; price: number }[];
       }
     >();
 
@@ -664,6 +667,7 @@ export const InvestmentsView: React.FC = () => {
       }
       map.get(item.assetId)!.tranches.push({
         trancheId: item.trancheId,
+        trancheIndex: item.trancheIndex,
         date: item.date,
         shares: item.shares,
         price: item.price,
@@ -679,13 +683,14 @@ export const InvestmentsView: React.FC = () => {
     const updated = investments.map((asset) => {
       if (asset.currency !== 'ILS') return asset;
       const newTranches = asset.tranches.map((tr) => {
-        if (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40)) {
+        if (!tr.ignore_agorot_fix && (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40))) {
           const newPrice = Number((tr.price_per_share / 100).toFixed(4));
           return {
             ...tr,
             price_per_share: newPrice,
             total_cost: Number((tr.shares * newPrice).toFixed(2)),
             notes: tr.notes ? `${tr.notes} | תוקן מאגורות (${tr.price_per_share})` : `שער מקורי: ${tr.price_per_share} אגורות`,
+            ignore_agorot_fix: false,
           };
         }
         return tr;
@@ -711,6 +716,95 @@ export const InvestmentsView: React.FC = () => {
         : `Successfully converted ${suspectedAgorotTranches.length} Shekel tranches to ILS (divided by 100)!`
     );
     setTimeout(() => setActionFeedbackMsg(null), 5000);
+  };
+
+  // Fix a single tranche
+  const handleFixSingleTranche = (
+    assetId: string,
+    trancheId: string,
+    trancheIndex: number,
+    currentPrice: number,
+    shares: number
+  ) => {
+    const newPrice = Number((currentPrice / 100).toFixed(4));
+    const targetKey = trancheId || (trancheIndex >= 0 ? String(trancheIndex) : '0');
+    updateInvestmentTranche(
+      assetId,
+      targetKey,
+      {
+        price_per_share: newPrice,
+        total_cost: Number((shares * newPrice).toFixed(2)),
+        notes: `שער מקורי: ${currentPrice} אגורות (חולק ב-100)`,
+        ignore_agorot_fix: false,
+      },
+      undefined,
+      trancheIndex >= 0 ? trancheIndex : undefined
+    );
+    setActionFeedbackMsg(
+      isHe
+        ? `הפעימה חולקה ב-100 ותוקנה בהצלחה לשער ₪${newPrice.toFixed(2)}!`
+        : `Tranche converted successfully to ₪${newPrice.toFixed(2)}!`
+    );
+    setTimeout(() => setActionFeedbackMsg(null), 4000);
+  };
+
+  // User chose NOT to fix a specific tranche: mark ignore_agorot_fix = true so it never shows again
+  const handleIgnoreSingleTranche = (
+    assetId: string,
+    trancheId: string,
+    trancheIndex: number
+  ) => {
+    const targetKey = trancheId || (trancheIndex >= 0 ? String(trancheIndex) : '0');
+    updateInvestmentTranche(
+      assetId,
+      targetKey,
+      {
+        ignore_agorot_fix: true,
+      },
+      undefined,
+      trancheIndex >= 0 ? trancheIndex : undefined
+    );
+    setActionFeedbackMsg(
+      isHe
+        ? 'הפעימה סומנה כנכונה ולא תוצג שוב לתיקון.'
+        : 'Tranche marked as correct and will not be suggested again.'
+    );
+    setTimeout(() => setActionFeedbackMsg(null), 4000);
+  };
+
+  // User chose NOT to fix all currently identified tranches: mark them all with ignore_agorot_fix = true
+  const handleIgnoreAllAgorotTranches = () => {
+    if (suspectedAgorotTranches.length === 0) return;
+    const updated = investments.map((asset) => {
+      if (asset.currency !== 'ILS') return asset;
+      const newTranches = asset.tranches.map((tr, idx) => {
+        const isSuspected = suspectedAgorotTranches.some(
+          (s) =>
+            s.assetId === asset.id &&
+            (s.trancheId === tr.id || s.trancheIndex === idx || (s.price === tr.price_per_share && s.date === tr.date))
+        );
+        if (isSuspected) {
+          return {
+            ...tr,
+            ignore_agorot_fix: true,
+          };
+        }
+        return tr;
+      });
+
+      return {
+        ...asset,
+        tranches: newTranches,
+      };
+    });
+
+    saveInvestments(updated);
+    setActionFeedbackMsg(
+      isHe
+        ? 'כל הפעימות שזוהו סומנו כנכונות ולא יוצגו שוב לתיקון.'
+        : 'All identified tranches marked as correct and dismissed.'
+    );
+    setTimeout(() => setActionFeedbackMsg(null), 4000);
   };
 
   const handleSaveInlinePrice = (assetId: string) => {
@@ -1543,32 +1637,63 @@ export const InvestmentsView: React.FC = () => {
                       </strong>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleAutoFixAgorotTranches}
-                    style={{
-                      backgroundColor: '#D97706',
-                      color: '#FFFFFF',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '7px 16px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      fontSize: '0.8125rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                      transition: 'background-color 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B45309')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#D97706')}
-                  >
-                    <RotateCcw size={14} color="#FFFFFF" />
-                    <span>
-                      {isHe ? 'חלק פעימות אלו ב-100 ותקן שווי ורווח/הפסד' : 'Divide by 100 & Fix Portfolio'}
-                    </span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={handleAutoFixAgorotTranches}
+                      style={{
+                        backgroundColor: '#D97706',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '7px 16px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        fontSize: '0.8125rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                        transition: 'background-color 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B45309')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#D97706')}
+                      title={isHe ? 'חלק את כל הפעימות המוצגות ב-100 לשקלים' : 'Fix all tranches (divide by 100)'}
+                    >
+                      <RotateCcw size={14} color="#FFFFFF" />
+                      <span>
+                        {isHe ? '✓ תקן הכל (חלק ב-100)' : '✓ Fix All (Divide by 100)'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleIgnoreAllAgorotTranches}
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        color: '#78350F',
+                        border: '1px solid #FCD34D',
+                        borderRadius: '6px',
+                        padding: '7px 14px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        fontSize: '0.8125rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#FEF3C7')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#FFFFFF')}
+                      title={isHe ? 'סמן את כל הפעימות המוצגות כנכונות ולא להציג אותן שוב לתיקון' : 'Mark all as correct and dismiss'}
+                    >
+                      <X size={14} color="#92400E" />
+                      <span>
+                        {isHe ? '✕ אל תתקן (השאר כפי שהוא)' : '✕ Don\'t Fix (Keep As Is)'}
+                      </span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* List of identified stocks and their tranches */}
@@ -1585,7 +1710,7 @@ export const InvestmentsView: React.FC = () => {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700', color: '#92400E', fontSize: '0.8125rem' }}>
                     <Info size={14} color="#B45309" />
-                    <span>{isHe ? 'רשימת המניות והפעימות שזוהו:' : 'List of Identified Securities:'}</span>
+                    <span>{isHe ? 'רשימת המניות והפעימות שזוהו לבחירתך האם לתקן:' : 'Identified Securities & Tranches (Choose to Fix or Keep):'}</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1632,16 +1757,17 @@ export const InvestmentsView: React.FC = () => {
                               key={tr.trancheId || trIdx}
                               style={{
                                 backgroundColor: '#FFFBEB',
-                                border: '1px dashed #D97706',
-                                borderRadius: '4px',
-                                padding: '3px 8px',
-                                fontSize: '0.75rem',
+                                border: '1px solid #FCD34D',
+                                borderRadius: '6px',
+                                padding: '5px 10px',
+                                fontSize: '0.78rem',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '6px',
+                                gap: '8px',
+                                flexWrap: 'wrap',
                               }}
                             >
-                              <span style={{ color: '#64748B' }}>{formatDate(tr.date)}:</span>
+                              <span style={{ color: '#64748B', fontWeight: '600' }}>{formatDate(tr.date)}:</span>
                               <span style={{ color: '#DC2626', fontWeight: '700' }}>
                                 {tr.price.toLocaleString('en-US')} אג'
                               </span>
@@ -1649,6 +1775,52 @@ export const InvestmentsView: React.FC = () => {
                               <span style={{ color: '#059669', fontWeight: '700' }}>
                                 ₪{(tr.price / 100).toFixed(2)}
                               </span>
+
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginInlineStart: '6px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleFixSingleTranche(assetItem.assetId, tr.trancheId, tr.trancheIndex, tr.price, tr.shares)}
+                                  style={{
+                                    backgroundColor: '#059669',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '2px 8px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                  }}
+                                  title={isHe ? 'תקן פעימה זו (חלק ב-100 לשקלים)' : 'Fix this tranche'}
+                                >
+                                  <Check size={11} color="#FFFFFF" />
+                                  <span>{isHe ? 'תקן' : 'Fix'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleIgnoreSingleTranche(assetItem.assetId, tr.trancheId, tr.trancheIndex)}
+                                  style={{
+                                    backgroundColor: '#FFFFFF',
+                                    color: '#64748B',
+                                    border: '1px solid #CBD5E1',
+                                    borderRadius: '4px',
+                                    padding: '2px 8px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                  }}
+                                  title={isHe ? 'אל תתקן פעימה זו, השאר כפי שהיא ואל תציג אותה שוב' : 'Do not fix, mark as correct'}
+                                >
+                                  <X size={11} color="#64748B" />
+                                  <span>{isHe ? 'לא לתקן' : 'Don\'t Fix'}</span>
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -2098,7 +2270,7 @@ export const InvestmentsView: React.FC = () => {
                                                     ({Number((tr.price_per_share * 100).toFixed(0)).toLocaleString('en-US')} אג')
                                                   </span>
                                                 )}
-                                                {asset.currency === 'ILS' && (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40)) && (
+                                                {asset.currency === 'ILS' && !tr.ignore_agorot_fix && (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40)) && (
                                                   <button
                                                     type="button"
                                                     onClick={() => {

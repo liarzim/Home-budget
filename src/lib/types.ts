@@ -365,6 +365,7 @@ export interface InvestmentTranche {
   total_cost?: number; // סכום רכישה כולל (אופציונלי)
   fee: number; // עמלת מסחר
   notes?: string;
+  ignore_agorot_fix?: boolean; // אם סומן כ-true, המשתמש בחר לא לתקן פעימה זו והיא לא תוצג שוב לתיקון
 }
 
 export interface InvestmentAsset {
