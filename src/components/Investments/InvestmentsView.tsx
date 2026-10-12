@@ -610,7 +610,16 @@ export const InvestmentsView: React.FC = () => {
 
   // Detect any ILS tranches that were saved in Agorot (e.g. price_per_share >= 100 or 40x current market price)
   const suspectedAgorotTranches = useMemo(() => {
-    const list: { assetId: string; assetTicker: string; trancheId: string; trancheIndex: number; price: number; shares: number }[] = [];
+    const list: {
+      assetId: string;
+      assetTicker: string;
+      assetName: string;
+      trancheId: string;
+      trancheIndex: number;
+      price: number;
+      shares: number;
+      date: string;
+    }[] = [];
     investments.forEach((asset) => {
       if (asset.currency === 'ILS') {
         asset.tranches.forEach((tr, idx) => {
@@ -618,10 +627,12 @@ export const InvestmentsView: React.FC = () => {
             list.push({
               assetId: asset.id,
               assetTicker: asset.ticker,
+              assetName: asset.name || asset.ticker,
               trancheId: tr.id ? String(tr.id) : String(idx),
               trancheIndex: idx,
               price: tr.price_per_share,
               shares: tr.shares,
+              date: tr.date,
             });
           }
         });
@@ -629,6 +640,38 @@ export const InvestmentsView: React.FC = () => {
     });
     return list;
   }, [investments]);
+
+  // Group suspected items by asset for clear display in list
+  const suspectedAssetsSummary = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        assetId: string;
+        ticker: string;
+        name: string;
+        tranches: { trancheId: string; date: string; shares: number; price: number }[];
+      }
+    >();
+
+    suspectedAgorotTranches.forEach((item) => {
+      if (!map.has(item.assetId)) {
+        map.set(item.assetId, {
+          assetId: item.assetId,
+          ticker: item.assetTicker,
+          name: item.assetName,
+          tranches: [],
+        });
+      }
+      map.get(item.assetId)!.tranches.push({
+        trancheId: item.trancheId,
+        date: item.date,
+        shares: item.shares,
+        price: item.price,
+      });
+    });
+
+    return Array.from(map.values());
+  }, [suspectedAgorotTranches]);
 
   // One-click batch repair for all suspected Agorot tranches in existing portfolio
   const handleAutoFixAgorotTranches = () => {
@@ -1471,47 +1514,148 @@ export const InvestmentsView: React.FC = () => {
                   backgroundColor: '#FFFBEB',
                   border: '1px solid #FCD34D',
                   color: '#92400E',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
+                  padding: '14px 18px',
+                  borderRadius: '10px',
                   marginBottom: '16px',
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
+                  flexDirection: 'column',
                   gap: '12px',
                   fontSize: '0.875rem',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Sparkles size={18} color="#D97706" />
-                  <span>
-                    {isHe
-                      ? `שים לב: זוהו ${suspectedAgorotTranches.length} פעימות שקליות שערכן הוזן כנראה באגורות (ללא חלוקה ב-100). לחץ לתיקון:`
-                      : `Notice: ${suspectedAgorotTranches.length} Shekel tranches appear to be saved in Agorot without dividing by 100.`}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAutoFixAgorotTranches}
+                <div
                   style={{
-                    backgroundColor: '#D97706',
-                    color: '#FFFFFF',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '6px 14px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    fontSize: '0.8125rem',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '12px',
                   }}
                 >
-                  <RotateCcw size={14} color="#FFFFFF" />
-                  <span>
-                    {isHe ? 'חלק פעימות אלו ב-100 ותקן שווי ורווח/הפסד' : 'Divide by 100 & Fix Portfolio'}
-                  </span>
-                </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Sparkles size={18} color="#D97706" />
+                    <div>
+                      <strong style={{ fontSize: '0.9375rem', color: '#78350F' }}>
+                        {isHe
+                          ? `שים לב: זוהו ${suspectedAgorotTranches.length} פעימות שקליות ב-${suspectedAssetsSummary.length} ניירות ערך שערכן הוזן כנראה באגורות (ללא חלוקה ב-100):`
+                          : `Notice: ${suspectedAgorotTranches.length} tranches in ${suspectedAssetsSummary.length} assets appear to be recorded in Agorot:`}
+                      </strong>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAutoFixAgorotTranches}
+                    style={{
+                      backgroundColor: '#D97706',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '7px 16px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      fontSize: '0.8125rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                      transition: 'background-color 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B45309')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#D97706')}
+                  >
+                    <RotateCcw size={14} color="#FFFFFF" />
+                    <span>
+                      {isHe ? 'חלק פעימות אלו ב-100 ותקן שווי ורווח/הפסד' : 'Divide by 100 & Fix Portfolio'}
+                    </span>
+                  </button>
+                </div>
+
+                {/* List of identified stocks and their tranches */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    backgroundColor: 'rgba(254, 243, 199, 0.65)',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    border: '1px solid #FDE68A',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700', color: '#92400E', fontSize: '0.8125rem' }}>
+                    <Info size={14} color="#B45309" />
+                    <span>{isHe ? 'רשימת המניות והפעימות שזוהו:' : 'List of Identified Securities:'}</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {suspectedAssetsSummary.map((assetItem) => (
+                      <div
+                        key={assetItem.assetId}
+                        style={{
+                          backgroundColor: '#FFFFFF',
+                          border: '1px solid #FCD34D',
+                          borderRadius: '6px',
+                          padding: '8px 12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '8px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <span
+                            style={{
+                              backgroundColor: '#EFF6FF',
+                              color: '#1D4ED8',
+                              fontWeight: '800',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.8125rem',
+                              border: '1px solid #BFDBFE',
+                            }}
+                          >
+                            {assetItem.ticker}
+                          </span>
+                          <span style={{ fontWeight: '600', color: '#1E293B', fontSize: '0.875rem' }}>
+                            {assetItem.name}
+                          </span>
+                          <span style={{ color: '#64748B', fontSize: '0.78rem' }}>
+                            ({assetItem.tranches.length} {isHe ? 'פעימות' : 'tranches'})
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          {assetItem.tranches.map((tr, trIdx) => (
+                            <div
+                              key={tr.trancheId || trIdx}
+                              style={{
+                                backgroundColor: '#FFFBEB',
+                                border: '1px dashed #D97706',
+                                borderRadius: '4px',
+                                padding: '3px 8px',
+                                fontSize: '0.75rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                              }}
+                            >
+                              <span style={{ color: '#64748B' }}>{formatDate(tr.date)}:</span>
+                              <span style={{ color: '#DC2626', fontWeight: '700' }}>
+                                {tr.price.toLocaleString('en-US')} אג'
+                              </span>
+                              <span style={{ color: '#B45309' }}>⬅️</span>
+                              <span style={{ color: '#059669', fontWeight: '700' }}>
+                                ₪{(tr.price / 100).toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
