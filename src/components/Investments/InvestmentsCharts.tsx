@@ -15,6 +15,7 @@ import {
   Filter,
   Check,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import { SECURITY_TYPE_LABELS } from './InvestmentsView';
 
@@ -847,6 +848,36 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
 
           {/* FILTER TOOLBAR: BY SECURITY TYPE & SPECIFIC SECURITIES */}
           <div style={chartStyles.filterToolbar}>
+            <div style={chartStyles.filterToolbarHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={chartStyles.filterIconCircle}>
+                  <Filter size={15} color="#2563EB" />
+                </div>
+                <div>
+                  <strong style={{ fontSize: '0.85rem', color: '#1E293B', display: 'block' }}>
+                    {isHe ? 'פילוח וסינון הגרף לפי ניירות ערך או סיווג' : 'Filter Graph by Securities or Asset Class'}
+                  </strong>
+                  <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                    {isHe ? 'לחץ על סוג נייר או על שמות הניירות למטה כדי לבודד אותם בגרף' : 'Select asset types or individual securities below to isolate on chart'}
+                  </span>
+                </div>
+              </div>
+              {(selectedAssetType !== 'all' || selectedSecurityIds.length > 0) && (
+                <button
+                  type="button"
+                  style={chartStyles.clearFilterBtn}
+                  onClick={() => {
+                    setSelectedAssetType('all');
+                    setSelectedSecurityIds([]);
+                  }}
+                  title={isHe ? 'איפוס והצגת כל התיק' : 'Reset filter'}
+                >
+                  <RotateCcw size={12} />
+                  <span>{isHe ? 'הצג את כל התיק' : 'Show All'}</span>
+                </button>
+              )}
+            </div>
+
             {/* 1. Filter by Security Type */}
             {investments.length > 0 && (
               <div style={chartStyles.filterRow}>
@@ -1912,12 +1943,31 @@ const chartStyles: { [key: string]: React.CSSProperties } = {
   filterToolbar: {
     backgroundColor: '#F8FAFC',
     borderRadius: '12px',
-    border: '1px solid #E2E8F0',
-    padding: '12px 14px',
+    border: '1.5px solid #CBD5E1',
+    padding: '14px 16px',
     marginBottom: '16px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: '12px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+  },
+  filterToolbarHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: '10px',
+    borderBottom: '1px solid #E2E8F0',
+    flexWrap: 'wrap',
+    gap: '8px',
+  },
+  filterIconCircle: {
+    width: '28px',
+    height: '28px',
+    borderRadius: '50%',
+    backgroundColor: '#EFF6FF',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterRow: {
     display: 'flex',
