@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { InvestmentAsset, InvestmentPeriodicSnapshot } from '../../lib/types';
+import { InvestmentAsset, InvestmentPeriodicSnapshot, SecurityType } from '../../lib/types';
 import { formatDate, normalizeToISODate } from '../../lib/i18n';
 import {
   TrendingUp,
@@ -12,6 +12,9 @@ import {
   DollarSign,
   AlertTriangle,
   Layers,
+  Filter,
+  Check,
+  X,
 } from 'lucide-react';
 import { SECURITY_TYPE_LABELS } from './InvestmentsView';
 
@@ -67,11 +70,115 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   const [activeChartTab, setActiveChartTab] = useState<'growth' | 'allocation' | 'all'>('all');
   const [timelineViewMode, setTimelineViewMode] = useState<'cumulative' | 'tranches'>('cumulative');
 
-  // 1. Flatten all purchase tranches from investments table with costs and current profits
+  // Filter state: Asset Type ('all' or specific SecurityType like 'stock', 'etf', etc.)
+  const [selectedAssetType, setSelectedAssetType] = useState<string>('all');
+  // Filter state: Specific Securities (array of asset IDs; empty = all in selected type)
+  const [selectedSecurityIds, setSelectedSecurityIds] = useState<string[]>([]);
+
+  // Distinct available asset types based on actual user holdings
+  const availableAssetTypes = useMemo(() => {
+    const map = new Map<string, number>();
+    investments.forEach((asset) => {
+      const t = asset.asset_type || 'stock';
+      map.set(t, (map.get(t) || 0) + 1);
+    });
+    return Array.from(map.entries()).map(([type, count]) => ({
+      type: type as SecurityType,
+      count,
+      label: SECURITY_TYPE_LABELS[type as SecurityType] || {
+        he: type,
+        en: type,
+        icon: '🏷️',
+      },
+    }));
+  }, [investments]);
+
+  // Securities available under the currently selected asset type (or all if 'all')
+  const securitiesForSelection = useMemo(() => {
+    if (selectedAssetType === 'all') {
+      return investments;
+    }
+    return investments.filter((a) => a.asset_type === selectedAssetType);
+  }, [investments, selectedAssetType]);
+
+  // Filtered investments based on user selection
+  const filteredInvestments = useMemo(() => {
+    return investments.filter((asset) => {
+      if (selectedAssetType !== 'all' && asset.asset_type !== selectedAssetType) {
+        return false;
+      }
+      if (selectedSecurityIds.length > 0 && !selectedSecurityIds.includes(asset.id)) {
+        return false;
+      }
+      return true;
+    });
+  }, [investments, selectedAssetType, selectedSecurityIds]);
+
+  // Summary (cost, value, profit, return) for the filtered subset
+  const filteredSummary = useMemo(() => {
+    const isFiltered = selectedAssetType !== 'all' || selectedSecurityIds.length > 0;
+    if (!isFiltered) {
+      return portfolioSummary;
+    }
+
+    let totalCost = 0;
+    let totalVal = 0;
+
+    filteredInvestments.forEach((asset) => {
+      const rate = asset.currency === 'USD' ? usdRate : 1;
+      asset.tranches.forEach((tr) => {
+        const costILS =
+          (tr.total_cost && tr.total_cost > 0
+            ? tr.total_cost
+            : tr.shares * tr.price_per_share) * rate;
+        totalCost += costILS;
+      });
+      const totalShares = asset.tranches.reduce((sum, tr) => sum + tr.shares, 0);
+      totalVal += totalShares * asset.current_price * rate;
+    });
+
+    const totalProfit = totalVal - totalCost;
+    const totalReturnPct = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
+
+    return {
+      totalInvestedILS: totalCost,
+      currentValueILS: totalVal,
+      totalProfitILS: totalProfit,
+      totalReturnPct,
+    };
+  }, [filteredInvestments, portfolioSummary, selectedAssetType, selectedSecurityIds, usdRate]);
+
+  // Filter snapshots according to selected securities if filter is active
+  const relevantSnapshots = useMemo(() => {
+    const isFiltered = selectedAssetType !== 'all' || selectedSecurityIds.length > 0;
+    if (!isFiltered) return snapshots;
+
+    const allowedTickers = new Set(filteredInvestments.map((a) => a.ticker.toUpperCase()));
+    return snapshots
+      .map((s) => {
+        const matchingItems = (s.items || []).filter((item) =>
+          allowedTickers.has(item.ticker.toUpperCase())
+        );
+        const sCost = matchingItems.reduce((acc, it) => acc + (it.total_cost || 0), 0);
+        const sVal = matchingItems.reduce((acc, it) => acc + (it.market_value || 0), 0);
+        const sProfit = sVal - sCost;
+        const sRet = sCost > 0 ? (sProfit / sCost) * 100 : 0;
+        return {
+          ...s,
+          total_invested: sCost,
+          total_value: sVal,
+          total_profit: sProfit,
+          total_return_pct: sRet,
+        };
+      })
+      .filter((s) => s.total_invested > 0 || s.total_value > 0);
+  }, [snapshots, filteredInvestments, selectedAssetType, selectedSecurityIds]);
+
+  // 1. Flatten all purchase tranches from filtered investments with costs and current profits
   const allPurchases = useMemo(() => {
     const list: TranchePointDetail[] = [];
 
-    investments.forEach((asset) => {
+    filteredInvestments.forEach((asset) => {
       const rate = asset.currency === 'USD' ? usdRate : 1;
       asset.tranches.forEach((tr, trIdx) => {
         const iso = normalizeToISODate(tr.date);
@@ -101,7 +208,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
 
     list.sort((a, b) => a.date.localeCompare(b.date));
     return list;
-  }, [investments, usdRate]);
+  }, [filteredInvestments, usdRate]);
 
   // 2. Prepare timeline points from purchases table + snapshots + current live point
   const chartDataPoints = useMemo<ChartDataPoint[]>(() => {
@@ -115,10 +222,10 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
             id: 'current-live-empty',
             label: isHe ? 'מצב נוכחי (חי)' : 'Current Live',
             date: todayISO,
-            cost: portfolioSummary.totalInvestedILS,
-            value: portfolioSummary.currentValueILS,
-            profit: portfolioSummary.totalProfitILS,
-            returnPct: portfolioSummary.totalReturnPct,
+            cost: filteredSummary.totalInvestedILS,
+            value: filteredSummary.currentValueILS,
+            profit: filteredSummary.totalProfitILS,
+            returnPct: filteredSummary.totalReturnPct,
             isLive: true,
           },
         ];
@@ -140,16 +247,20 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
         };
       });
 
-      // Total portfolio summary point at the end
-      const totalCost = portfolioSummary.totalInvestedILS;
+      // Total filtered summary point at the end
+      const totalCost = filteredSummary.totalInvestedILS;
       const liveVal =
-        simulationMode === 'loss' ? totalCost * 0.85 : portfolioSummary.currentValueILS;
+        simulationMode === 'loss' ? totalCost * 0.85 : filteredSummary.currentValueILS;
       const liveProfit = liveVal - totalCost;
       const liveReturnPct = totalCost > 0 ? (liveProfit / totalCost) * 100 : 0;
 
       points.push({
         id: 'total-portfolio-live',
-        label: isHe ? 'סה"כ התיק (חי)' : 'Total Portfolio (Live)',
+        label: isHe
+          ? selectedSecurityIds.length === 1
+            ? 'מצב נוכחי (חי)'
+            : 'סה"כ מחושב (חי)'
+          : 'Calculated Live',
         date: todayISO,
         cost: totalCost,
         value: liveVal,
@@ -175,12 +286,12 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
       a.localeCompare(b)
     );
 
-    const sortedSnapshots = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+    const sortedSnapshots = [...relevantSnapshots].sort((a, b) => a.date.localeCompare(b.date));
 
     const points: ChartDataPoint[] = [];
 
     if (sortedPurchaseDates.length > 0) {
-      // If there's only 1 purchase date across the whole portfolio
+      // If there's only 1 purchase date
       if (sortedPurchaseDates.length === 1 && sortedSnapshots.length === 0) {
         const singleDate = sortedPurchaseDates[0];
         const trs = tranchesByDate.get(singleDate)!;
@@ -261,12 +372,32 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
           returnPct: simulationMode === 'loss' ? -12.0 : s.total_return_pct,
         });
       });
+    } else {
+      // No purchases and no snapshots: show live point
+      const totalCost = filteredSummary.totalInvestedILS;
+      const liveVal =
+        simulationMode === 'loss' ? totalCost * 0.85 : filteredSummary.currentValueILS;
+      const liveProfit = liveVal - totalCost;
+      const liveReturnPct = totalCost > 0 ? (liveProfit / totalCost) * 100 : 0;
+
+      points.push({
+        id: 'current-live-only',
+        label: isHe ? 'מצב נוכחי (חי)' : 'Current Live',
+        date: todayISO,
+        cost: totalCost,
+        value: liveVal,
+        profit: liveProfit,
+        returnPct: simulationMode === 'loss' ? -15.0 : liveReturnPct,
+        isLive: true,
+      });
+
+      return points;
     }
 
     // Current live point at the end
-    const totalCost = portfolioSummary.totalInvestedILS;
+    const totalCost = filteredSummary.totalInvestedILS;
     const liveVal =
-      simulationMode === 'loss' ? totalCost * 0.85 : portfolioSummary.currentValueILS;
+      simulationMode === 'loss' ? totalCost * 0.85 : filteredSummary.currentValueILS;
     const liveProfit = liveVal - totalCost;
     const liveReturnPct = totalCost > 0 ? (liveProfit / totalCost) * 100 : 0;
 
@@ -285,7 +416,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
     }
 
     return points;
-  }, [allPurchases, snapshots, portfolioSummary, simulationMode, timelineViewMode, isHe]);
+  }, [allPurchases, relevantSnapshots, filteredSummary, simulationMode, timelineViewMode, isHe, selectedSecurityIds]);
 
   // 2. Asset Allocation Breakdown
   const allocationData = useMemo(() => {
@@ -339,8 +470,14 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   const innerWidth = svgWidth - padding.left - padding.right;
   const innerHeight = svgHeight - padding.top - padding.bottom;
 
-  const minVal = Math.min(...chartDataPoints.map((p) => Math.min(p.cost, p.value))) * 0.9;
-  const maxVal = Math.max(...chartDataPoints.map((p) => Math.max(p.cost, p.value))) * 1.1;
+  const minVal =
+    chartDataPoints.length > 0
+      ? Math.min(...chartDataPoints.map((p) => Math.min(p.cost, p.value))) * 0.9
+      : 0;
+  const maxVal =
+    chartDataPoints.length > 0
+      ? Math.max(...chartDataPoints.map((p) => Math.max(p.cost, p.value))) * 1.1
+      : 100;
   const valRange = Math.max(1, maxVal - minVal);
 
   const getX = (index: number) => {
@@ -392,16 +529,19 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   // Generate SVG path strings
   // A. Cost line (Dashed)
   const costPoints = chartDataPoints.map((p, i) => `${getX(i)},${getY(p.cost)}`);
-  const costPathD = `M ${costPoints.join(' L ')}`;
+  const costPathD = costPoints.length > 0 ? `M ${costPoints.join(' L ')}` : '';
 
   // B. Yellow Area under Cost Line (down to bottom)
-  const yellowAreaD = `M ${costPoints[0]} L ${costPoints.slice(1).join(' L ')} L ${getX(
-    chartDataPoints.length - 1
-  )},${zeroY} L ${getX(0)},${zeroY} Z`;
+  const yellowAreaD =
+    costPoints.length > 0
+      ? `M ${costPoints[0]} L ${costPoints.slice(1).join(' L ')} L ${getX(
+          chartDataPoints.length - 1
+        )},${zeroY} L ${getX(0)},${zeroY} Z`
+      : '';
 
   // C. Value line (Solid)
   const valPoints = chartDataPoints.map((p, i) => `${getX(i)},${getY(p.value)}`);
-  const valPathD = `M ${valPoints.join(' L ')}`;
+  const valPathD = valPoints.length > 0 ? `M ${valPoints.join(' L ')}` : '';
 
   // D. Profit / Loss Areas between Value and Cost Line (with zero-crossing split)
   const areaSegments = useMemo(() => {
@@ -533,9 +673,31 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
               <TrendingUp size={20} color="#2563EB" />
               <div>
                 <h4 style={chartStyles.chartCardTitle}>
-                  {isHe
-                    ? 'צמיחת שווי התיק מול עלות ההשקעה (רווח מצטבר)'
-                    : 'Portfolio Growth vs. Cost Basis (Cumulative P&L)'}
+                  {(() => {
+                    if (!isHe) {
+                      if (selectedSecurityIds.length === 1 && filteredInvestments[0]) {
+                        return `Growth vs Cost: ${filteredInvestments[0].ticker} (${filteredInvestments[0].name})`;
+                      }
+                      if (selectedAssetType !== 'all') {
+                        return `Growth vs Cost: ${selectedAssetType} (${filteredInvestments.length} securities)`;
+                      }
+                      if (selectedSecurityIds.length > 1) {
+                        return `Growth vs Cost: ${filteredInvestments.length} Selected Securities`;
+                      }
+                      return 'Portfolio Growth vs. Cost Basis (Cumulative P&L)';
+                    }
+                    if (selectedSecurityIds.length === 1 && filteredInvestments[0]) {
+                      return `צמיחת שווי ועלות השקעה: ${filteredInvestments[0].name || filteredInvestments[0].ticker} (${filteredInvestments[0].ticker})`;
+                    }
+                    if (selectedAssetType !== 'all') {
+                      const typeLabel = SECURITY_TYPE_LABELS[selectedAssetType as SecurityType]?.he || selectedAssetType;
+                      return `צמיחת שווי מול עלות: ${typeLabel} (${filteredInvestments.length} ניירות)`;
+                    }
+                    if (selectedSecurityIds.length > 1) {
+                      return `צמיחת שווי מול עלות: ${filteredInvestments.length} ניירות נבחרים (${filteredInvestments.map((a) => a.ticker).join(', ')})`;
+                    }
+                    return 'צמיחת שווי התיק מול עלות ההשקעה (רווח מצטבר)';
+                  })()}
                 </h4>
                 <div style={chartStyles.legendWrap}>
                   <div style={chartStyles.legendItem}>
@@ -683,8 +845,197 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
             </div>
           </div>
 
-          {/* SVG Chart */}
-          <div style={chartStyles.svgContainer}>
+          {/* FILTER TOOLBAR: BY SECURITY TYPE & SPECIFIC SECURITIES */}
+          <div style={chartStyles.filterToolbar}>
+            {/* 1. Filter by Security Type */}
+            {availableAssetTypes.length > 1 && (
+              <div style={chartStyles.filterRow}>
+                <div style={chartStyles.filterLabelGroup}>
+                  <Filter size={14} color="#2563EB" />
+                  <span style={chartStyles.filterLabelText}>
+                    {isHe ? 'סוג נייר ערך:' : 'Security Type:'}
+                  </span>
+                </div>
+                <div style={chartStyles.filterChipsRow}>
+                  <button
+                    type="button"
+                    style={{
+                      ...chartStyles.filterChip,
+                      ...(selectedAssetType === 'all' ? chartStyles.filterChipActive : {}),
+                    }}
+                    onClick={() => {
+                      setSelectedAssetType('all');
+                      setSelectedSecurityIds([]);
+                    }}
+                  >
+                    <span>{isHe ? `כל הסוגים (${investments.length})` : `All Types (${investments.length})`}</span>
+                  </button>
+
+                  {availableAssetTypes.map((item) => {
+                    const isActive = selectedAssetType === item.type;
+                    return (
+                      <button
+                        key={item.type}
+                        type="button"
+                        style={{
+                          ...chartStyles.filterChip,
+                          ...(isActive ? chartStyles.filterChipActive : {}),
+                        }}
+                        onClick={() => {
+                          setSelectedAssetType(item.type);
+                          setSelectedSecurityIds([]);
+                        }}
+                      >
+                        <span>{item.label.icon}</span>
+                        <span>{isHe ? item.label.he : item.label.en}</span>
+                        <span
+                          style={{
+                            ...chartStyles.chipBadgeCount,
+                            backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.06)',
+                            color: isActive ? '#FFFFFF' : 'inherit',
+                          }}
+                        >
+                          {item.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 2. Filter by Specific Securities (Single or Multi-select) */}
+            {securitiesForSelection.length > 0 && (
+              <div style={chartStyles.filterRow}>
+                <div style={chartStyles.filterLabelGroup}>
+                  <Layers size={14} color="#6366F1" />
+                  <span style={chartStyles.filterLabelText}>
+                    {isHe ? 'ניירות ערך:' : 'Securities:'}
+                  </span>
+                </div>
+                <div style={chartStyles.filterChipsRow}>
+                  <button
+                    type="button"
+                    style={{
+                      ...chartStyles.filterSubChip,
+                      ...(selectedSecurityIds.length === 0 ? chartStyles.filterSubChipActive : {}),
+                    }}
+                    onClick={() => setSelectedSecurityIds([])}
+                  >
+                    <span>{isHe ? 'כל הניירות' : 'All Securities'}</span>
+                  </button>
+
+                  {securitiesForSelection.map((sec) => {
+                    const isSelected = selectedSecurityIds.includes(sec.id);
+                    return (
+                      <button
+                        key={sec.id}
+                        type="button"
+                        style={{
+                          ...chartStyles.filterSubChip,
+                          ...(isSelected ? chartStyles.filterSubChipActive : {}),
+                        }}
+                        onClick={() => {
+                          if (selectedSecurityIds.includes(sec.id)) {
+                            setSelectedSecurityIds(selectedSecurityIds.filter((id) => id !== sec.id));
+                          } else {
+                            if (selectedSecurityIds.length === 0) {
+                              setSelectedSecurityIds([sec.id]);
+                            } else {
+                              setSelectedSecurityIds([...selectedSecurityIds, sec.id]);
+                            }
+                          }
+                        }}
+                        title={sec.name}
+                      >
+                        <span style={{ fontWeight: '700' }}>{sec.ticker}</span>
+                        {sec.name && sec.name !== sec.ticker && (
+                          <span style={chartStyles.tickerNameHint}>
+                            {sec.name.length > 14 ? sec.name.substring(0, 14) + '...' : sec.name}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 3. Active Filter Info & Reset Button */}
+            {(selectedAssetType !== 'all' || selectedSecurityIds.length > 0) && (
+              <div style={chartStyles.activeFilterSummaryBar}>
+                <div style={chartStyles.activeFilterBadge}>
+                  <span>
+                    {isHe
+                      ? `סינון פעיל: ${filteredInvestments.length} ניירות (${filteredInvestments.map((a) => a.ticker).join(', ')})`
+                      : `Active Filter: ${filteredInvestments.length} securities (${filteredInvestments.map((a) => a.ticker).join(', ')})`}
+                  </span>
+                </div>
+                <div style={chartStyles.activeFilterStats}>
+                  <span>
+                    {isHe ? 'עלות:' : 'Cost:'}{' '}
+                    <strong>₪{Math.round(filteredSummary.totalInvestedILS).toLocaleString('en-US')}</strong>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    {isHe ? 'שווי:' : 'Value:'}{' '}
+                    <strong>₪{Math.round(filteredSummary.currentValueILS).toLocaleString('en-US')}</strong>
+                  </span>
+                  <span>•</span>
+                  <span style={{ color: filteredSummary.totalProfitILS >= 0 ? '#059669' : '#DC2626' }}>
+                    {isHe ? 'רווח/הפסד:' : 'P&L:'}{' '}
+                    <strong>
+                      {filteredSummary.totalProfitILS >= 0 ? '+' : ''}
+                      ₪{Math.round(filteredSummary.totalProfitILS).toLocaleString('en-US')} (
+                      {filteredSummary.totalReturnPct >= 0 ? '+' : ''}
+                      {filteredSummary.totalReturnPct.toFixed(2)}%)
+                    </strong>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  style={chartStyles.clearFilterBtn}
+                  onClick={() => {
+                    setSelectedAssetType('all');
+                    setSelectedSecurityIds([]);
+                  }}
+                  title={isHe ? 'נקה סינון והצג את כל התיק' : 'Clear filter'}
+                >
+                  <X size={13} />
+                  <span>{isHe ? 'נקה סינון' : 'Clear Filter'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {filteredInvestments.length === 0 ? (
+            <div style={chartStyles.filterEmptyState}>
+              <div style={chartStyles.emptyFilterIconWrap}>
+                <Filter size={32} color="#94A3B8" />
+              </div>
+              <h5 style={chartStyles.emptyFilterTitle}>
+                {isHe ? 'לא נמצאו ניירות ערך התואמים לסינון' : 'No securities found matching this filter'}
+              </h5>
+              <p style={chartStyles.emptyFilterSub}>
+                {isHe
+                  ? 'נסה לבחור סוג נייר אחר או לנקות את הסינון להצגת כל התיק.'
+                  : 'Try selecting another type or clear filter to view the entire portfolio.'}
+              </p>
+              <button
+                type="button"
+                style={chartStyles.clearFilterBtn}
+                onClick={() => {
+                  setSelectedAssetType('all');
+                  setSelectedSecurityIds([]);
+                }}
+              >
+                <X size={14} />
+                <span>{isHe ? 'איפוס סינון' : 'Reset Filter'}</span>
+              </button>
+            </div>
+          ) : (
+            /* SVG Chart */
+            <div style={chartStyles.svgContainer}>
             <svg
               viewBox={`0 0 ${svgWidth} ${svgHeight}`}
               style={chartStyles.svgElement}
@@ -1027,6 +1378,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
@@ -1556,5 +1908,163 @@ const chartStyles: { [key: string]: React.CSSProperties } = {
     maxWidth: '480px',
     lineHeight: '1.5',
     margin: 0,
+  },
+  filterToolbar: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: '12px',
+    border: '1px solid #E2E8F0',
+    padding: '12px 14px',
+    marginBottom: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  filterRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    flexWrap: 'wrap',
+  },
+  filterLabelGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    minWidth: '120px',
+    fontSize: '0.78rem',
+    fontWeight: '700',
+    color: '#475569',
+  },
+  filterLabelText: {
+    fontSize: '0.78rem',
+    fontWeight: '700',
+    color: '#475569',
+  },
+  filterChipsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    flexWrap: 'wrap',
+    flex: 1,
+  },
+  filterChip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '5px',
+    padding: '5px 11px',
+    borderRadius: '8px',
+    border: '1px solid #CBD5E1',
+    backgroundColor: '#FFFFFF',
+    fontSize: '0.75rem',
+    fontWeight: '600',
+    color: '#334155',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  filterChipActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+    color: '#FFFFFF',
+    fontWeight: '700',
+    boxShadow: '0 2px 4px rgba(37, 99, 235, 0.25)',
+  },
+  filterSubChip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '5px',
+    padding: '4px 10px',
+    borderRadius: '6px',
+    border: '1px solid #E2E8F0',
+    backgroundColor: '#FFFFFF',
+    fontSize: '0.72rem',
+    fontWeight: '600',
+    color: '#475569',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  filterSubChipActive: {
+    backgroundColor: '#EEF2FF',
+    borderColor: '#6366F1',
+    color: '#4338CA',
+    fontWeight: '700',
+    boxShadow: '0 1px 3px rgba(99, 102, 241, 0.2)',
+  },
+  chipBadgeCount: {
+    padding: '1px 5px',
+    borderRadius: '10px',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
+    fontSize: '0.68rem',
+  },
+  tickerNameHint: {
+    fontSize: '0.68rem',
+    opacity: 0.8,
+  },
+  activeFilterSummaryBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: '8px',
+    borderTop: '1px dashed #CBD5E1',
+    flexWrap: 'wrap',
+    gap: '10px',
+    fontSize: '0.75rem',
+  },
+  activeFilterBadge: {
+    color: '#1E40AF',
+    fontWeight: '700',
+  },
+  activeFilterStats: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    color: '#475569',
+  },
+  clearFilterBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 9px',
+    borderRadius: '6px',
+    border: '1px solid #CBD5E1',
+    backgroundColor: '#FFFFFF',
+    fontSize: '0.72rem',
+    fontWeight: '600',
+    color: '#DC2626',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  filterEmptyState: {
+    padding: '40px 20px',
+    textAlign: 'center',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: '12px',
+    border: '1px dashed #CBD5E1',
+    margin: '12px 0',
+  },
+  emptyFilterIconWrap: {
+    width: '48px',
+    height: '48px',
+    borderRadius: '50%',
+    backgroundColor: '#EFF6FF',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '12px',
+  },
+  emptyFilterTitle: {
+    fontSize: '0.9375rem',
+    fontWeight: '700',
+    color: '#1E293B',
+    margin: '0 0 6px',
+  },
+  emptyFilterSub: {
+    fontSize: '0.8125rem',
+    color: '#64748B',
+    maxWidth: '360px',
+    lineHeight: '1.4',
+    margin: '0 0 14px',
   },
 };
