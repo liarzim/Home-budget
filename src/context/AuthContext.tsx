@@ -221,7 +221,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return [];
   });
 
-  const saveInvestments = (newList: InvestmentAsset[]) => {
+  const saveInvestments = async (newList: InvestmentAsset[]) => {
     const sortedList = newList.map((a) => ({
       ...a,
       tranches: a.tranches ? sortTranchesByDateDesc(a.tranches) : [],
@@ -232,9 +232,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.error(e);
     }
+
+    if (isSupabaseConfigured && !isDemoMode && activeHousehold) {
+      try {
+        const payload = sortedList.map((a) => ({
+          id: a.id,
+          household_id: activeHousehold.id,
+          ticker: a.ticker,
+          security_number: a.security_number || null,
+          name: a.name,
+          currency: a.currency,
+          current_price: a.current_price,
+          asset_type: a.asset_type,
+          tranches: a.tranches,
+          created_at: a.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
+        await supabase.from('investments').upsert(payload);
+      } catch (err) {
+        console.warn('Supabase investments upsert warning:', err);
+      }
+    }
   };
 
-  const addInvestmentAsset = (assetData: Omit<InvestmentAsset, 'id' | 'created_at' | 'updated_at'>) => {
+  const addInvestmentAsset = async (assetData: Omit<InvestmentAsset, 'id' | 'created_at' | 'updated_at'>) => {
     const newAsset: InvestmentAsset = {
       ...assetData,
       id: `inv-${Date.now()}`,
@@ -250,9 +271,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return updated;
     });
+
+    if (isSupabaseConfigured && !isDemoMode && activeHousehold) {
+      try {
+        await supabase.from('investments').insert({
+          id: newAsset.id,
+          household_id: activeHousehold.id,
+          ticker: newAsset.ticker,
+          security_number: newAsset.security_number || null,
+          name: newAsset.name,
+          currency: newAsset.currency,
+          current_price: newAsset.current_price,
+          asset_type: newAsset.asset_type,
+          tranches: newAsset.tranches,
+          created_at: newAsset.created_at,
+          updated_at: newAsset.updated_at,
+        });
+      } catch (err) {
+        console.warn('Supabase investments insert warning:', err);
+      }
+    }
   };
 
-  const updateInvestmentAsset = (id: string, updates: Partial<InvestmentAsset>) => {
+  const updateInvestmentAsset = async (id: string, updates: Partial<InvestmentAsset>) => {
     setInvestments((prev) => {
       const updated = prev.map((a) =>
         a.id === id ? { ...a, ...updates, updated_at: new Date().toISOString() } : a
@@ -264,9 +305,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return updated;
     });
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      try {
+        const payload: any = { ...updates, updated_at: new Date().toISOString() };
+        delete payload.id;
+        delete payload.household_id;
+        await supabase.from('investments').update(payload).eq('id', id);
+      } catch (err) {
+        console.warn('Supabase investments update warning:', err);
+      }
+    }
   };
 
-  const deleteInvestmentAsset = (id: string) => {
+  const deleteInvestmentAsset = async (id: string) => {
     setInvestments((prev) => {
       const updated = prev.filter((a) => a.id !== id);
       try {
@@ -276,6 +328,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return updated;
     });
+
+    if (isSupabaseConfigured && !isDemoMode) {
+      try {
+        await supabase.from('investments').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Supabase investments delete warning:', err);
+      }
+    }
   };
 
   const addInvestmentTranche = (
@@ -304,6 +364,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('household_investments_data', JSON.stringify(updated));
       } catch (e) {
         console.error(e);
+      }
+      if (isSupabaseConfigured && !isDemoMode) {
+        const targetAsset = updated.find((a) => a.id === assetId);
+        if (targetAsset) {
+          supabase.from('investments').update({
+            tranches: targetAsset.tranches,
+            current_price: targetAsset.current_price,
+            updated_at: targetAsset.updated_at || new Date().toISOString(),
+          }).eq('id', assetId).then();
+        }
       }
       return updated;
     });
@@ -351,6 +421,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (e) {
         console.error(e);
       }
+      if (isSupabaseConfigured && !isDemoMode) {
+        const targetAsset = updated.find((a) => a.id === assetId);
+        if (targetAsset) {
+          supabase.from('investments').update({
+            tranches: targetAsset.tranches,
+            current_price: targetAsset.current_price,
+            updated_at: targetAsset.updated_at || new Date().toISOString(),
+          }).eq('id', assetId).then();
+        }
+      }
       return updated;
     });
   };
@@ -378,6 +458,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('household_investments_data', JSON.stringify(updated));
       } catch (e) {
         console.error(e);
+      }
+      if (isSupabaseConfigured && !isDemoMode) {
+        const targetAsset = updated.find((a) => a.id === assetId);
+        if (targetAsset) {
+          supabase.from('investments').update({
+            tranches: targetAsset.tranches,
+            updated_at: targetAsset.updated_at || new Date().toISOString(),
+          }).eq('id', assetId).then();
+        }
       }
       return updated;
     });
@@ -841,6 +930,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('household_id', householdId)
         .order('year', { ascending: false });
       if (savs) setSavings(savs);
+
+      // Fetch Investments from Supabase
+      try {
+        const { data: invs, error: invErr } = await supabase
+          .from('investments')
+          .select('*')
+          .eq('household_id', householdId);
+
+        if (!invErr && invs) {
+          if (invs.length > 0) {
+            const formattedInvs: InvestmentAsset[] = invs.map((inv: any) => ({
+              ...inv,
+              tranches: inv.tranches ? sortTranchesByDateDesc(inv.tranches) : [],
+            }));
+            setInvestments(formattedInvs);
+            localStorage.setItem('household_investments_data', JSON.stringify(formattedInvs));
+          } else {
+            // DB is empty for this household: check if user has local investments and auto-upload them
+            const rawInvs = localStorage.getItem('household_investments_data');
+            if (rawInvs) {
+              const localParsed = JSON.parse(rawInvs);
+              if (Array.isArray(localParsed) && localParsed.length > 0) {
+                const toUpload = localParsed.map((a: any) => ({
+                  id: a.id,
+                  household_id: householdId,
+                  ticker: a.ticker,
+                  security_number: a.security_number || null,
+                  name: a.name,
+                  currency: a.currency,
+                  current_price: a.current_price,
+                  asset_type: a.asset_type,
+                  tranches: a.tranches ? sortTranchesByDateDesc(a.tranches) : [],
+                  created_at: a.created_at || new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                }));
+                const { error: upErr } = await supabase.from('investments').upsert(toUpload);
+                if (!upErr) {
+                  console.log('✅ Auto-synced local investments to Supabase DB');
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('investments query from Supabase info:', e);
+      }
     } catch (err) {
       console.error('Error loading household details:', err);
     }

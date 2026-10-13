@@ -1,6 +1,112 @@
 import React, { useState } from 'react';
 import { Database, Copy, Check, ShieldCheck, Key, Terminal, ExternalLink, Sparkles } from 'lucide-react';
 
+const INVESTMENTS_MIGRATION_SQL = `-- ==============================================================================
+-- Migration: Investments & Portfolio Tracking (ניירות ערך, פעימות וסגירות תקופה)
+-- Date: 2026-10-13
+-- ==============================================================================
+
+-- 1. Helper function for tenant membership (if not already created)
+CREATE OR REPLACE FUNCTION public.get_user_households(user_uuid UUID)
+RETURNS TABLE (household_id UUID)
+LANGUAGE sql SECURITY DEFINER SET search_path = public STABLE AS $
+    SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = user_uuid;
+$;
+
+-- 2. INVESTMENTS TABLE (ניירות ערך עם פעימות רכישה)
+CREATE TABLE IF NOT EXISTS public.investments (
+    id TEXT PRIMARY KEY,
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    ticker TEXT NOT NULL,
+    security_number TEXT,
+    name TEXT NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'ILS',
+    current_price NUMERIC(14, 4) NOT NULL DEFAULT 0.00,
+    asset_type TEXT NOT NULL DEFAULT 'stock',
+    tranches JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_investments_household ON public.investments(household_id);
+CREATE INDEX IF NOT EXISTS idx_investments_ticker ON public.investments(ticker);
+
+ALTER TABLE public.investments ENABLE ROW LEVEL SECURITY;
+
+GRANT ALL ON TABLE public.investments TO postgres, anon, authenticated, service_role;
+
+DROP POLICY IF EXISTS "Tenant isolation for investments (SELECT)" ON public.investments;
+CREATE POLICY "Tenant isolation for investments (SELECT)"
+    ON public.investments FOR SELECT
+    USING (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP POLICY IF EXISTS "Tenant isolation for investments (INSERT)" ON public.investments;
+CREATE POLICY "Tenant isolation for investments (INSERT)"
+    ON public.investments FOR INSERT
+    WITH CHECK (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP POLICY IF EXISTS "Tenant isolation for investments (UPDATE)" ON public.investments;
+CREATE POLICY "Tenant isolation for investments (UPDATE)"
+    ON public.investments FOR UPDATE
+    USING (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP POLICY IF EXISTS "Tenant isolation for investments (DELETE)" ON public.investments;
+CREATE POLICY "Tenant isolation for investments (DELETE)"
+    ON public.investments FOR DELETE
+    USING (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP TRIGGER IF EXISTS update_investments_modtime ON public.investments;
+CREATE TRIGGER update_investments_modtime BEFORE UPDATE ON public.investments FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 3. PERIODIC SNAPSHOTS TABLE (סגירות תקופה היסטוריות של תיק ההשקעות)
+CREATE TABLE IF NOT EXISTS public.investment_snapshots (
+    id TEXT PRIMARY KEY,
+    household_id UUID NOT NULL REFERENCES public.households(id) ON DELETE CASCADE,
+    period_type TEXT NOT NULL,
+    period_label TEXT NOT NULL,
+    date DATE NOT NULL,
+    items JSONB NOT NULL DEFAULT '[]'::jsonb,
+    total_invested NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+    total_value NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+    total_profit NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+    total_return_pct NUMERIC(8, 2) NOT NULL DEFAULT 0.00,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_investment_snapshots_household ON public.investment_snapshots(household_id);
+
+ALTER TABLE public.investment_snapshots ENABLE ROW LEVEL SECURITY;
+
+GRANT ALL ON TABLE public.investment_snapshots TO postgres, anon, authenticated, service_role;
+
+DROP POLICY IF EXISTS "Tenant isolation for investment_snapshots (SELECT)" ON public.investment_snapshots;
+CREATE POLICY "Tenant isolation for investment_snapshots (SELECT)"
+    ON public.investment_snapshots FOR SELECT
+    USING (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP POLICY IF EXISTS "Tenant isolation for investment_snapshots (INSERT)" ON public.investment_snapshots;
+CREATE POLICY "Tenant isolation for investment_snapshots (INSERT)"
+    ON public.investment_snapshots FOR INSERT
+    WITH CHECK (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP POLICY IF EXISTS "Tenant isolation for investment_snapshots (UPDATE)" ON public.investment_snapshots;
+CREATE POLICY "Tenant isolation for investment_snapshots (UPDATE)"
+    ON public.investment_snapshots FOR UPDATE
+    USING (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP POLICY IF EXISTS "Tenant isolation for investment_snapshots (DELETE)" ON public.investment_snapshots;
+CREATE POLICY "Tenant isolation for investment_snapshots (DELETE)"
+    ON public.investment_snapshots FOR DELETE
+    USING (household_id IN (SELECT get_user_households(auth.uid())));
+
+DROP TRIGGER IF EXISTS update_investment_snapshots_modtime ON public.investment_snapshots;
+CREATE TRIGGER update_investment_snapshots_modtime BEFORE UPDATE ON public.investment_snapshots FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- Notify PostgREST to reload schema cache immediately
+NOTIFY pgrst, 'reload schema';
+`;
+
 const MIGRATION_SQL = `-- ==============================================================================
 -- Migration: Macro Categories (קבוצות על) & Payment Method Aliases
 -- Date: 2026-08-11
@@ -277,9 +383,14 @@ $$;`;
 
 export const SchemaViewer: React.FC = () => {
   const [copied, setCopied] = useState(false);
-  const [viewMode, setViewMode] = useState<'migration' | 'full'>('migration');
+  const [viewMode, setViewMode] = useState<'investments' | 'migration' | 'full'>('investments');
 
-  const activeScript = viewMode === 'migration' ? MIGRATION_SQL : FULL_SQL_SCRIPT;
+  const activeScript =
+    viewMode === 'investments'
+      ? INVESTMENTS_MIGRATION_SQL
+      : viewMode === 'migration'
+      ? MIGRATION_SQL
+      : FULL_SQL_SCRIPT;
 
   const handleCopy = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -300,6 +411,16 @@ export const SchemaViewer: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <a
+            href="http://10.0.0.16:8088"
+            target="_blank"
+            rel="noreferrer"
+            style={styles.openDashboardBtn}
+            title="Open Web Database Manager on NAS"
+          >
+            <ExternalLink size={15} />
+            <span>Open NAS Adminer (Port 8088)</span>
+          </a>
           <a
             href="https://supabase.com/dashboard/project/hhrpcjkdkghnnqtqqqlo/sql/new"
             target="_blank"
@@ -322,12 +443,23 @@ export const SchemaViewer: React.FC = () => {
         <button
           style={{
             ...styles.tabBtn,
+            ...(viewMode === 'investments' ? styles.tabBtnActive : {}),
+          }}
+          onClick={() => setViewMode('investments')}
+        >
+          <Sparkles size={15} />
+          <span>Investments & Snapshots Migration (2026-10-13) ⭐</span>
+        </button>
+
+        <button
+          style={{
+            ...styles.tabBtn,
             ...(viewMode === 'migration' ? styles.tabBtnActive : {}),
           }}
           onClick={() => setViewMode('migration')}
         >
           <Sparkles size={15} />
-          <span>Latest Migration (2026-08-11 Macro Categories & Mappings)</span>
+          <span>Macro Categories & Mappings</span>
         </button>
 
         <button
@@ -338,7 +470,7 @@ export const SchemaViewer: React.FC = () => {
           onClick={() => setViewMode('full')}
         >
           <Database size={15} />
-          <span>Full Schema SQL (All 10 Tables)</span>
+          <span>Full Schema SQL</span>
         </button>
       </div>
 
