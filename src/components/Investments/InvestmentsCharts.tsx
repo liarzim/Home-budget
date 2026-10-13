@@ -498,7 +498,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   // 3. SVG Coordinates for Growth Chart
   const svgWidth = 760;
   const svgHeight = 320;
-  const padding = { top: 35, right: 30, bottom: 45, left: 74 };
+  const padding = { top: 35, right: 30, bottom: 45, left: 82 };
 
   const innerWidth = svgWidth - padding.left - padding.right;
   const innerHeight = svgHeight - padding.top - padding.bottom;
@@ -1313,12 +1313,23 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                 fill="url(#chartGrid)"
               />
 
-              {/* Horizontal Milestone Grid Lines */}
+              {/* Vertical Y-Axis Line */}
+              <line
+                x1={padding.left}
+                y1={padding.top}
+                x2={padding.left}
+                y2={padding.top + innerHeight}
+                stroke="#CBD5E1"
+                strokeWidth="1.5"
+              />
+
+              {/* Horizontal Milestone Grid Lines & Numbers */}
               {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
                 const y = padding.top + innerHeight * ratio;
                 const val = maxVal - ratio * valRange;
                 return (
                   <g key={ratio}>
+                    {/* Horizontal grid line across the chart */}
                     <line
                       x1={padding.left}
                       y1={y}
@@ -1328,10 +1339,22 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                       strokeDasharray={ratio === 1 ? undefined : '2 2'}
                       strokeWidth={ratio === 1 ? 1.5 : 1}
                     />
+
+                    {/* Small tick mark extending left from the axis line */}
+                    <line
+                      x1={padding.left - 5}
+                      y1={y}
+                      x2={padding.left}
+                      y2={y}
+                      stroke="#94A3B8"
+                      strokeWidth="1.5"
+                    />
+
+                    {/* Y-axis milestone text moved comfortably to the left with a clear gap from the axis */}
                     <text
-                      x={padding.left - 10}
-                      y={y + 4}
-                      fill="#94A3B8"
+                      x={padding.left - 16}
+                      y={y + 3.5}
+                      fill="#64748B"
                       fontSize="10"
                       fontWeight="600"
                       textAnchor="end"
@@ -1354,18 +1377,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                 />
               ))}
 
-              {/* 3. Cost Basis Line (Dashed) & Left Edge Extension */}
-              {chartDataPoints.length > 0 && (
-                <line
-                  x1={padding.left - 18}
-                  y1={getY(chartDataPoints[0].cost)}
-                  x2={padding.left}
-                  y2={getY(chartDataPoints[0].cost)}
-                  stroke="#D97706"
-                  strokeWidth="2"
-                  strokeDasharray="4 3"
-                />
-              )}
+              {/* 3. Cost Basis Line (Dashed) */}
               <path
                 d={costPathD}
                 fill="none"
@@ -1450,9 +1462,9 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                       const cW = Math.max(34, costText.length * 6.5 + 8);
                       const vW = Math.max(34, valText.length * 6.5 + 8);
 
-                      // Alignment: on the left side of the line (isFirstPt), place to the left of the dot (x - vW - 4); on the right side, place inside (x - vW - 6)
-                      const cX = isFirstPt ? x - cW - 4 : isLastPt ? x - cW - 6 : x + 6;
-                      const vX = isFirstPt ? x - vW - 4 : isLastPt ? x - vW - 6 : x + 6;
+                      // Alignment: at start (isFirstPt), place above the start of the line inside chart area (x + 4); at end (isLastPt), place inside (x - vW - 6)
+                      const cX = isFirstPt ? x + 4 : isLastPt ? x - cW - 6 : x + 6;
+                      const vX = isFirstPt ? x + 4 : isLastPt ? x - vW - 6 : x + 6;
                       const vY = isFirstPt ? yVal - 18 : yVal + (p.value >= p.cost ? -18 : 6);
                       const diffSignificant = Math.abs(p.value - p.cost) > 0.05;
 
