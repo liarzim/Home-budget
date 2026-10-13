@@ -503,15 +503,57 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   const innerWidth = svgWidth - padding.left - padding.right;
   const innerHeight = svgHeight - padding.top - padding.bottom;
 
-  const minVal =
+  const niceCeil = (num: number) => {
+    if (num <= 0) return 10;
+    if (num <= 10) return 10;
+    if (num <= 20) return 20;
+    if (num <= 50) return Math.ceil(num / 5) * 5;
+    if (num <= 100) return Math.ceil(num / 10) * 10;
+    if (num <= 500) return Math.ceil(num / 50) * 50;
+    if (num <= 1000) return Math.ceil(num / 100) * 100;
+    if (num <= 10000) return Math.ceil(num / 1000) * 1000;
+    if (num <= 100000) return Math.ceil(num / 5000) * 5000;
+    if (num <= 1000000) return Math.ceil(num / 50000) * 50000;
+    return Math.ceil(num / 100000) * 100000;
+  };
+
+  const rawMin =
     chartDataPoints.length > 0
-      ? Math.min(...chartDataPoints.map((p) => Math.min(p.cost, p.value))) * 0.9
+      ? Math.min(...chartDataPoints.map((p) => Math.min(p.cost, p.value)))
       : 0;
-  const maxVal =
+  const rawMax =
     chartDataPoints.length > 0
-      ? Math.max(...chartDataPoints.map((p) => Math.max(p.cost, p.value))) * 1.1
+      ? Math.max(...chartDataPoints.map((p) => Math.max(p.cost, p.value)))
       : 100;
+
+  // Investment values and costs start from baseline 0 ILS so yellow area shows actual capital from 0
+  const minVal = rawMin < 0 ? rawMin * 1.1 : 0;
+  const maxVal = niceCeil(rawMax > 0 ? rawMax * 1.15 : 100);
   const valRange = Math.max(1, maxVal - minVal);
+
+  const formatYAxisValue = (val: number) => {
+    const abs = Math.abs(val);
+    if (abs < 0.01) return '₪0';
+
+    if (maxVal >= 1_000_000) {
+      const m = val / 1_000_000;
+      return `₪${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M`;
+    }
+    if (maxVal >= 50_000) {
+      return `₪${Math.round(val / 1000)}k`;
+    }
+    if (maxVal >= 10_000) {
+      const k = val / 1000;
+      return `₪${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+    }
+    if (maxVal >= 1000) {
+      return `₪${Math.round(val).toLocaleString('en-US')}`;
+    }
+    if (maxVal >= 100) {
+      return `₪${Math.round(val)}`;
+    }
+    return `₪${val % 1 === 0 ? val.toFixed(0) : val.toFixed(1)}`;
+  };
 
   const getX = (index: number) => {
     if (chartDataPoints.length <= 1) return padding.left + innerWidth / 2;
@@ -1294,7 +1336,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                       fontWeight="600"
                       textAnchor="end"
                     >
-                      ₪{Math.round(val / 1000)}k
+                      {formatYAxisValue(val)}
                     </text>
                   </g>
                 );
@@ -1387,6 +1429,70 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                       stroke="#FFFFFF"
                       strokeWidth="2.5"
                     />
+
+                    {/* Always visible Direct Value Badges on key points */}
+                    {(isHovered || idx === 0 || idx === chartDataPoints.length - 1 || chartDataPoints.length <= 4) && (() => {
+                      const costText = `₪${p.cost >= 10000 ? Math.round(p.cost / 1000) + 'k' : (p.cost >= 1000 ? Math.round(p.cost).toLocaleString('en-US') : (p.cost % 1 === 0 ? p.cost.toFixed(0) : p.cost.toFixed(1)))}`;
+                      const valText = `₪${p.value >= 10000 ? Math.round(p.value / 1000) + 'k' : (p.value >= 1000 ? Math.round(p.value).toLocaleString('en-US') : (p.value % 1 === 0 ? p.value.toFixed(0) : p.value.toFixed(1)))}`;
+                      const isLastPt = idx === chartDataPoints.length - 1;
+                      const cW = Math.max(34, costText.length * 6.5 + 8);
+                      const vW = Math.max(34, valText.length * 6.5 + 8);
+                      const cX = isLastPt ? x - cW - 6 : x + 6;
+                      const vX = isLastPt ? x - vW - 6 : x + 6;
+                      const vY = yVal + (p.value >= p.cost ? -18 : 6);
+                      const diffSignificant = Math.abs(p.value - p.cost) > 0.05;
+
+                      return (
+                        <g pointerEvents="none">
+                          {diffSignificant && (
+                            <g>
+                              <rect
+                                x={cX}
+                                y={yCost - 18}
+                                width={cW}
+                                height={15}
+                                rx={3}
+                                fill="rgba(255, 255, 255, 0.92)"
+                                stroke="#D97706"
+                                strokeWidth={1}
+                              />
+                              <text
+                                x={cX + cW / 2}
+                                y={yCost - 7}
+                                fill="#B45309"
+                                fontSize="9"
+                                fontWeight="700"
+                                textAnchor="middle"
+                              >
+                                {costText}
+                              </text>
+                            </g>
+                          )}
+                          <g>
+                            <rect
+                              x={vX}
+                              y={vY}
+                              width={vW}
+                              height={15}
+                              rx={3}
+                              fill="rgba(255, 255, 255, 0.92)"
+                              stroke={isProf ? '#059669' : '#DC2626'}
+                              strokeWidth={1}
+                            />
+                            <text
+                              x={vX + vW / 2}
+                              y={vY + 11}
+                              fill={isProf ? '#059669' : '#DC2626'}
+                              fontSize="9.5"
+                              fontWeight="800"
+                              textAnchor="middle"
+                            >
+                              {valText}
+                            </text>
+                          </g>
+                        </g>
+                      );
+                    })()}
 
                     {/* X-axis Label & Tick Mark */}
                     {(() => {
