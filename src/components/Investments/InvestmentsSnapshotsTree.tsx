@@ -650,8 +650,8 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                                                       <tr key={it.asset_id} style={treeStyles.subTr}>
                                                         <td style={treeStyles.subTd}>
                                                           <span style={treeStyles.tickerBadge}>{it.ticker}</span>
-                                                          {it.security_number && (
-                                                            <span style={treeStyles.secNumSub}>#{it.security_number}</span>
+                                                          {(it.security_number || (/^\d+$/.test(it.ticker) ? it.ticker : null)) && (
+                                                            <span style={treeStyles.secNumSub}>#{it.security_number || it.ticker}</span>
                                                           )}
                                                         </td>
                                                         <td style={treeStyles.subTd}>

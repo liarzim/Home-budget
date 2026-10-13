@@ -27,6 +27,7 @@ interface ParsedTrancheRow {
   action: string;
   securityName: string;
   symbol: string;
+  securityNumber?: string;
   shares: number;
   rawPrice: number; // Raw price from file (Agorot for ILS securities)
   price: number; // Effective price per share in currency units (ILS if converted)
@@ -156,19 +157,22 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
   };
 
   // Helper to find matching asset in portfolio
-  const findMatchingAsset = (symbol: string, name: string): InvestmentAsset | undefined => {
+  const findMatchingAsset = (symbol: string, name: string, secNum?: string): InvestmentAsset | undefined => {
     if (defaultTargetAsset) return defaultTargetAsset;
 
     const cleanSymbol = symbol.trim().toUpperCase();
+    const cleanSecNum = (secNum || (/^\d+$/.test(cleanSymbol) ? cleanSymbol : '')).trim().toUpperCase();
     const cleanName = name.trim().toLowerCase();
 
     return investments.find((a) => {
       const aTicker = a.ticker.trim().toUpperCase();
-      const aSecNum = a.security_number ? a.security_number.trim().toUpperCase() : '';
+      const aSecNum = (a.security_number || (/^\d+$/.test(aTicker) ? aTicker : '')).trim().toUpperCase();
       const aName = a.name.trim().toLowerCase();
 
       return (
         aTicker === cleanSymbol ||
+        (cleanSecNum && aSecNum === cleanSecNum) ||
+        (cleanSecNum && aTicker === cleanSecNum) ||
         (cleanSymbol && aSecNum === cleanSymbol) ||
         aName === cleanName ||
         (cleanSymbol && aName.includes(cleanSymbol.toLowerCase())) ||
@@ -215,7 +219,8 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
       const dateKey = getKey(['תאריך', 'date', 'execution date', 'תאריך עסקה', 'מועד']);
       const actionKey = getKey(['סוג פעולה', 'סוג', 'פעולה', 'action', 'type', 'operation']);
       const nameKey = getKey(['שם נייר', 'שם הנייר', 'שם', 'security name', 'description', 'name']);
-      const symbolKey = getKey(["מס' נייר / סימבול", 'סימבול', 'מספר נייר', 'נייר / סימבול', 'symbol', 'ticker', 'security no', 'isin']);
+      const secNumKey = getKey(["מס' נייר", 'מספר נייר', 'מס נייר', 'מספר נייר בבורסה', 'security no', 'security_no', 'sec no', 'isin']);
+      const symbolKey = getKey(['סימבול', 'סימול', "מס' נייר / סימבול", 'נייר / סימבול', 'symbol', 'ticker']);
       const sharesKey = getKey(['כמות', 'כמות מניות', 'shares', 'quantity', 'qty']);
       const priceKey = getKey(['שער ביצוע', 'מחיר ביצוע', 'שער', 'מחיר', 'price', 'execution price', 'rate']);
       const currencyKey = getKey(['מטבע', 'currency', 'curr']);
@@ -231,10 +236,16 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
       const action = actionKey ? String(row[actionKey] || '').trim() : 'קניה';
       let name = nameKey ? String(row[nameKey] || '').trim() : '';
       let symbol = symbolKey ? String(row[symbolKey] || '').trim() : '';
+      let secNumVal = secNumKey ? String(row[secNumKey] || '').trim() : '';
 
-      // If symbol is missing but name is provided
+      // Fallbacks between symbol, security number and name
+      if (!symbol && secNumVal) {
+        symbol = secNumVal;
+      }
+      if (!secNumVal && /^\d+$/.test(symbol)) {
+        secNumVal = symbol;
+      }
       if (!symbol && name) {
-        // e.g. "SPCX US" -> symbol "SPCX"
         const parts = name.split(' ');
         symbol = parts[0] || name;
       }
@@ -268,7 +279,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
         currency = 'ILS';
       } else {
         // Default based on symbol or existing target asset
-        const matched = findMatchingAsset(symbol, name);
+        const matched = findMatchingAsset(symbol, name, secNumVal);
         if (matched) {
           currency = matched.currency;
         } else if (name.toUpperCase().includes('US') || symbol.toUpperCase().endsWith('US')) {
@@ -303,7 +314,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
       // Target asset matching
       const symbolKeyNorm = symbol.toUpperCase();
       if (!newTargetMap[symbolKeyNorm]) {
-        const matched = findMatchingAsset(symbol, name);
+        const matched = findMatchingAsset(symbol, name, secNumVal);
         newTargetMap[symbolKeyNorm] = matched ? matched.id : 'new_asset';
       }
 
@@ -327,6 +338,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
         action,
         securityName: name,
         symbol: symbol.toUpperCase(),
+        securityNumber: secNumVal || undefined,
         shares,
         rawPrice,
         price,
@@ -598,10 +610,13 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
         });
 
         const firstRow = rows[0];
+        const isNumericSymbol = /^\d+$/.test(symbol.trim());
+        const secNum = firstRow.securityNumber || (isNumericSymbol ? symbol.trim() : undefined);
         const newAsset: InvestmentAsset = {
           id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           household_id: 'default',
           ticker: symbol,
+          security_number: secNum,
           name: firstRow.securityName || symbol,
           currency: firstRow.currency || 'USD',
           current_price: latestPrice || firstRow.price || 100,
@@ -614,6 +629,10 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
         totalImported += uniqueTranches.length;
       } else {
         // Append to existing asset, strictly filtering out any duplicate of existing tranches or within batch
+        const firstRow = rows[0];
+        const isNumericSymbol = /^\d+$/.test(symbol.trim());
+        const secNum = firstRow?.securityNumber || (isNumericSymbol ? symbol.trim() : undefined);
+
         updatedAssets = updatedAssets.map((asset) => {
           if (asset.id === targetId) {
             const existing = asset.tranches || [];
@@ -633,6 +652,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
 
             return {
               ...asset,
+              security_number: asset.security_number || secNum || (/^\d+$/.test(asset.ticker.trim()) ? asset.ticker.trim() : undefined),
               current_price:
                 asset.current_price && asset.current_price > 0 ? asset.current_price : latestPrice,
               tranches: sortTranchesByDateDesc([...existing, ...uniqueToAdd]),
@@ -1068,7 +1088,14 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
                         </td>
                         <td style={styles.previewTd}>
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontWeight: '700', color: '#0F172A' }}>{r.symbol}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontWeight: '700', color: '#0F172A' }}>{r.symbol}</span>
+                              {r.securityNumber && r.securityNumber !== r.symbol && (
+                                <span style={{ fontSize: '0.72rem', color: '#2563EB', backgroundColor: '#EFF6FF', padding: '1px 4px', borderRadius: '4px' }}>
+                                  #{r.securityNumber}
+                                </span>
+                              )}
+                            </div>
                             <span style={{ fontSize: '0.72rem', color: '#64748B' }}>{r.securityName}</span>
                           </div>
                         </td>

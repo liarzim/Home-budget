@@ -197,16 +197,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 String(a.id) !== 'inv-nvda' &&
                 String(a.id) !== 'inv-ta125'
             )
-            .map((a: any) => ({
-              ...a,
-              tranches: sortTranchesByDateDesc(
-                (a.tranches || []).map((t: any, idx: number) => ({
-                  ...t,
-                  id: t.id ? String(t.id) : `tr-${a.id}-${idx}-${Date.now()}`,
-                  date: t.date || new Date().toISOString().split('T')[0],
-                }))
-              ),
-            }));
+            .map((a: any) => {
+              const ticker = String(a.ticker || '').trim();
+              const secNum = a.security_number || (/^\d+$/.test(ticker) ? ticker : null);
+              return {
+                ...a,
+                security_number: secNum,
+                tranches: sortTranchesByDateDesc(
+                  (a.tranches || []).map((t: any, idx: number) => ({
+                    ...t,
+                    id: t.id ? String(t.id) : `tr-${a.id}-${idx}-${Date.now()}`,
+                    date: t.date || new Date().toISOString().split('T')[0],
+                  }))
+                ),
+              };
+            });
 
           if (realAssets.length > 0) {
             localStorage.setItem('household_investments_data', JSON.stringify(realAssets));
@@ -235,19 +240,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured && !isDemoMode && activeHousehold) {
       try {
-        const payload = sortedList.map((a) => ({
-          id: a.id,
-          household_id: activeHousehold.id,
-          ticker: a.ticker,
-          security_number: a.security_number || null,
-          name: a.name,
-          currency: a.currency,
-          current_price: a.current_price,
-          asset_type: a.asset_type,
-          tranches: a.tranches,
-          created_at: a.created_at || new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }));
+        const payload = sortedList.map((a) => {
+          const ticker = String(a.ticker || '').trim();
+          const secNum = a.security_number || (/^\d+$/.test(ticker) ? ticker : null);
+          return {
+            id: a.id,
+            household_id: activeHousehold.id,
+            ticker: a.ticker,
+            security_number: secNum,
+            name: a.name,
+            currency: a.currency,
+            current_price: a.current_price,
+            asset_type: a.asset_type,
+            tranches: a.tranches,
+            created_at: a.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+        });
         await supabase.from('investments').upsert(payload);
       } catch (err) {
         console.warn('Supabase investments upsert warning:', err);
@@ -256,8 +265,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addInvestmentAsset = async (assetData: Omit<InvestmentAsset, 'id' | 'created_at' | 'updated_at'>) => {
+    const ticker = String(assetData.ticker || '').trim();
+    const secNum = assetData.security_number || (/^\d+$/.test(ticker) ? ticker : undefined);
     const newAsset: InvestmentAsset = {
       ...assetData,
+      ticker,
+      security_number: secNum,
       id: `inv-${Date.now()}`,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -940,10 +953,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (!invErr && invs) {
           if (invs.length > 0) {
-            const formattedInvs: InvestmentAsset[] = invs.map((inv: any) => ({
-              ...inv,
-              tranches: inv.tranches ? sortTranchesByDateDesc(inv.tranches) : [],
-            }));
+            const formattedInvs: InvestmentAsset[] = invs.map((inv: any) => {
+              const ticker = String(inv.ticker || '').trim();
+              const secNum = inv.security_number || (/^\d+$/.test(ticker) ? ticker : null);
+              return {
+                ...inv,
+                security_number: secNum,
+                tranches: inv.tranches ? sortTranchesByDateDesc(inv.tranches) : [],
+              };
+            });
             setInvestments(formattedInvs);
             localStorage.setItem('household_investments_data', JSON.stringify(formattedInvs));
           } else {
@@ -952,19 +970,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (rawInvs) {
               const localParsed = JSON.parse(rawInvs);
               if (Array.isArray(localParsed) && localParsed.length > 0) {
-                const toUpload = localParsed.map((a: any) => ({
-                  id: a.id,
-                  household_id: householdId,
-                  ticker: a.ticker,
-                  security_number: a.security_number || null,
-                  name: a.name,
-                  currency: a.currency,
-                  current_price: a.current_price,
-                  asset_type: a.asset_type,
-                  tranches: a.tranches ? sortTranchesByDateDesc(a.tranches) : [],
-                  created_at: a.created_at || new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                }));
+                const toUpload = localParsed.map((a: any) => {
+                  const ticker = String(a.ticker || '').trim();
+                  const secNum = a.security_number || (/^\d+$/.test(ticker) ? ticker : null);
+                  return {
+                    id: a.id,
+                    household_id: householdId,
+                    ticker: a.ticker,
+                    security_number: secNum,
+                    name: a.name,
+                    currency: a.currency,
+                    current_price: a.current_price,
+                    asset_type: a.asset_type,
+                    tranches: a.tranches ? sortTranchesByDateDesc(a.tranches) : [],
+                    created_at: a.created_at || new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  };
+                });
                 const { error: upErr } = await supabase.from('investments').upsert(toUpload);
                 if (!upErr) {
                   console.log('✅ Auto-synced local investments to Supabase DB');

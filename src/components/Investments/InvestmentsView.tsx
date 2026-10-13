@@ -38,6 +38,22 @@ import { IsraeliDateInput } from '../common/IsraeliDateInput';
 import { InvestmentsCharts } from './InvestmentsCharts';
 import { InvestmentsSnapshotsTree } from './InvestmentsSnapshotsTree';
 import { TranchesImportModal } from './TranchesImportModal';
+import * as XLSX from 'xlsx';
+
+export const getEffectiveSecurityNumber = (asset?: {
+  security_number?: string | null;
+  ticker?: string;
+}): string => {
+  if (!asset) return '';
+  if (asset.security_number && String(asset.security_number).trim() !== '') {
+    return String(asset.security_number).trim();
+  }
+  const ticker = String(asset.ticker || '').trim();
+  if (/^\d+$/.test(ticker)) {
+    return ticker;
+  }
+  return '';
+};
 
 export const SECURITY_TYPE_LABELS: Record<SecurityType, { he: string; en: string; icon: string }> = {
   stock: { he: 'מניה', en: 'Stock', icon: '📈' },
@@ -406,7 +422,7 @@ export const InvestmentsView: React.FC = () => {
     if (mode === 'add_tranche' && asset) {
       setSelectedAssetIdForTranche(asset.id);
       setFormTicker(asset.ticker);
-      setFormSecurityNumber(asset.security_number || '');
+      setFormSecurityNumber(getEffectiveSecurityNumber(asset));
       setFormName(asset.name);
       setFormCurrency(asset.currency);
       setFormCurrentPrice(asset.current_price.toString());
@@ -436,7 +452,7 @@ export const InvestmentsView: React.FC = () => {
     setSelectedAssetIdForTranche(asset.id);
     setSelectedTrancheId('');
     setFormTicker(asset.ticker);
-    setFormSecurityNumber(asset.security_number || '');
+    setFormSecurityNumber(getEffectiveSecurityNumber(asset));
     setFormName(asset.name);
     setFormCurrency(asset.currency);
     setFormAssetType(asset.asset_type);
@@ -454,7 +470,7 @@ export const InvestmentsView: React.FC = () => {
     setSelectedTrancheId(tranche.id ? String(tranche.id) : String(trancheIndex));
     setSelectedTrancheIndex(trancheIndex);
     setFormTicker(asset.ticker);
-    setFormSecurityNumber(asset.security_number || '');
+    setFormSecurityNumber(getEffectiveSecurityNumber(asset));
     setFormName(asset.name);
     setFormCurrency(asset.currency);
     setFormAssetType(asset.asset_type);
@@ -489,9 +505,10 @@ export const InvestmentsView: React.FC = () => {
       if (formCurrency === 'ILS' && !isNaN(curPrice) && (isPriceInAgorot || curPrice >= 100)) {
         curPrice = Number((curPrice / 100).toFixed(4));
       }
+      const resolvedSecNum = formSecurityNumber.trim() || (/^\d+$/.test(formTicker.trim()) ? formTicker.trim() : undefined);
       updateInvestmentAsset(selectedAssetIdForTranche, {
         ticker: formTicker.trim().toUpperCase(),
-        security_number: formSecurityNumber.trim() || undefined,
+        security_number: resolvedSecNum,
         name: formName.trim() || formTicker.trim().toUpperCase(),
         currency: formCurrency,
         asset_type: formAssetType,
@@ -525,10 +542,11 @@ export const InvestmentsView: React.FC = () => {
         alert(isHe ? 'אנא הזן סימול נייר' : 'Please enter a ticker');
         return;
       }
+      const resolvedNewSecNum = formSecurityNumber.trim() || (/^\d+$/.test(formTicker.trim()) ? formTicker.trim() : undefined);
       addInvestmentAsset({
         household_id: activeHousehold?.id || 'hh-main',
         ticker: formTicker.trim().toUpperCase(),
-        security_number: formSecurityNumber.trim() || undefined,
+        security_number: resolvedNewSecNum,
         name: formName.trim() || formTicker.trim().toUpperCase(),
         currency: formCurrency,
         current_price: currentPriceNum,
@@ -964,8 +982,69 @@ export const InvestmentsView: React.FC = () => {
     setEditingPriceAssetId(null);
   };
 
-  // Export current state to CSV / Excel (with UTF-8 BOM)
-  const handleExportCurrentStateCSV = () => {
+  // Export current state to CSV / Excel (with UTF-8 BOM or native XLSX)
+  const handleExportCurrentStateCSV = (formatOrEvent?: 'xlsx' | 'csv' | React.MouseEvent) => {
+    if (investments.length === 0) {
+      alert(isHe ? 'אין ניירות ערך בתיק לייצוא' : 'No assets to export');
+      return;
+    }
+
+    const format: 'xlsx' | 'csv' = formatOrEvent === 'csv' ? 'csv' : 'xlsx';
+
+    if (format === 'xlsx') {
+      try {
+        const dataForSheet = investments.map((asset) => {
+          const { totalShares, totalCost, avgPrice, currentValue, profit, returnPct } =
+            calculateAssetMetrics(asset);
+          const typeLabel = SECURITY_TYPE_LABELS[asset.asset_type]?.he || asset.asset_type;
+          const secNum = getEffectiveSecurityNumber(asset);
+
+          return {
+            'סימול נייר': asset.ticker,
+            'מספר נייר': secNum || '—',
+            'שם נייר / חברה': asset.name,
+            'סוג נייר': typeLabel,
+            'מטבע': asset.currency,
+            'כמות כוללת': totalShares,
+            'מחיר קנייה ממוצע': Number(avgPrice.toFixed(2)),
+            'סך עלות רכישה': Number(totalCost.toFixed(2)),
+            'שער שוק נוכחי': Number(asset.current_price.toFixed(2)),
+            'שווי נוכחי': Number(currentValue.toFixed(2)),
+            'רווח / הפסד נקודתי': Number(profit.toFixed(2)),
+            'תשואה נקודתית (%)': `${returnPct.toFixed(2)}%`,
+            'מספר פעימות': asset.tranches.length,
+            'תאריך דוח': new Date().toLocaleDateString('he-IL'),
+          };
+        });
+
+        // Add summary row
+        dataForSheet.push({
+          'סימול נייר': 'סה״כ תיק',
+          'מספר נייר': '',
+          'שם נייר / חברה': '',
+          'סוג נייר': '',
+          'מטבע': 'ILS',
+          'כמות כוללת': '' as any,
+          'מחיר קנייה ממוצע': '' as any,
+          'סך עלות רכישה': Number(portfolioSummary.totalInvestedILS.toFixed(2)),
+          'שער שוק נוכחי': '' as any,
+          'שווי נוכחי': Number(portfolioSummary.currentValueILS.toFixed(2)),
+          'רווח / הפסד נקודתי': Number(portfolioSummary.totalProfitILS.toFixed(2)),
+          'תשואה נקודתית (%)': `${portfolioSummary.totalReturnPct.toFixed(2)}%`,
+          'מספר פעימות': '' as any,
+          'תאריך דוח': new Date().toLocaleDateString('he-IL'),
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(dataForSheet);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'מצב תיק השקעות');
+        XLSX.writeFile(workbook, `מצב_תיק_השקעות_${new Date().toISOString().split('T')[0]}.xlsx`);
+        return;
+      } catch (err) {
+        console.warn('XLSX export failed, falling back to CSV:', err);
+      }
+    }
+
     const BOM = '\uFEFF';
     const headers = [
       'סימול נייר',
@@ -988,10 +1067,11 @@ export const InvestmentsView: React.FC = () => {
       const { totalShares, totalCost, avgPrice, currentValue, profit, returnPct } =
         calculateAssetMetrics(asset);
       const typeLabel = SECURITY_TYPE_LABELS[asset.asset_type]?.he || asset.asset_type;
+      const secNum = getEffectiveSecurityNumber(asset);
 
       return [
         `"${asset.ticker}"`,
-        `"${asset.security_number || '—'}"`,
+        `"${secNum || '—'}"`,
         `"${asset.name}"`,
         `"${typeLabel}"`,
         `"${asset.currency}"`,
@@ -1226,7 +1306,7 @@ export const InvestmentsView: React.FC = () => {
         return {
           asset_id: asset.id,
           ticker: asset.ticker,
-          security_number: asset.security_number,
+          security_number: getEffectiveSecurityNumber(asset) || undefined,
           name: asset.name,
           currency: asset.currency,
           shares: totalShares,
@@ -1316,7 +1396,7 @@ export const InvestmentsView: React.FC = () => {
 
     const rows = result.items.map((item) => [
       `"${item.ticker}"`,
-      `"${item.security_number || '—'}"`,
+      `"${getEffectiveSecurityNumber(item) || '—'}"`,
       `"${item.name}"`,
       `"${item.currency}"`,
       item.shares,
@@ -2229,7 +2309,7 @@ export const InvestmentsView: React.FC = () => {
                             {/* Security Number (מספר נייר) */}
                             <td style={styles.tdCell}>
                               <span style={styles.securityNumberBadge}>
-                                {asset.security_number || '—'}
+                                {getEffectiveSecurityNumber(asset) || '—'}
                               </span>
                             </td>
 
@@ -3114,8 +3194,8 @@ export const InvestmentsView: React.FC = () => {
                           <tr key={item.asset_id} style={styles.trRow}>
                             <td style={styles.tdCell}>
                               <div style={styles.tickerPill}>{item.ticker}</div>
-                              {item.security_number && (
-                                <div style={styles.secNumText}>#{item.security_number}</div>
+                              {getEffectiveSecurityNumber(item) && (
+                                <div style={styles.secNumText}>#{getEffectiveSecurityNumber(item)}</div>
                               )}
                             </td>
                             <td style={styles.tdCell}>
