@@ -7,7 +7,7 @@ Whenever directing or asking the user to connect through **Adminer** (e.g., at `
   * **System (מערכת):** `PostgreSQL`
   * **Server (שרת):** `home_budget_db`
   * **Username (משתמש):** `postgres`
-  * **Password (סיסמה):** `YourSecurePassword2026!`
+  * **Password (סיסמה):** `HomeBudgetSecurePass2026!` (או הסיסמה שהוגדרה ב-Docker Compose)
   * **Database (מסד נתונים):** `home_budget`
 
 | שדה במסך הכניסה | מה לבחור / להקליד |
@@ -15,5 +15,5 @@ Whenever directing or asking the user to connect through **Adminer** (e.g., at `
 | **System** (מערכת) | `PostgreSQL` |
 | **Server** (שרת) | `home_budget_db` |
 | **Username** (משתמש) | `postgres` |
-| **Password** (סיסמה) | `YourSecurePassword2026!` |
+| **Password** (סיסמה) | `HomeBudgetSecurePass2026!` |
 | **Database** (מסד נתונים) | `home_budget` |
