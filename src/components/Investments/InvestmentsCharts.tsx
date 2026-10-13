@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { InvestmentAsset, InvestmentPeriodicSnapshot, SecurityType } from '../../lib/types';
 import { formatDate, normalizeToISODate } from '../../lib/i18n';
 import {
@@ -16,6 +16,9 @@ import {
   Check,
   X,
   RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  Search,
 } from 'lucide-react';
 import { SECURITY_TYPE_LABELS } from './InvestmentsView';
 
@@ -75,6 +78,22 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   const [selectedAssetType, setSelectedAssetType] = useState<string>('all');
   // Filter state: Specific Securities (array of asset IDs; empty = all in selected type)
   const [selectedSecurityIds, setSelectedSecurityIds] = useState<string[]>([]);
+  const [isSecDropdownOpen, setIsSecDropdownOpen] = useState(false);
+  const [secSearchQuery, setSecSearchQuery] = useState('');
+  const secDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close securities dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (secDropdownRef.current && !secDropdownRef.current.contains(event.target as Node)) {
+        setIsSecDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Distinct available asset types based on actual user holdings
   const availableAssetTypes = useMemo(() => {
@@ -101,6 +120,19 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
     }
     return investments.filter((a) => a.asset_type === selectedAssetType);
   }, [investments, selectedAssetType]);
+
+  // Filtered securities for dropdown list based on search query
+  const filteredSecuritiesForDropdown = useMemo(() => {
+    if (!secSearchQuery.trim()) {
+      return securitiesForSelection;
+    }
+    const q = secSearchQuery.toLowerCase().trim();
+    return securitiesForSelection.filter(
+      (s) =>
+        s.ticker.toLowerCase().includes(q) ||
+        (s.name && s.name.toLowerCase().includes(q))
+    );
+  }, [securitiesForSelection, secSearchQuery]);
 
   // Filtered investments based on user selection
   const filteredInvestments = useMemo(() => {
@@ -571,19 +603,21 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
 
         // Segment 1 (from x1 to xMid)
         segments.push({
-          type: d1 >= 0 ? 'profit' : 'loss',
+          type: d1 > 0 ? 'profit' : 'loss',
           path: `M ${x1},${yVal1} L ${xMid},${yMid} L ${x1},${yCost1} Z`,
         });
 
         // Segment 2 (from xMid to x2)
         segments.push({
-          type: d2 >= 0 ? 'profit' : 'loss',
+          type: d2 > 0 ? 'profit' : 'loss',
           path: `M ${xMid},${yMid} L ${x2},${yVal2} L ${x2},${yCost2} Z`,
         });
       } else {
         // Standard non-crossing quad polygon
+        // If either endpoint is at loss and overall diff is negative/loss, render in bright red
+        const isLoss = (d1 <= 0 && d2 < 0) || (d1 < 0 && d2 <= 0) || (d1 + d2 < 0);
         segments.push({
-          type: d1 >= 0 || d2 >= 0 ? 'profit' : 'loss',
+          type: isLoss ? 'loss' : 'profit',
           path: `M ${x1},${yVal1} L ${x2},${yVal2} L ${x2},${yCost2} L ${x1},${yCost1} Z`,
         });
       }
@@ -878,119 +912,250 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
               )}
             </div>
 
-            {/* 1. Filter by Security Type */}
-            {investments.length > 0 && (
-              <div style={chartStyles.filterRow}>
-                <div style={chartStyles.filterLabelGroup}>
+            {/* DROPDOWN & CHECKBOX CONTROLS */}
+            <div style={chartStyles.dropdownsRow}>
+              {/* 1. Asset Type Dropdown */}
+              <div style={chartStyles.dropdownField}>
+                <label style={chartStyles.dropdownLabel}>
                   <Filter size={14} color="#2563EB" />
-                  <span style={chartStyles.filterLabelText}>
-                    {isHe ? 'סוג נייר ערך:' : 'Security Type:'}
-                  </span>
-                </div>
-                <div style={chartStyles.filterChipsRow}>
-                  <button
-                    type="button"
-                    style={{
-                      ...chartStyles.filterChip,
-                      ...(selectedAssetType === 'all' ? chartStyles.filterChipActive : {}),
-                    }}
-                    onClick={() => {
-                      setSelectedAssetType('all');
+                  <span>{isHe ? 'סוג נייר ערך:' : 'Security Type:'}</span>
+                </label>
+                <div style={chartStyles.selectWrapper}>
+                  <select
+                    value={selectedAssetType}
+                    onChange={(e) => {
+                      setSelectedAssetType(e.target.value);
                       setSelectedSecurityIds([]);
                     }}
+                    style={chartStyles.selectElement}
                   >
-                    <span>{isHe ? `כל הסוגים (${investments.length})` : `All Types (${investments.length})`}</span>
-                  </button>
-
-                  {availableAssetTypes.map((item) => {
-                    const isActive = selectedAssetType === item.type;
-                    return (
-                      <button
-                        key={item.type}
-                        type="button"
-                        style={{
-                          ...chartStyles.filterChip,
-                          ...(isActive ? chartStyles.filterChipActive : {}),
-                        }}
-                        onClick={() => {
-                          setSelectedAssetType(item.type);
-                          setSelectedSecurityIds([]);
-                        }}
-                      >
-                        <span>{item.label.icon}</span>
-                        <span>{isHe ? item.label.he : item.label.en}</span>
-                        <span
-                          style={{
-                            ...chartStyles.chipBadgeCount,
-                            backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.06)',
-                            color: isActive ? '#FFFFFF' : 'inherit',
-                          }}
-                        >
-                          {item.count}
-                        </span>
-                      </button>
-                    );
-                  })}
+                    <option value="all">
+                      {isHe ? `כל הסוגים (${investments.length} ניירות)` : `All Types (${investments.length})`}
+                    </option>
+                    {availableAssetTypes.map((item) => (
+                      <option key={item.type} value={item.type}>
+                        {item.label.icon} {isHe ? item.label.he : item.label.en} ({item.count})
+                      </option>
+                    ))}
+                  </select>
+                  <div style={chartStyles.selectChevronWrap}>
+                    <ChevronDown size={15} color="#64748B" />
+                  </div>
                 </div>
               </div>
-            )}
 
-            {/* 2. Filter by Specific Securities (Single or Multi-select) */}
-            {securitiesForSelection.length > 0 && (
-              <div style={chartStyles.filterRow}>
-                <div style={chartStyles.filterLabelGroup}>
-                  <Layers size={14} color="#6366F1" />
-                  <span style={chartStyles.filterLabelText}>
-                    {isHe ? 'ניירות ערך:' : 'Securities:'}
-                  </span>
-                </div>
-                <div style={chartStyles.filterChipsRow}>
-                  <button
-                    type="button"
-                    style={{
-                      ...chartStyles.filterSubChip,
-                      ...(selectedSecurityIds.length === 0 ? chartStyles.filterSubChipActive : {}),
-                    }}
-                    onClick={() => setSelectedSecurityIds([])}
-                  >
-                    <span>{isHe ? 'כל הניירות' : 'All Securities'}</span>
-                  </button>
-
-                  {securitiesForSelection.map((sec) => {
-                    const isSelected = selectedSecurityIds.includes(sec.id);
-                    return (
-                      <button
-                        key={sec.id}
-                        type="button"
-                        style={{
-                          ...chartStyles.filterSubChip,
-                          ...(isSelected ? chartStyles.filterSubChipActive : {}),
-                        }}
-                        onClick={() => {
-                          if (selectedSecurityIds.includes(sec.id)) {
-                            setSelectedSecurityIds(selectedSecurityIds.filter((id) => id !== sec.id));
-                          } else {
-                            if (selectedSecurityIds.length === 0) {
-                              setSelectedSecurityIds([sec.id]);
-                            } else {
-                              setSelectedSecurityIds([...selectedSecurityIds, sec.id]);
-                            }
-                          }
-                        }}
-                        title={sec.name}
-                      >
-                        <span style={{ fontWeight: '700' }}>{sec.ticker}</span>
-                        {sec.name && sec.name !== sec.ticker && (
-                          <span style={chartStyles.tickerNameHint}>
-                            {sec.name.length > 14 ? sec.name.substring(0, 14) + '...' : sec.name}
+              {/* 2. Securities Dropdown with Checkboxes */}
+              {securitiesForSelection.length > 0 && (
+                <div style={chartStyles.dropdownField} ref={secDropdownRef}>
+                  <label style={chartStyles.dropdownLabel}>
+                    <Layers size={14} color="#6366F1" />
+                    <span>{isHe ? 'ניירות ערך (סימון ב-Checkbox):' : 'Securities (Checkbox Selection):'}</span>
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    {/* Trigger Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsSecDropdownOpen((prev) => !prev)}
+                      style={{
+                        ...chartStyles.dropdownTriggerBtn,
+                        ...(selectedSecurityIds.length > 0 ? chartStyles.dropdownTriggerActive : {}),
+                      }}
+                    >
+                      <div style={chartStyles.dropdownTriggerTextWrap}>
+                        <span style={chartStyles.triggerBadge}>
+                          {selectedSecurityIds.length === 0
+                            ? isHe
+                              ? `כל הניירות (${securitiesForSelection.length})`
+                              : `All Securities (${securitiesForSelection.length})`
+                            : selectedSecurityIds.length === 1
+                            ? (() => {
+                                const found = investments.find((i) => i.id === selectedSecurityIds[0]);
+                                return found ? `${found.ticker} - ${found.name || found.ticker}` : '1 נבחר';
+                              })()
+                            : isHe
+                            ? `${selectedSecurityIds.length} ניירות נבחרו מתוך ${securitiesForSelection.length}`
+                            : `${selectedSecurityIds.length} of ${securitiesForSelection.length} selected`}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {selectedSecurityIds.length > 0 && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            style={chartStyles.triggerClearIconBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedSecurityIds([]);
+                            }}
+                            title={isHe ? 'נקה בחירה' : 'Clear'}
+                          >
+                            <X size={12} />
                           </span>
                         )}
-                      </button>
-                    );
-                  })}
+                        {isSecDropdownOpen ? (
+                          <ChevronUp size={16} color="#64748B" />
+                        ) : (
+                          <ChevronDown size={16} color="#64748B" />
+                        )}
+                      </div>
+                    </button>
+
+                    {/* Floating Dropdown Menu with Checkboxes */}
+                    {isSecDropdownOpen && (
+                      <div style={chartStyles.dropdownPanel}>
+                        {/* Search Input */}
+                        <div style={chartStyles.panelSearchBox}>
+                          <Search size={14} color="#94A3B8" />
+                          <input
+                            type="text"
+                            placeholder={isHe ? 'חיפוש נייר לפי שם או מספר/סימול...' : 'Search ticker or name...'}
+                            value={secSearchQuery}
+                            onChange={(e) => setSecSearchQuery(e.target.value)}
+                            style={chartStyles.panelSearchInput}
+                            autoFocus
+                          />
+                          {secSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setSecSearchQuery('')}
+                              style={chartStyles.searchClearBtn}
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Dropdown Action Toolbar */}
+                        <div style={chartStyles.panelActionsRow}>
+                          <label style={chartStyles.selectAllLabel}>
+                            <input
+                              type="checkbox"
+                              checked={
+                                selectedSecurityIds.length === securitiesForSelection.length &&
+                                securitiesForSelection.length > 0
+                              }
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedSecurityIds(securitiesForSelection.map((s) => s.id));
+                                } else {
+                                  setSelectedSecurityIds([]);
+                                }
+                              }}
+                              style={chartStyles.checkboxControl}
+                            />
+                            <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#1E293B' }}>
+                              {isHe ? 'בחר הכל' : 'Select All'}
+                            </span>
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSecurityIds([])}
+                            style={chartStyles.panelClearBtn}
+                          >
+                            <RotateCcw size={11} />
+                            <span>{isHe ? 'איפוס / כל התיק' : 'Show All'}</span>
+                          </button>
+                        </div>
+
+                        {/* Items List with Checkboxes */}
+                        <div style={chartStyles.panelListScroll}>
+                          {filteredSecuritiesForDropdown.length === 0 ? (
+                            <div style={chartStyles.panelEmptySearch}>
+                              <span>{isHe ? 'לא נמצא נייר תואם' : 'No matching securities'}</span>
+                            </div>
+                          ) : (
+                            filteredSecuritiesForDropdown.map((sec) => {
+                              const isChecked = selectedSecurityIds.includes(sec.id);
+                              const rate = sec.currency === 'USD' ? usdRate : 1;
+                              const totalShares = sec.tranches.reduce((sum, tr) => sum + tr.shares, 0);
+                              const currentVal = totalShares * sec.current_price * rate;
+                              const totalCost = sec.tranches.reduce(
+                                (sum, tr) =>
+                                  sum +
+                                  (tr.total_cost && tr.total_cost > 0
+                                    ? tr.total_cost
+                                    : tr.shares * tr.price_per_share) * rate,
+                                0
+                              );
+                              const profit = currentVal - totalCost;
+                              const retPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+
+                              return (
+                                <label
+                                  key={sec.id}
+                                  style={{
+                                    ...chartStyles.panelItemRow,
+                                    backgroundColor: isChecked ? '#EFF6FF' : 'transparent',
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      if (isChecked) {
+                                        setSelectedSecurityIds(selectedSecurityIds.filter((id) => id !== sec.id));
+                                      } else {
+                                        setSelectedSecurityIds([...selectedSecurityIds, sec.id]);
+                                      }
+                                    }}
+                                    style={chartStyles.checkboxControl}
+                                  />
+                                  <div style={chartStyles.panelItemContent}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                                      <span style={chartStyles.panelTickerBadge}>{sec.ticker}</span>
+                                      <span style={chartStyles.panelNameText} title={sec.name}>
+                                        {sec.name || sec.ticker}
+                                      </span>
+                                    </div>
+                                    <div style={chartStyles.panelStatWrap}>
+                                      <span
+                                        style={{
+                                          fontSize: '0.72rem',
+                                          fontWeight: '700',
+                                          color: profit >= 0 ? '#059669' : '#DC2626',
+                                          direction: 'ltr',
+                                        }}
+                                      >
+                                        {profit >= 0 ? '+' : ''}
+                                        {retPct.toFixed(1)}%
+                                      </span>
+                                      <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                        ₪{Math.round(currentVal).toLocaleString('en-US')}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {/* Footer inside dropdown */}
+                        <div style={chartStyles.panelFooter}>
+                          <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                            {selectedSecurityIds.length === 0
+                              ? isHe
+                                ? 'מציג את כל הניירות בסוג זה'
+                                : 'Showing all securities'
+                              : isHe
+                              ? `נבחרו ${selectedSecurityIds.length} ניירות`
+                              : `${selectedSecurityIds.length} selected`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsSecDropdownOpen(false)}
+                            style={chartStyles.panelCloseBtn}
+                          >
+                            {isHe ? 'סגור' : 'Close'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* 3. Active Filter Info & Reset Button */}
             {(selectedAssetType !== 'all' || selectedSecurityIds.length > 0) && (
@@ -1087,8 +1252,8 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
 
                 {/* Bright Red Gradient for Loss / Negative Growth */}
                 <linearGradient id="brightRedLossGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#EF4444" stopOpacity="0.8" />
-                  <stop offset="100%" stopColor="#F87171" stopOpacity="0.35" />
+                  <stop offset="0%" stopColor="#EF4444" stopOpacity="0.85" />
+                  <stop offset="100%" stopColor="#DC2626" stopOpacity="0.5" />
                 </linearGradient>
 
                 {/* Subtle Grid Filter */}
@@ -1156,11 +1321,15 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                 strokeDasharray="6 4"
               />
 
-              {/* 4. Portfolio Value Line (Solid) */}
+              {/* 4. Portfolio Value Line (Solid: Green on profit, Bright Red on loss) */}
               <path
                 d={valPathD}
                 fill="none"
-                stroke={simulationMode === 'loss' ? '#DC2626' : '#059669'}
+                stroke={
+                  simulationMode === 'loss' || filteredSummary.totalProfitILS < 0
+                    ? '#DC2626'
+                    : '#059669'
+                }
                 strokeWidth="3.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -1172,7 +1341,12 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                 const yCost = getY(p.cost);
                 const yVal = getY(p.value);
                 const isHovered = hoveredPointIndex === idx;
-                const isProf = p.value >= p.cost;
+                const isProf =
+                  p.value > p.cost
+                    ? true
+                    : p.value < p.cost
+                    ? false
+                    : (filteredSummary.totalProfitILS >= 0 && simulationMode !== 'loss');
 
                 return (
                   <g
@@ -1968,6 +2142,247 @@ const chartStyles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  dropdownsRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '16px',
+    flexWrap: 'wrap',
+  },
+  dropdownField: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    flex: '1 1 240px',
+    minWidth: '220px',
+    position: 'relative',
+  },
+  dropdownLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '0.78rem',
+    fontWeight: '700',
+    color: '#334155',
+  },
+  selectWrapper: {
+    position: 'relative',
+    width: '100%',
+  },
+  selectElement: {
+    width: '100%',
+    padding: '8px 30px 8px 12px',
+    borderRadius: '8px',
+    border: '1.5px solid #CBD5E1',
+    backgroundColor: '#FFFFFF',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    color: '#1E293B',
+    appearance: 'none',
+    cursor: 'pointer',
+    outline: 'none',
+    transition: 'border-color 0.15s ease',
+  },
+  selectChevronWrap: {
+    position: 'absolute',
+    top: '50%',
+    left: '10px',
+    transform: 'translateY(-50%)',
+    pointerEvents: 'none',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  dropdownTriggerBtn: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1.5px solid #CBD5E1',
+    backgroundColor: '#FFFFFF',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    color: '#1E293B',
+    cursor: 'pointer',
+    outline: 'none',
+    transition: 'all 0.15s ease',
+    textAlign: 'right',
+  },
+  dropdownTriggerActive: {
+    borderColor: '#3B82F6',
+    backgroundColor: '#F8FAFC',
+    boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.15)',
+  },
+  dropdownTriggerTextWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  triggerBadge: {
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  triggerClearIconBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '18px',
+    height: '18px',
+    borderRadius: '50%',
+    backgroundColor: '#F1F5F9',
+    color: '#64748B',
+    cursor: 'pointer',
+    transition: 'background-color 0.15s',
+  },
+  dropdownPanel: {
+    position: 'absolute',
+    top: 'calc(100% + 6px)',
+    right: 0,
+    width: '100%',
+    minWidth: '300px',
+    backgroundColor: '#FFFFFF',
+    borderRadius: '10px',
+    border: '1px solid #CBD5E1',
+    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+    zIndex: 100,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    maxHeight: '380px',
+  },
+  panelSearchBox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '8px 12px',
+    borderBottom: '1px solid #E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  panelSearchInput: {
+    border: 'none',
+    outline: 'none',
+    backgroundColor: 'transparent',
+    fontSize: '0.8rem',
+    width: '100%',
+    color: '#1E293B',
+  },
+  searchClearBtn: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    color: '#94A3B8',
+    padding: 0,
+    display: 'flex',
+  },
+  panelActionsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '6px 12px',
+    borderBottom: '1px solid #F1F5F9',
+    backgroundColor: '#FAFAFA',
+  },
+  selectAllLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  panelClearBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    background: 'none',
+    border: 'none',
+    fontSize: '0.72rem',
+    fontWeight: '600',
+    color: '#6366F1',
+    cursor: 'pointer',
+    padding: '2px 6px',
+    borderRadius: '4px',
+  },
+  panelListScroll: {
+    overflowY: 'auto',
+    maxHeight: '220px',
+    padding: '4px 0',
+  },
+  panelEmptySearch: {
+    padding: '16px',
+    textAlign: 'center',
+    fontSize: '0.78rem',
+    color: '#94A3B8',
+  },
+  panelItemRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '7px 12px',
+    cursor: 'pointer',
+    transition: 'background-color 0.12s ease',
+    userSelect: 'none',
+  },
+  checkboxControl: {
+    width: '16px',
+    height: '16px',
+    accentColor: '#2563EB',
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  panelItemContent: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
+    minWidth: 0,
+    gap: '8px',
+  },
+  panelTickerBadge: {
+    fontSize: '0.72rem',
+    fontWeight: '800',
+    color: '#1E40AF',
+    backgroundColor: '#EFF6FF',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    border: '1px solid #BFDBFE',
+    flexShrink: 0,
+  },
+  panelNameText: {
+    fontSize: '0.78rem',
+    fontWeight: '600',
+    color: '#334155',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  panelStatWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    flexShrink: 0,
+  },
+  panelFooter: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '6px 12px',
+    borderTop: '1px solid #E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  panelCloseBtn: {
+    padding: '3px 10px',
+    borderRadius: '6px',
+    border: '1px solid #CBD5E1',
+    backgroundColor: '#FFFFFF',
+    fontSize: '0.72rem',
+    fontWeight: '700',
+    color: '#334155',
+    cursor: 'pointer',
   },
   filterRow: {
     display: 'flex',
