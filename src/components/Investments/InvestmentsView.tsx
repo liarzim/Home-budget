@@ -1000,11 +1000,12 @@ export const InvestmentsView: React.FC = () => {
           const secNum = getEffectiveSecurityNumber(asset);
 
           return {
-            'סימול נייר': asset.ticker,
-            'מספר נייר': secNum || '—',
             'שם נייר / חברה': asset.name,
+            'מספר נייר': secNum || '—',
+            'סימול נייר': asset.ticker,
             'סוג נייר': typeLabel,
             'מטבע': asset.currency,
+            'מספר פעימות': asset.tranches.length,
             'כמות כוללת': totalShares,
             'מחיר קנייה ממוצע': Number(avgPrice.toFixed(2)),
             'סך עלות רכישה': Number(totalCost.toFixed(2)),
@@ -1012,18 +1013,18 @@ export const InvestmentsView: React.FC = () => {
             'שווי נוכחי': Number(currentValue.toFixed(2)),
             'רווח / הפסד נקודתי': Number(profit.toFixed(2)),
             'תשואה נקודתית (%)': `${returnPct.toFixed(2)}%`,
-            'מספר פעימות': asset.tranches.length,
             'תאריך דוח': new Date().toLocaleDateString('he-IL'),
           };
         });
 
         // Add summary row
         dataForSheet.push({
-          'סימול נייר': 'סה״כ תיק',
+          'שם נייר / חברה': 'סה״כ תיק',
           'מספר נייר': '',
-          'שם נייר / חברה': '',
+          'סימול נייר': '',
           'סוג נייר': '',
           'מטבע': 'ILS',
+          'מספר פעימות': '' as any,
           'כמות כוללת': '' as any,
           'מחיר קנייה ממוצע': '' as any,
           'סך עלות רכישה': Number(portfolioSummary.totalInvestedILS.toFixed(2)),
@@ -1031,7 +1032,6 @@ export const InvestmentsView: React.FC = () => {
           'שווי נוכחי': Number(portfolioSummary.currentValueILS.toFixed(2)),
           'רווח / הפסד נקודתי': Number(portfolioSummary.totalProfitILS.toFixed(2)),
           'תשואה נקודתית (%)': `${portfolioSummary.totalReturnPct.toFixed(2)}%`,
-          'מספר פעימות': '' as any,
           'תאריך דוח': new Date().toLocaleDateString('he-IL'),
         });
 
@@ -1047,11 +1047,12 @@ export const InvestmentsView: React.FC = () => {
 
     const BOM = '\uFEFF';
     const headers = [
-      'סימול נייר',
-      'מספר נייר',
       'שם נייר / חברה',
+      'מספר נייר',
+      'סימול נייר',
       'סוג נייר',
       'מטבע',
+      'מספר פעימות',
       'כמות כוללת',
       'מחיר קנייה ממוצע',
       'סך עלות רכישה',
@@ -1059,7 +1060,6 @@ export const InvestmentsView: React.FC = () => {
       'שווי נוכחי',
       'רווח / הפסד נקודתי',
       'תשואה נקודתית (%)',
-      'מספר פעימות',
       'תאריך דוח',
     ];
 
@@ -1070,11 +1070,12 @@ export const InvestmentsView: React.FC = () => {
       const secNum = getEffectiveSecurityNumber(asset);
 
       return [
-        `"${asset.ticker}"`,
-        `"${secNum || '—'}"`,
         `"${asset.name}"`,
+        `"${secNum || '—'}"`,
+        `"${asset.ticker}"`,
         `"${typeLabel}"`,
         `"${asset.currency}"`,
+        asset.tranches.length,
         totalShares,
         avgPrice.toFixed(2),
         totalCost.toFixed(2),
@@ -1082,7 +1083,6 @@ export const InvestmentsView: React.FC = () => {
         currentValue.toFixed(2),
         profit.toFixed(2),
         `${returnPct.toFixed(2)}%`,
-        asset.tranches.length,
         `"${new Date().toLocaleDateString('he-IL')}"`,
       ].join(',');
     });
@@ -1096,12 +1096,12 @@ export const InvestmentsView: React.FC = () => {
       '"ILS"',
       '""',
       '""',
+      '""',
       portfolioSummary.totalInvestedILS.toFixed(2),
       '""',
       portfolioSummary.currentValueILS.toFixed(2),
       portfolioSummary.totalProfitILS.toFixed(2),
       `${portfolioSummary.totalReturnPct.toFixed(2)}%`,
-      '""',
       `"${new Date().toLocaleDateString('he-IL')}"`,
     ].join(',');
 
