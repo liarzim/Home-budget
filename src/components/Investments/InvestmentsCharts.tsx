@@ -848,7 +848,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
           {/* FILTER TOOLBAR: BY SECURITY TYPE & SPECIFIC SECURITIES */}
           <div style={chartStyles.filterToolbar}>
             {/* 1. Filter by Security Type */}
-            {availableAssetTypes.length > 1 && (
+            {investments.length > 0 && (
               <div style={chartStyles.filterRow}>
                 <div style={chartStyles.filterLabelGroup}>
                   <Filter size={14} color="#2563EB" />
