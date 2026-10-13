@@ -498,7 +498,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   // 3. SVG Coordinates for Growth Chart
   const svgWidth = 760;
   const svgHeight = 320;
-  const padding = { top: 35, right: 30, bottom: 45, left: 65 };
+  const padding = { top: 35, right: 30, bottom: 45, left: 74 };
 
   const innerWidth = svgWidth - padding.left - padding.right;
   const innerHeight = svgHeight - padding.top - padding.bottom;
@@ -1354,7 +1354,18 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                 />
               ))}
 
-              {/* 3. Cost Basis Line (Dashed) */}
+              {/* 3. Cost Basis Line (Dashed) & Left Edge Extension */}
+              {chartDataPoints.length > 0 && (
+                <line
+                  x1={padding.left - 18}
+                  y1={getY(chartDataPoints[0].cost)}
+                  x2={padding.left}
+                  y2={getY(chartDataPoints[0].cost)}
+                  stroke="#D97706"
+                  strokeWidth="2"
+                  strokeDasharray="4 3"
+                />
+              )}
               <path
                 d={costPathD}
                 fill="none"
@@ -1383,6 +1394,8 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                 const yCost = getY(p.cost);
                 const yVal = getY(p.value);
                 const isHovered = hoveredPointIndex === idx;
+                const isFirstPt = idx === 0;
+                const isLastPt = idx === chartDataPoints.length - 1;
                 const isProf =
                   p.value > p.cost
                     ? true
@@ -1420,31 +1433,35 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                       strokeWidth="2"
                     />
 
-                    {/* Value Point (Green or Bright Red) */}
+                    {/* Value Point (Green on profit, Bright Red on loss, Amber at initial purchase) */}
                     <circle
                       cx={x}
                       cy={yVal}
                       r={isHovered ? 7.5 : 5.5}
-                      fill={isProf ? '#10B981' : '#EF4444'}
+                      fill={isFirstPt ? '#D97706' : (isProf ? '#10B981' : '#EF4444')}
                       stroke="#FFFFFF"
                       strokeWidth="2.5"
                     />
 
-                    {/* Always visible Direct Value Badges on key points */}
-                    {(isHovered || idx === 0 || idx === chartDataPoints.length - 1 || chartDataPoints.length <= 4) && (() => {
+                    {/* Direct Value Badges on key points */}
+                    {(isHovered || isFirstPt || isLastPt || chartDataPoints.length <= 4) && (() => {
                       const costText = `₪${p.cost >= 10000 ? Math.round(p.cost / 1000) + 'k' : (p.cost >= 1000 ? Math.round(p.cost).toLocaleString('en-US') : (p.cost % 1 === 0 ? p.cost.toFixed(0) : p.cost.toFixed(1)))}`;
                       const valText = `₪${p.value >= 10000 ? Math.round(p.value / 1000) + 'k' : (p.value >= 1000 ? Math.round(p.value).toLocaleString('en-US') : (p.value % 1 === 0 ? p.value.toFixed(0) : p.value.toFixed(1)))}`;
-                      const isLastPt = idx === chartDataPoints.length - 1;
                       const cW = Math.max(34, costText.length * 6.5 + 8);
                       const vW = Math.max(34, valText.length * 6.5 + 8);
-                      const cX = isLastPt ? x - cW - 6 : x + 6;
-                      const vX = isLastPt ? x - vW - 6 : x + 6;
-                      const vY = yVal + (p.value >= p.cost ? -18 : 6);
+
+                      // Alignment: on the left side of the line (isFirstPt), place to the left of the dot (x - vW - 4); on the right side, place inside (x - vW - 6)
+                      const cX = isFirstPt ? x - cW - 4 : isLastPt ? x - cW - 6 : x + 6;
+                      const vX = isFirstPt ? x - vW - 4 : isLastPt ? x - vW - 6 : x + 6;
+                      const vY = isFirstPt ? yVal - 18 : yVal + (p.value >= p.cost ? -18 : 6);
                       const diffSignificant = Math.abs(p.value - p.cost) > 0.05;
+
+                      const badgeStroke = isFirstPt ? '#D97706' : (isProf ? '#059669' : '#DC2626');
+                      const badgeTextFill = isFirstPt ? '#B45309' : (isProf ? '#059669' : '#DC2626');
 
                       return (
                         <g pointerEvents="none">
-                          {diffSignificant && (
+                          {diffSignificant && !isFirstPt && (
                             <g>
                               <rect
                                 x={cX}
@@ -1452,7 +1469,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                                 width={cW}
                                 height={15}
                                 rx={3}
-                                fill="rgba(255, 255, 255, 0.92)"
+                                fill="rgba(255, 255, 255, 0.94)"
                                 stroke="#D97706"
                                 strokeWidth={1}
                               />
@@ -1475,14 +1492,14 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                               width={vW}
                               height={15}
                               rx={3}
-                              fill="rgba(255, 255, 255, 0.92)"
-                              stroke={isProf ? '#059669' : '#DC2626'}
+                              fill="rgba(255, 255, 255, 0.94)"
+                              stroke={badgeStroke}
                               strokeWidth={1}
                             />
                             <text
                               x={vX + vW / 2}
                               y={vY + 11}
-                              fill={isProf ? '#059669' : '#DC2626'}
+                              fill={badgeTextFill}
                               fontSize="9.5"
                               fontWeight="800"
                               textAnchor="middle"
