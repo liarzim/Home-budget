@@ -498,7 +498,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   // 3. SVG Coordinates for Growth Chart
   const svgWidth = 760;
   const svgHeight = 320;
-  const padding = { top: 35, right: 30, bottom: 45, left: 82 };
+  const padding = { top: 35, right: 30, bottom: 45, left: 88 };
 
   const innerWidth = svgWidth - padding.left - padding.right;
   const innerHeight = svgHeight - padding.top - padding.bottom;
@@ -533,26 +533,26 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
 
   const formatYAxisValue = (val: number) => {
     const abs = Math.abs(val);
-    if (abs < 0.01) return '₪0';
+    if (abs < 0.01) return '\u200E₪0';
 
     if (maxVal >= 1_000_000) {
       const m = val / 1_000_000;
-      return `₪${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M`;
+      return `\u200E₪${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M`;
     }
     if (maxVal >= 50_000) {
-      return `₪${Math.round(val / 1000)}k`;
+      return `\u200E₪${Math.round(val / 1000)}k`;
     }
     if (maxVal >= 10_000) {
       const k = val / 1000;
-      return `₪${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
+      return `\u200E₪${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}k`;
     }
     if (maxVal >= 1000) {
-      return `₪${Math.round(val).toLocaleString('en-US')}`;
+      return `\u200E₪${Math.round(val).toLocaleString('en-US')}`;
     }
     if (maxVal >= 100) {
-      return `₪${Math.round(val)}`;
+      return `\u200E₪${Math.round(val)}`;
     }
-    return `₪${val % 1 === 0 ? val.toFixed(0) : val.toFixed(1)}`;
+    return `\u200E₪${val % 1 === 0 ? val.toFixed(0) : val.toFixed(1)}`;
   };
 
   const getX = (index: number) => {
@@ -1352,12 +1352,14 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
 
                     {/* Y-axis milestone text moved comfortably to the left with a clear gap from the axis */}
                     <text
-                      x={padding.left - 16}
+                      x={padding.left - 18}
                       y={y + 3.5}
                       fill="#64748B"
                       fontSize="10"
                       fontWeight="600"
                       textAnchor="end"
+                      direction="ltr"
+                      style={{ direction: 'ltr', unicodeBidi: 'isolate' }}
                     >
                       {formatYAxisValue(val)}
                     </text>
