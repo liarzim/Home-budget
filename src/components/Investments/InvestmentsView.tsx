@@ -3717,30 +3717,33 @@ export const InvestmentsView: React.FC = () => {
       )}
 
       {/* MODAL: TRANCHES IMPORT FROM EXCEL / CSV */}
-      <TranchesImportModal
-        isOpen={isImportModalOpen}
-        onClose={() => {
-          setIsImportModalOpen(false);
-          setImportTargetAsset(null);
-        }}
-        investments={investments}
-        defaultTargetAsset={importTargetAsset}
-        onImportComplete={(updatedAssets, importedCount, skippedCount) => {
-          saveInvestments(updatedAssets);
-          setActionFeedbackMsg(
-            isHe
-              ? skippedCount && skippedCount > 0
-                ? `נקלטו בהצלחה ${importedCount} פעימות חדשות (דולגו ${skippedCount} פעימות כפולות שכבר היו קיימות בתיק).`
-                : `הצלחה! נקלטו ${importedCount} פעימות רכישה בהצלחה לתיק ההשקעות.`
-              : skippedCount && skippedCount > 0
-                ? `Successfully imported ${importedCount} new tranches (${skippedCount} duplicates skipped).`
-                : `Successfully imported ${importedCount} purchase tranches into portfolio.`
-          );
-          setTimeout(() => setActionFeedbackMsg(null), 5000);
-        }}
-        isHe={isHe}
-        usdRate={usdRate}
-      />
+      {isImportModalOpen && (
+        <TranchesImportModal
+          key={`tranches-import-${importTargetAsset ? importTargetAsset.id : 'all'}-${Date.now()}`}
+          isOpen={isImportModalOpen}
+          onClose={() => {
+            setIsImportModalOpen(false);
+            setImportTargetAsset(null);
+          }}
+          investments={investments}
+          defaultTargetAsset={importTargetAsset}
+          onImportComplete={(updatedAssets, importedCount, skippedCount) => {
+            saveInvestments(updatedAssets);
+            setActionFeedbackMsg(
+              isHe
+                ? skippedCount && skippedCount > 0
+                  ? `נקלטו בהצלחה ${importedCount} פעימות חדשות (דולגו ${skippedCount} פעימות כפולות שכבר היו קיימות בתיק).`
+                  : `הצלחה! נקלטו ${importedCount} פעימות רכישה בהצלחה לתיק ההשקעות.`
+                : skippedCount && skippedCount > 0
+                  ? `Successfully imported ${importedCount} new tranches (${skippedCount} duplicates skipped).`
+                  : `Successfully imported ${importedCount} purchase tranches into portfolio.`
+            );
+            setTimeout(() => setActionFeedbackMsg(null), 5000);
+          }}
+          isHe={isHe}
+          usdRate={usdRate}
+        />
+      )}
     </div>
   );
 };

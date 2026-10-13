@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import {
@@ -15,6 +15,7 @@ import {
   ClipboardList,
   Sparkles,
   Info,
+  RotateCcw,
 } from 'lucide-react';
 import { InvestmentAsset, InvestmentTranche, SecurityType } from '../../lib/types';
 import { formatDate, normalizeToISODate, isDuplicateTranche, sortTranchesByDateDesc } from '../../lib/i18n';
@@ -68,6 +69,33 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
   const [targetAssetMap, setTargetAssetMap] = useState<Record<string, string>>({}); // symbol -> assetId or 'new_asset'
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset all state to clean initial state
+  const resetModalState = useCallback(() => {
+    setActiveTab('file');
+    setIsDragging(false);
+    setFileName(null);
+    setPastedText('');
+    setParseError(null);
+    setParsedRows([]);
+    setTargetAssetMap({});
+    setIsProcessing(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+
+  // Whenever the modal opens (isOpen becomes true), reset all previous data
+  useEffect(() => {
+    if (isOpen) {
+      resetModalState();
+    }
+  }, [isOpen, resetModalState]);
+
+  const handleClose = () => {
+    resetModalState();
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -354,6 +382,9 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
       setParseError(err.message || (isHe ? 'שגיאה בקריאת הקובץ' : 'Error reading file'));
     } finally {
       setIsProcessing(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -614,6 +645,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
     });
 
     onImportComplete(updatedAssets, totalImported, totalSkippedDuplicates);
+    resetModalState();
     onClose();
   };
 
@@ -625,7 +657,7 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
   const allIlsInAgorot = hasIlsRows && parsedRows.filter((r) => r.currency === 'ILS').every((r) => r.isAgorot);
 
   return (
-    <div style={styles.modalOverlay} onClick={onClose}>
+    <div style={styles.modalOverlay} onClick={handleClose}>
       <div style={styles.modalCard} onClick={(e) => e.stopPropagation()} dir={isHe ? 'rtl' : 'ltr'}>
         {/* Header */}
         <div style={styles.modalHeader}>
@@ -644,9 +676,34 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
               </p>
             </div>
           </div>
-          <button style={styles.modalCloseBtn} onClick={onClose} type="button">
-            <X size={20} color="#64748B" />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {parsedRows.length > 0 && (
+              <button
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid #CBD5E1',
+                  backgroundColor: '#F8FAFC',
+                  fontSize: '0.8125rem',
+                  fontWeight: '600',
+                  color: '#475569',
+                  cursor: 'pointer',
+                }}
+                onClick={resetModalState}
+                type="button"
+                title={isHe ? 'אפס מסך והתחל מחדש' : 'Reset screen and start over'}
+              >
+                <RotateCcw size={14} color="#64748B" />
+                <span>{isHe ? 'איפוס מסך' : 'Reset'}</span>
+              </button>
+            )}
+            <button style={styles.modalCloseBtn} onClick={handleClose} type="button">
+              <X size={20} color="#64748B" />
+            </button>
+          </div>
         </div>
 
         {/* If no rows parsed yet: Input Step */}
@@ -1086,18 +1143,20 @@ export const TranchesImportModal: React.FC<TranchesImportModalProps> = ({
             <div style={styles.previewActionsBar}>
               <button
                 type="button"
-                style={styles.cancelBtn}
-                onClick={() => {
-                  setParsedRows([]);
-                  setFileName(null);
-                  setPastedText('');
+                style={{
+                  ...styles.cancelBtn,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
                 }}
+                onClick={resetModalState}
               >
-                {isHe ? 'בחר קובץ אחר' : 'Choose another file'}
+                <RotateCcw size={14} color="#64748B" />
+                <span>{isHe ? 'איפוס / טעינת קובץ אחר' : 'Reset / Load another file'}</span>
               </button>
 
               <div style={styles.previewActionsRight}>
-                <button type="button" style={styles.secondaryBtn} onClick={onClose}>
+                <button type="button" style={styles.secondaryBtn} onClick={handleClose}>
                   {isHe ? 'ביטול' : 'Cancel'}
                 </button>
                 <button
