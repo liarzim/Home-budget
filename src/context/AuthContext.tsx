@@ -190,11 +190,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const realAssets = parsed
             .filter(
               (a: any) =>
+                a &&
                 a.id &&
-                !a.id.includes('sample') &&
-                a.id !== 'inv-voo' &&
-                a.id !== 'inv-nvda' &&
-                a.id !== 'inv-ta125'
+                !String(a.id).includes('sample') &&
+                String(a.id) !== 'inv-voo' &&
+                String(a.id) !== 'inv-nvda' &&
+                String(a.id) !== 'inv-ta125'
             )
             .map((a: any) => ({
               ...a,
@@ -207,8 +208,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ),
             }));
 
-          localStorage.setItem('household_investments_data', JSON.stringify(realAssets));
-          return realAssets;
+          if (realAssets.length > 0) {
+            localStorage.setItem('household_investments_data', JSON.stringify(realAssets));
+            return realAssets;
+          }
         }
       }
     } catch (e) {
@@ -409,8 +412,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const restoreDemoData = () => {
     localStorage.removeItem('demo_data_cleared');
     localStorage.removeItem('demo_transactions');
-    localStorage.removeItem('household_investments_data');
-    localStorage.removeItem('household_investment_snapshots');
+    // Keep user investments safe even if demo is restored
     localStorage.removeItem('demo_budgets');
     localStorage.removeItem('demo_savings');
     setIsDemoDataCleared(false);
@@ -890,14 +892,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const parsed = JSON.parse(savedUserInvs);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setInvestments(parsed);
-          } else {
-            setInvestments([]);
           }
-        } catch (e) {
-          setInvestments([]);
-        }
-      } else {
-        setInvestments([]);
+        } catch (e) {}
       }
       setIsLoading(false);
       return;
