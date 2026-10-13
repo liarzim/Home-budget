@@ -1,0 +1,39 @@
+name: Daily Securities End-Of-Day Quotes & Snapshot
+
+on:
+  schedule:
+    # 20:55 UTC = 23:55 Israel Daylight Time (Summer) / 22:55 Israel Standard Time (Winter)
+    - cron: '55 20 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  run-daily-quotes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Daily Quotes & Snapshot Endpoint
+        run: |
+          APP_URL="${{ secrets.VERCEL_APP_URL || secrets.APP_URL }}"
+          CRON_SECRET="${{ secrets.CRON_SECRET }}"
+          
+          if [ -z "$APP_URL" ]; then
+            echo "::notice ::No VERCEL_APP_URL secret set. If deployed on Vercel, Vercel Crons handles this natively."
+            exit 0
+          fi
+          
+          echo "Pinging ${APP_URL}/api/cron-daily-quotes..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "${APP_URL}/api/cron-daily-quotes" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "x-vercel-cron: 1")
+            
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "Response HTTP Status: $HTTP_STATUS"
+          echo "Response Body: $BODY"
+          
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "Daily securities quotes recorded successfully!"
+          else
+            echo "Failed with status $HTTP_STATUS"
+            exit 1
+          fi

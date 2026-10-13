@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { InvestmentAsset, InvestmentTranche, SecurityType, InvestmentPeriodicSnapshot, InvestmentSnapshotItem } from '../../lib/types';
+import { InvestmentAsset, InvestmentTranche, SecurityType, InvestmentPeriodicSnapshot, InvestmentSnapshotItem, SecurityDailyPrice } from '../../lib/types';
+import { supabase } from '../../lib/supabase';
 import {
   TrendingUp,
   TrendingDown,
@@ -99,8 +100,8 @@ export const InvestmentsView: React.FC = () => {
   }); // 1 USD = X ILS
   const [isRateEditing, setIsRateEditing] = useState<boolean>(false);
 
-  // Active view tab: 'portfolio' (תיק שוטף) | 'snapshots' (סגירות תקופה ודוחות) | 'charts' (גרפים וניתוח תשואות)
-  const [activeSubTab, setActiveSubTab] = useState<'portfolio' | 'snapshots' | 'charts'>('portfolio');
+  // Active view tab: 'portfolio' (תיק שוטף) | 'snapshots' (סגירות תקופה ודוחות) | 'charts' (גרפים וניתוח תשואות) | 'daily_prices' (שערי סוף יום)
+  const [activeSubTab, setActiveSubTab] = useState<'portfolio' | 'snapshots' | 'charts' | 'daily_prices'>('portfolio');
 
   // Expanded asset rows (to view purchase tranches)
   const [expandedAssetIds, setExpandedAssetIds] = useState<Record<string, boolean>>({});
@@ -216,12 +217,164 @@ export const InvestmentsView: React.FC = () => {
     return [];
   });
 
-  const saveSnapshots = (newList: InvestmentPeriodicSnapshot[]) => {
+  const saveSnapshots = async (newList: InvestmentPeriodicSnapshot[]) => {
     setSnapshots(newList);
     try {
       localStorage.setItem('household_investment_snapshots', JSON.stringify(newList));
     } catch (e) {
       console.error(e);
+    }
+    if (activeHousehold?.id) {
+      try {
+        const toUpsert = newList.map((s) => ({
+          id: s.id,
+          household_id: activeHousehold.id,
+          period_type: s.period_type,
+          period_label: s.period_label,
+          date: s.date,
+          items: s.items || [],
+          total_invested: s.total_invested,
+          total_value: s.total_value,
+          total_profit: s.total_profit,
+          total_return_pct: s.total_return_pct,
+          updated_at: new Date().toISOString(),
+        }));
+        await supabase.from('investment_snapshots').upsert(toUpsert, { onConflict: 'id' });
+      } catch (dbErr) {
+        console.warn('Could not sync snapshots to Supabase:', dbErr);
+      }
+    }
+  };
+
+  // Daily closing prices state (from security_daily_prices table)
+  const [dailyPrices, setDailyPrices] = useState<SecurityDailyPrice[]>([]);
+  const [isLoadingDailyPrices, setIsLoadingDailyPrices] = useState<boolean>(false);
+  const [isSyncingDailyQuotes, setIsSyncingDailyQuotes] = useState<boolean>(false);
+  const [dailySyncStatusMsg, setDailySyncStatusMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [dailyPriceSearch, setDailyPriceSearch] = useState<string>('');
+
+  // Load snapshots from Supabase on mount / household change
+  useEffect(() => {
+    async function loadDbSnapshots() {
+      if (!activeHousehold?.id) return;
+      try {
+        const { data, error } = await supabase
+          .from('investment_snapshots')
+          .select('*')
+          .eq('household_id', activeHousehold.id)
+          .order('date', { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          const dbSnaps: InvestmentPeriodicSnapshot[] = data.map((d: any) => ({
+            id: d.id,
+            household_id: d.household_id,
+            period_type: d.period_type,
+            period_label: d.period_label,
+            date: d.date,
+            items: d.items || [],
+            total_invested: Number(d.total_invested) || 0,
+            total_value: Number(d.total_value) || 0,
+            total_profit: Number(d.total_profit) || 0,
+            total_return_pct: Number(d.total_return_pct) || 0,
+            assets_count: Array.isArray(d.items) ? d.items.length : 0,
+            notes: d.notes || undefined,
+          }));
+
+          setSnapshots((prev) => {
+            const map = new Map<string, InvestmentPeriodicSnapshot>();
+            prev.forEach((s) => map.set(s.id, s));
+            dbSnaps.forEach((s) => map.set(s.id, s));
+            const merged = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+            localStorage.setItem('household_investment_snapshots', JSON.stringify(merged));
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.warn('Error loading snapshots from Supabase:', err);
+      }
+    }
+    loadDbSnapshots();
+  }, [activeHousehold?.id]);
+
+  // Load daily closing prices from security_daily_prices
+  const loadDailyPrices = async () => {
+    setIsLoadingDailyPrices(true);
+    try {
+      const { data, error } = await supabase
+        .from('security_daily_prices')
+        .select('*')
+        .order('price_date', { ascending: false })
+        .limit(300);
+
+      if (!error && data) {
+        setDailyPrices(data);
+      }
+    } catch (err) {
+      console.warn('Error loading daily prices from Supabase:', err);
+    } finally {
+      setIsLoadingDailyPrices(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDailyPrices();
+  }, []);
+
+  const triggerManualDailySync = async () => {
+    setIsSyncingDailyQuotes(true);
+    setDailySyncStatusMsg({
+      type: 'info',
+      text: isHe ? 'מושך שערי נעילה יומיים עבור כל הניירות הפעילים ומייצר סנפשוט...' : 'Fetching end-of-day quotes and generating snapshot...',
+    });
+
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token || '';
+
+      const res = await fetch('/api/cron-daily-quotes', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDailySyncStatusMsg({
+          type: 'success',
+          text: isHe
+            ? `✅ סנכרון סוף יום הצליח! עודכנו ${data.securitiesUpdated} ניירות עבור תאריך ${data.date}. שווי התיק חושב והתווסף לגרף!`
+            : `✅ Daily sync succeeded! Updated ${data.securitiesUpdated} securities for ${data.date}. Portfolio graph updated!`,
+        });
+        await loadDailyPrices();
+        if (activeHousehold?.id) {
+          const { data: dbSnaps } = await supabase
+            .from('investment_snapshots')
+            .select('*')
+            .eq('household_id', activeHousehold.id)
+            .order('date', { ascending: true });
+          if (dbSnaps && dbSnaps.length > 0) {
+            setSnapshots(dbSnaps);
+            localStorage.setItem('household_investment_snapshots', JSON.stringify(dbSnaps));
+          }
+        }
+      } else {
+        setDailySyncStatusMsg({
+          type: 'error',
+          text: isHe
+            ? `❌ שגיאה בסנכרון שערים: ${data.error || 'נכשל'}`
+            : `❌ Sync error: ${data.error || 'Failed'}`,
+        });
+      }
+    } catch (err: any) {
+      setDailySyncStatusMsg({
+        type: 'error',
+        text: isHe ? `❌ תקלה בתקשורת עם השרת: ${err.message}` : `❌ Network error: ${err.message}`,
+      });
+    } finally {
+      setIsSyncingDailyQuotes(false);
+      setTimeout(() => {
+        setDailySyncStatusMsg(null);
+      }, 9000);
     }
   };
 
@@ -1823,6 +1976,18 @@ export const InvestmentsView: React.FC = () => {
             {isHe ? 'חדש' : 'New'}
           </span>
         </button>
+
+        <button
+          style={{
+            ...styles.subTabBtn,
+            ...(activeSubTab === 'daily_prices' ? styles.subTabBtnActive : {}),
+          }}
+          onClick={() => setActiveSubTab('daily_prices')}
+        >
+          <Calendar size={16} />
+          <span>{isHe ? 'שערי סוף יום (23:55 אוטומטי)' : 'Daily Closing Prices'}</span>
+          <span style={styles.subTabCountPill}>{dailyPrices.length}</span>
+        </button>
       </div>
 
       {/* TAB 1: ACTIVE HOLDINGS TABLE */}
@@ -3272,6 +3437,266 @@ export const InvestmentsView: React.FC = () => {
           usdRate={usdRate}
           isHe={isHe}
         />
+      )}
+
+      {/* TAB 4: DAILY CLOSING PRICES (שערי סוף יום אוטומטיים) */}
+      {activeSubTab === 'daily_prices' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Top Banner Card */}
+          <div style={{
+            background: 'var(--card-bg)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.04)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '12px',
+                  background: 'rgba(37, 99, 235, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#2563EB',
+                  flexShrink: 0,
+                }}>
+                  <Clock size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: '0 0 6px 0', fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-primary)' }}>
+                    {isHe ? 'שערי נעילה יומיים (סוף יום 23:55)' : 'Daily Closing Prices (23:55 End-Of-Day)'}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', maxWidth: '650px', lineHeight: 1.5 }}>
+                    {isHe
+                      ? 'המערכת מתעדכנת אוטומטית בצד שרת בכל יום ב-23:55 (גם כשהאפליקציה או המחשב סגורים), שומרת את שערי הנעילה של כל ניירות הערך המוחזקים בטבלה נפרדת (security_daily_prices) ומייצרת נקודת מעקב יומית בגרף השווי.'
+                      : 'The server updates automatically every day at 23:55 (even when the app or device is offline), recording closing prices into security_daily_prices and generating daily portfolio points on the timeline graph.'}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <button
+                  onClick={loadDailyPrices}
+                  disabled={isLoadingDailyPrices}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '9px 14px',
+                    borderRadius: '10px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--card-bg)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.88rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                  title={isHe ? 'רענן נתוני טבלה' : 'Refresh table'}
+                >
+                  <RefreshCw size={14} className={isLoadingDailyPrices ? 'animate-spin' : ''} />
+                  <span>{isHe ? 'רענן טבלה' : 'Refresh'}</span>
+                </button>
+
+                <button
+                  onClick={triggerManualDailySync}
+                  disabled={isSyncingDailyQuotes}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '9px 18px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+                    color: '#FFFFFF',
+                    fontSize: '0.88rem',
+                    fontWeight: '700',
+                    cursor: isSyncingDailyQuotes ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 8px rgba(37, 99, 235, 0.25)',
+                    opacity: isSyncingDailyQuotes ? 0.7 : 1,
+                  }}
+                >
+                  <Sparkles size={16} />
+                  <span>
+                    {isSyncingDailyQuotes
+                      ? (isHe ? 'מושך שערים ומייצר סנפשוט...' : 'Syncing EOD Quotes...')
+                      : (isHe ? 'סנכרן שערים עכשיו (בדיקה ידנית)' : 'Sync EOD Quotes Now')}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Status Feedback Banner */}
+            {dailySyncStatusMsg && (
+              <div style={{
+                marginTop: '16px',
+                padding: '12px 16px',
+                borderRadius: '10px',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                backgroundColor:
+                  dailySyncStatusMsg.type === 'success'
+                    ? 'rgba(16, 185, 129, 0.1)'
+                    : dailySyncStatusMsg.type === 'error'
+                    ? 'rgba(239, 68, 68, 0.1)'
+                    : 'rgba(59, 130, 246, 0.1)',
+                color:
+                  dailySyncStatusMsg.type === 'success'
+                    ? '#059669'
+                    : dailySyncStatusMsg.type === 'error'
+                    ? '#DC2626'
+                    : '#2563EB',
+                border: `1px solid ${
+                  dailySyncStatusMsg.type === 'success'
+                    ? '#10B981'
+                    : dailySyncStatusMsg.type === 'error'
+                    ? '#EF4444'
+                    : '#3B82F6'
+                }`,
+              }}>
+                {dailySyncStatusMsg.type === 'success' ? <CheckCircle2 size={16} /> : <Info size={16} />}
+                <span>{dailySyncStatusMsg.text}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Table Card */}
+          <div style={styles.tableCard}>
+            <div style={styles.tableHeaderBar}>
+              <div style={styles.tableTitleGroup}>
+                <Calendar size={18} color="#2563EB" />
+                <h4 style={styles.tableTitle}>
+                  {isHe ? 'היסטוריית שערי סגירה יומית שנשמרו' : 'Historical EOD Closing Prices'}
+                </h4>
+                <span style={styles.tableCountBadge}>
+                  {dailyPrices.length} {isHe ? 'שערים רשומים' : 'records'}
+                </span>
+              </div>
+
+              {/* Search bar */}
+              <div style={{ position: 'relative', width: '220px' }}>
+                <Search size={14} style={{ position: 'absolute', right: isHe ? '10px' : 'auto', left: isHe ? 'auto' : '10px', top: '10px', color: 'var(--text-secondary)' }} />
+                <input
+                  type="text"
+                  placeholder={isHe ? 'חיפוש נייר / סימול...' : 'Search ticker...'}
+                  value={dailyPriceSearch}
+                  onChange={(e) => setDailyPriceSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: isHe ? '7px 32px 7px 10px' : '7px 10px 7px 32px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--input-bg, var(--card-bg))',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.85rem',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Table Content */}
+            <div style={styles.tableContainer}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>{isHe ? 'תאריך שער' : 'Date'}</th>
+                    <th style={styles.th}>{isHe ? 'שם / סימול נייר' : 'Security / Ticker'}</th>
+                    <th style={styles.th}>{isHe ? 'מספר נייר' : 'Security No.'}</th>
+                    <th style={styles.th}>{isHe ? 'שער נעילה יומי' : 'Closing Price'}</th>
+                    <th style={styles.th}>{isHe ? 'מטבע' : 'Currency'}</th>
+                    <th style={styles.th}>{isHe ? 'מקור נתונים' : 'Source'}</th>
+                    <th style={styles.th}>{isHe ? 'שעת שמירה' : 'Saved At'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyPrices.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                          <Clock size={32} color="var(--text-secondary)" style={{ opacity: 0.5 }} />
+                          <p style={{ margin: 0, fontWeight: '600', fontSize: '0.95rem' }}>
+                            {isHe ? 'טרם נשמרו שערים יומיים בטבלה' : 'No daily closing prices recorded yet'}
+                          </p>
+                          <p style={{ margin: 0, fontSize: '0.85rem' }}>
+                            {isHe
+                              ? 'המערכת תדגום אוטומטית ב-23:55 בכל לילה, או שתוכל ללחוץ על "סנכרן שערים עכשיו" לבדיקה מיידית.'
+                              : 'The cron will automatically record prices at 23:55, or click "Sync EOD Quotes Now" to test immediately.'}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    dailyPrices
+                      .filter((p) => {
+                        if (!dailyPriceSearch) return true;
+                        const q = dailyPriceSearch.toLowerCase();
+                        return (
+                          p.ticker.toLowerCase().includes(q) ||
+                          (p.security_number && p.security_number.includes(q)) ||
+                          (p.price_date && p.price_date.includes(q))
+                        );
+                      })
+                      .map((p) => (
+                        <tr key={p.id || `${p.ticker}-${p.price_date}`} style={styles.tr}>
+                          <td style={{ ...styles.td, fontWeight: '700', color: 'var(--text-primary)' }}>
+                            {formatDate(p.price_date)}
+                          </td>
+                          <td style={{ ...styles.td, fontWeight: '600' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                              color: '#2563EB',
+                              fontWeight: '700',
+                              fontFamily: 'monospace',
+                            }}>
+                              {p.ticker}
+                            </span>
+                          </td>
+                          <td style={{ ...styles.td, color: 'var(--text-secondary)' }}>
+                            {p.security_number || '—'}
+                          </td>
+                          <td style={{ ...styles.td, fontWeight: '700', fontSize: '0.95rem', color: '#059669' }}>
+                            {p.currency === 'USD' ? '$' : '₪'}
+                            {Number(p.closing_price).toLocaleString('en-US', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 4,
+                            })}
+                          </td>
+                          <td style={styles.td}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: '700',
+                              backgroundColor: p.currency === 'USD' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(99, 102, 241, 0.1)',
+                              color: p.currency === 'USD' ? '#059669' : '#4F46E5',
+                            }}>
+                              {p.currency}
+                            </span>
+                          </td>
+                          <td style={{ ...styles.td, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                            {p.source || 'Automated Cron'}
+                          </td>
+                          <td style={{ ...styles.td, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            {p.created_at ? new Date(p.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* MODAL: ADD / EDIT ASSET / TRANCHE */}

@@ -1,7 +1,7 @@
 // Vercel Serverless Function to fetch real-time and historical quotes
 // Sources: Yahoo Finance (Global / US / Crypto / Currencies) & Bizportal (Israeli Securities by ID)
 
-async function fetchYahooQuote(symbol, periodType, year, month, quarter) {
+export async function fetchYahooQuote(symbol, periodType, year, month, quarter) {
   try {
     const isHistorical = periodType && periodType !== 'current';
     // For historical, we fetch daily candles for up to 5 years
@@ -127,7 +127,7 @@ async function fetchYahooQuote(symbol, periodType, year, month, quarter) {
   }
 }
 
-async function fetchBizportalQuote(securityNumber, periodType, year, month, quarter) {
+export async function fetchBizportalQuote(securityNumber, periodType, year, month, quarter) {
   try {
     const stockID = securityNumber.trim();
     const pageUrl = `https://www.bizportal.co.il/capitalmarket/quote/generalview/${stockID}`;

@@ -403,8 +403,8 @@ export interface InvestmentSnapshotItem {
 export interface InvestmentPeriodicSnapshot {
   id: string;
   household_id: string;
-  period_type: 'month' | 'quarter' | 'year' | 'current';
-  period_label: string; // e.g. "מרץ 2026", "רבעון Q1 2026", "שנת 2025"
+  period_type: 'month' | 'quarter' | 'year' | 'current' | 'daily';
+  period_label: string; // e.g. "מרץ 2026", "רבעון Q1 2026", "שנת 2025", "סגירה יומית 2026-10-13"
   date: string; // ISO date of snapshot
   total_invested: number;
   total_value: number;
@@ -414,6 +414,18 @@ export interface InvestmentPeriodicSnapshot {
   notes?: string;
   items?: InvestmentSnapshotItem[]; // Per-asset breakdown
 }
+
+export interface SecurityDailyPrice {
+  id: string;
+  ticker: string;
+  security_number?: string;
+  price_date: string; // YYYY-MM-DD
+  closing_price: number;
+  currency: string;
+  source?: string;
+  created_at?: string;
+}
+
 
 
 

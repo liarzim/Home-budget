@@ -362,42 +362,72 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
         return points;
       }
 
-      // Multiple purchase dates: build cumulative timeline
+      // Multiple purchase dates or snapshots: build cumulative chronological timeline
+      const allDatesSet = new Set<string>();
+      sortedPurchaseDates.forEach((d) => allDatesSet.add(d));
+      sortedSnapshots.forEach((s) => allDatesSet.add(s.date));
+
+      const sortedDates = Array.from(allDatesSet).sort((a, b) => a.localeCompare(b));
+      const snapshotByDate = new Map<string, InvestmentPeriodicSnapshot>();
+      sortedSnapshots.forEach((s) => snapshotByDate.set(s.date, s));
+
       let runningCost = 0;
       let runningValue = 0;
 
-      sortedPurchaseDates.forEach((d) => {
-        const trs = tranchesByDate.get(d)!;
-        const dayCost = trs.reduce((s, t) => s + t.costILS, 0);
-        const dayVal = trs.reduce((s, t) => s + t.valueILS, 0);
+      sortedDates.forEach((d) => {
+        const trs = tranchesByDate.get(d);
+        if (trs) {
+          const dayCost = trs.reduce((s, t) => s + t.costILS, 0);
+          const dayVal = trs.reduce((s, t) => s + t.valueILS, 0);
+          runningCost += dayCost;
+          runningValue += dayVal;
+        }
 
-        runningCost += dayCost;
-        runningValue += dayVal;
+        const snap = snapshotByDate.get(d);
+        if (snap) {
+          const val = simulationMode === 'loss' ? snap.total_invested * 0.85 : snap.total_value;
+          const prof = val - snap.total_invested;
+          const retPct = snap.total_invested > 0 ? (prof / snap.total_invested) * 100 : 0;
 
-        const prof = runningValue - runningCost;
-        const retPct = runningCost > 0 ? (prof / runningCost) * 100 : 0;
+          points.push({
+            id: snap.id || `snap-${d}`,
+            label: snap.period_label
+              ? snap.period_label.replace('סגירת חודש ', '').replace('סיום רבעון ', '').replace('סגירה יומית ', '')
+              : formatDate(d),
+            date: d,
+            cost: snap.total_invested,
+            value: val,
+            profit: prof,
+            returnPct: simulationMode === 'loss' ? -15.0 : retPct,
+            tranchesInPoint: trs,
+          });
+        } else {
+          const prof = runningValue - runningCost;
+          const retPct = runningCost > 0 ? (prof / runningCost) * 100 : 0;
+          const val = simulationMode === 'loss' ? runningCost * 0.85 : runningValue;
+          const p = val - runningCost;
+          const r = simulationMode === 'loss' ? -15.0 : retPct;
 
-        const val = simulationMode === 'loss' ? runningCost * 0.85 : runningValue;
-        const p = val - runningCost;
-        const r = simulationMode === 'loss' ? -15.0 : retPct;
-
-        points.push({
-          id: `cum-tranche-${d}`,
-          label: formatDate(d),
-          date: d,
-          cost: runningCost,
-          value: val,
-          profit: p,
-          returnPct: r,
-          tranchesInPoint: trs,
-        });
+          points.push({
+            id: `cum-tranche-${d}`,
+            label: formatDate(d),
+            date: d,
+            cost: runningCost,
+            value: val,
+            profit: p,
+            returnPct: r,
+            tranchesInPoint: trs,
+          });
+        }
       });
     } else if (sortedSnapshots.length > 0) {
       // Fallback if only snapshots exist without tranches
       sortedSnapshots.forEach((s) => {
         points.push({
           id: s.id,
-          label: s.period_label.replace('סגירת חודש ', '').replace('סיום רבעון ', ''),
+          label: s.period_label
+            ? s.period_label.replace('סגירת חודש ', '').replace('סיום רבעון ', '').replace('סגירה יומית ', '')
+            : formatDate(s.date),
           date: s.date,
           cost: s.total_invested,
           value: simulationMode === 'loss' ? s.total_invested * 0.88 : s.total_value,
