@@ -35,22 +35,22 @@ GRANT ALL ON TABLE public.investments TO postgres, anon, authenticated, service_
 DROP POLICY IF EXISTS "Tenant isolation for investments (SELECT)" ON public.investments;
 CREATE POLICY "Tenant isolation for investments (SELECT)"
     ON public.investments FOR SELECT
-    USING (household_id IN (SELECT get_user_households(auth.uid())));
+    USING (household_id IN (SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = auth.uid()));
 
 DROP POLICY IF EXISTS "Tenant isolation for investments (INSERT)" ON public.investments;
 CREATE POLICY "Tenant isolation for investments (INSERT)"
     ON public.investments FOR INSERT
-    WITH CHECK (household_id IN (SELECT get_user_households(auth.uid())));
+    WITH CHECK (household_id IN (SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = auth.uid()));
 
 DROP POLICY IF EXISTS "Tenant isolation for investments (UPDATE)" ON public.investments;
 CREATE POLICY "Tenant isolation for investments (UPDATE)"
     ON public.investments FOR UPDATE
-    USING (household_id IN (SELECT get_user_households(auth.uid())));
+    USING (household_id IN (SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = auth.uid()));
 
 DROP POLICY IF EXISTS "Tenant isolation for investments (DELETE)" ON public.investments;
 CREATE POLICY "Tenant isolation for investments (DELETE)"
     ON public.investments FOR DELETE
-    USING (household_id IN (SELECT get_user_households(auth.uid())));
+    USING (household_id IN (SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = auth.uid()));
 
 DROP TRIGGER IF EXISTS update_investments_modtime ON public.investments;
 CREATE TRIGGER update_investments_modtime BEFORE UPDATE ON public.investments FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
@@ -80,22 +80,22 @@ GRANT ALL ON TABLE public.investment_snapshots TO postgres, anon, authenticated,
 DROP POLICY IF EXISTS "Tenant isolation for investment_snapshots (SELECT)" ON public.investment_snapshots;
 CREATE POLICY "Tenant isolation for investment_snapshots (SELECT)"
     ON public.investment_snapshots FOR SELECT
-    USING (household_id IN (SELECT get_user_households(auth.uid())));
+    USING (household_id IN (SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = auth.uid()));
 
 DROP POLICY IF EXISTS "Tenant isolation for investment_snapshots (INSERT)" ON public.investment_snapshots;
 CREATE POLICY "Tenant isolation for investment_snapshots (INSERT)"
     ON public.investment_snapshots FOR INSERT
-    WITH CHECK (household_id IN (SELECT get_user_households(auth.uid())));
+    WITH CHECK (household_id IN (SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = auth.uid()));
 
 DROP POLICY IF EXISTS "Tenant isolation for investment_snapshots (UPDATE)" ON public.investment_snapshots;
 CREATE POLICY "Tenant isolation for investment_snapshots (UPDATE)"
     ON public.investment_snapshots FOR UPDATE
-    USING (household_id IN (SELECT get_user_households(auth.uid())));
+    USING (household_id IN (SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = auth.uid()));
 
 DROP POLICY IF EXISTS "Tenant isolation for investment_snapshots (DELETE)" ON public.investment_snapshots;
 CREATE POLICY "Tenant isolation for investment_snapshots (DELETE)"
     ON public.investment_snapshots FOR DELETE
-    USING (household_id IN (SELECT get_user_households(auth.uid())));
+    USING (household_id IN (SELECT hm.household_id FROM public.household_members hm WHERE hm.user_id = auth.uid()));
 
 DROP TRIGGER IF EXISTS update_investment_snapshots_modtime ON public.investment_snapshots;
 CREATE TRIGGER update_investment_snapshots_modtime BEFORE UPDATE ON public.investment_snapshots FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
