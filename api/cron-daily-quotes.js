@@ -256,8 +256,17 @@ export default async function handler(req, res) {
         const rate = inv.currency === 'USD' ? usdRate : 1;
 
         const tranches = Array.isArray(inv.tranches) ? inv.tranches : [];
-        const totalShares = tranches.reduce((sum, tr) => sum + (Number(tr.shares) || 0), 0);
-        const totalCostNative = tranches.reduce((sum, tr) => {
+        const validTranches = tranches.filter((tr) => {
+          if ((Number(tr.shares) || 0) <= 0 || (Number(tr.price_per_share) || 0) <= 0) return false;
+          const trDate = tr.date ? tr.date.split('T')[0] : '';
+          if (trDate && trDate > israelDate) return false;
+          return true;
+        });
+
+        const totalShares = validTranches.reduce((sum, tr) => sum + (Number(tr.shares) || 0), 0);
+        if (totalShares <= 0) continue; // Asset not yet purchased on or before this snapshot date
+
+        const totalCostNative = validTranches.reduce((sum, tr) => {
           const c = tr.total_cost && Number(tr.total_cost) > 0
             ? Number(tr.total_cost)
             : (Number(tr.shares) || 0) * (Number(tr.price_per_share) || 0);

@@ -215,6 +215,7 @@ export const InvestmentsView: React.FC = () => {
   } | null>(null);
   const [fetchPeriodError, setFetchPeriodError] = useState<string | null>(null);
   const [expandedSnapshotId, setExpandedSnapshotId] = useState<string | null>(null);
+  const [hideZeroSharesInPeriod, setHideZeroSharesInPeriod] = useState<boolean>(true);
 
   // Periodic Snapshots State (stored in localStorage)
   const [snapshots, setSnapshots] = useState<InvestmentPeriodicSnapshot[]>(() => {
@@ -1473,21 +1474,29 @@ export const InvestmentsView: React.FC = () => {
         quarter: fetchQuarter,
       });
 
-      // Construct descriptive period label
+      // Construct descriptive period label and calculate exact period cutoff date
       let periodLabel = '';
+      let periodCutoffDate = '';
       const monthNamesHe = [
         '', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
         'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
       ];
       if (fetchPeriodType === 'year_end') {
         periodLabel = `סיום שנת ${fetchYear} (סוף דצמבר)`;
+        periodCutoffDate = `${fetchYear}-12-31`;
       } else if (fetchPeriodType === 'quarter_end') {
         const qEnds = ['', 'סוף מרץ', 'סוף יוני', 'סוף ספטמבר', 'סוף דצמבר'];
         periodLabel = `סיום רבעון Q${fetchQuarter} ${fetchYear} (${qEnds[fetchQuarter]})`;
+        const qEndMonth = fetchQuarter * 3;
+        const lastDayOfQ = new Date(fetchYear, qEndMonth, 0).getDate();
+        periodCutoffDate = `${fetchYear}-${String(qEndMonth).padStart(2, '0')}-${String(lastDayOfQ).padStart(2, '0')}`;
       } else if (fetchPeriodType === 'month_end') {
         periodLabel = `סיום חודש ${monthNamesHe[fetchMonth] || fetchMonth} ${fetchYear}`;
+        const lastDayOfM = new Date(fetchYear, fetchMonth, 0).getDate();
+        periodCutoffDate = `${fetchYear}-${String(fetchMonth).padStart(2, '0')}-${String(lastDayOfM).padStart(2, '0')}`;
       } else {
         periodLabel = `ציטוט שוק נוכחי (${new Date().toLocaleDateString('he-IL')})`;
+        periodCutoffDate = new Date().toISOString().split('T')[0];
       }
 
       let totalInvestedILS = 0;
@@ -1497,9 +1506,22 @@ export const InvestmentsView: React.FC = () => {
       const items: InvestmentSnapshotItem[] = investments.map((asset) => {
         const quote = resultsMap.get(asset.id);
         const quoteDate = quote?.date || '';
-        const validTranches = asset.tranches.filter((t) => t.shares > 0 && t.price_per_share > 0);
-        const totalCost = validTranches.reduce((sum, t) => sum + t.shares * t.price_per_share, 0);
-        const totalShares = validTranches.reduce((sum, t) => sum + t.shares, 0);
+
+        // Only include tranches that were actually purchased ON OR BEFORE the period cutoff date!
+        const validTranches = (asset.tranches || []).filter((t) => {
+          if ((Number(t.shares) || 0) <= 0 || (Number(t.price_per_share) || 0) <= 0) return false;
+          if (periodCutoffDate) {
+            const trancheDate = normalizeToISODate(t.date);
+            if (trancheDate > periodCutoffDate) return false;
+          }
+          return true;
+        });
+
+        const totalCost = validTranches.reduce(
+          (sum, t) => sum + (Number(t.shares) || 0) * (Number(t.price_per_share) || 0),
+          0
+        );
+        const totalShares = validTranches.reduce((sum, t) => sum + (Number(t.shares) || 0), 0);
         const avgPrice = totalShares > 0 ? totalCost / totalShares : 0;
 
         let priceToUse = quote && quote.success && quote.price > 0 ? quote.price : asset.current_price;
@@ -1554,7 +1576,7 @@ export const InvestmentsView: React.FC = () => {
 
       setFetchedPeriodResult({
         periodLabel,
-        date: latestDateFound || new Date().toISOString().split('T')[0],
+        date: latestDateFound || periodCutoffDate || new Date().toISOString().split('T')[0],
         periodType: fetchPeriodType === 'year_end' ? 'year' : fetchPeriodType === 'quarter_end' ? 'quarter' : fetchPeriodType === 'month_end' ? 'month' : 'current',
         items,
         totalInvested: totalInvestedILS,
@@ -1574,6 +1596,9 @@ export const InvestmentsView: React.FC = () => {
   const handleSaveFetchedPeriodResult = () => {
     if (!fetchedPeriodResult) return;
 
+    // Filter to save only assets that were actually held on that date (shares > 0)
+    const activeItems = fetchedPeriodResult.items.filter((it) => it.shares > 0);
+
     const newSnapshot: InvestmentPeriodicSnapshot = {
       id: `snap-${Date.now()}`,
       household_id: activeHousehold?.id || 'hh-main',
@@ -1584,8 +1609,8 @@ export const InvestmentsView: React.FC = () => {
       total_value: fetchedPeriodResult.totalValue,
       total_profit: fetchedPeriodResult.totalProfit,
       total_return_pct: fetchedPeriodResult.totalReturnPct,
-      assets_count: fetchedPeriodResult.items.length,
-      items: fetchedPeriodResult.items,
+      assets_count: activeItems.length,
+      items: activeItems,
       notes: `נמשך אוטומטית מאתרי הבורסה (${fetchedPeriodResult.periodLabel})`,
     };
 
@@ -1715,17 +1740,65 @@ export const InvestmentsView: React.FC = () => {
       return;
     }
 
+    const targetIsoDate = normalizeToISODate(snapshotDate);
+    let totalInvestedILS = 0;
+    let totalValueILS = 0;
+    const items: InvestmentSnapshotItem[] = [];
+
+    investments.forEach((asset) => {
+      const validTranches = (asset.tranches || []).filter((t) => {
+        if ((Number(t.shares) || 0) <= 0 || (Number(t.price_per_share) || 0) <= 0) return false;
+        const tDate = normalizeToISODate(t.date);
+        return tDate <= targetIsoDate;
+      });
+
+      const totalShares = validTranches.reduce((sum, t) => sum + (Number(t.shares) || 0), 0);
+      if (totalShares <= 0) return; // Not held on or before this snapshot date
+
+      const totalCost = validTranches.reduce(
+        (sum, t) => sum + (Number(t.shares) || 0) * (Number(t.price_per_share) || 0),
+        0
+      );
+      const avgPrice = totalCost / totalShares;
+      const val = totalShares * asset.current_price;
+      const profit = val - totalCost;
+      const returnPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+      const mult = asset.currency === 'USD' ? usdRate : 1;
+
+      totalInvestedILS += totalCost * mult;
+      totalValueILS += val * mult;
+
+      items.push({
+        asset_id: asset.id,
+        ticker: asset.ticker,
+        security_number: getEffectiveSecurityNumber(asset) || undefined,
+        name: asset.name,
+        currency: asset.currency,
+        shares: totalShares,
+        avg_cost_price: avgPrice,
+        total_cost: totalCost,
+        market_price: asset.current_price,
+        market_value: val,
+        profit,
+        return_pct: returnPct,
+      });
+    });
+
+    const totalProfitILS = totalValueILS - totalInvestedILS;
+    const totalReturnPct = totalInvestedILS > 0 ? (totalProfitILS / totalInvestedILS) * 100 : 0;
+
     const newSnapshot: InvestmentPeriodicSnapshot = {
       id: `snap-${Date.now()}`,
       household_id: activeHousehold?.id || 'hh-main',
       period_type: snapshotPeriodType,
       period_label: snapshotLabel.trim(),
-      date: normalizeToISODate(snapshotDate),
-      total_invested: portfolioSummary.totalInvestedILS,
-      total_value: portfolioSummary.currentValueILS,
-      total_profit: portfolioSummary.totalProfitILS,
-      total_return_pct: portfolioSummary.totalReturnPct,
-      assets_count: investments.length,
+      date: targetIsoDate,
+      total_invested: Number(totalInvestedILS.toFixed(2)),
+      total_value: Number(totalValueILS.toFixed(2)),
+      total_profit: Number(totalProfitILS.toFixed(2)),
+      total_return_pct: Number(totalReturnPct.toFixed(2)),
+      assets_count: items.length,
+      items,
       notes: snapshotNotes.trim() || undefined,
     };
 
@@ -3372,11 +3445,17 @@ export const InvestmentsView: React.FC = () => {
                       <span>{isHe ? 'ציטוטים היסטוריים נמשכו בהצלחה' : 'Quotes Retrieved'}</span>
                     </div>
                     <h4 style={styles.fetchedResultTitle}>{fetchedPeriodResult.periodLabel}</h4>
-                    <p style={styles.fetchedResultSub}>
-                      {isHe
-                        ? `יום מסחר שנמצא: ${fetchedPeriodResult.date} | סה״כ ${fetchedPeriodResult.items.length} ניירות חושבו`
-                        : `Trading date: ${fetchedPeriodResult.date} | ${fetchedPeriodResult.items.length} assets`}
-                    </p>
+                    {(() => {
+                      const heldCount = fetchedPeriodResult.items.filter((it) => it.shares > 0).length;
+                      const totalCount = fetchedPeriodResult.items.length;
+                      return (
+                        <p style={styles.fetchedResultSub}>
+                          {isHe
+                            ? `יום מסחר שנמצא: ${fetchedPeriodResult.date} | ${heldCount} ניירות הוחזקו במועד זה (מתוך ${totalCount} בתיק)`
+                            : `Trading date: ${fetchedPeriodResult.date} | ${heldCount} assets held (out of ${totalCount} in portfolio)`}
+                        </p>
+                      );
+                    })()}
                   </div>
 
                   <div style={styles.fetchedActionsGroup}>
@@ -3446,82 +3525,167 @@ export const InvestmentsView: React.FC = () => {
                 </div>
 
                 {/* Detailed Assets Breakdown Table for the Period */}
-                <div style={{ overflowX: 'auto', marginTop: '14px' }}>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr style={styles.thRow}>
-                        <th style={styles.thCell}>{isHe ? 'סימול / מספר נייר' : 'Ticker / Security No.'}</th>
-                        <th style={styles.thCell}>{isHe ? 'שם נייר' : 'Name'}</th>
-                        <th style={styles.thCell}>{isHe ? 'מקור הציטוט' : 'Source'}</th>
-                        <th style={styles.thCell}>{isHe ? 'שער סגירה בתקופה' : 'Closing Price'}</th>
-                        <th style={styles.thCell}>{isHe ? 'תאריך יום מסחר' : 'Trade Date'}</th>
-                        <th style={styles.thCell}>{isHe ? 'כמות' : 'Shares'}</th>
-                        <th style={styles.thCell}>{isHe ? 'סך עלות' : 'Total Cost'}</th>
-                        <th style={styles.thCell}>{isHe ? 'שווי במועד זה' : 'Valuation'}</th>
-                        <th style={styles.thCell}>{isHe ? 'רווח/הפסד נקודתי' : 'P&L'}</th>
-                        <th style={styles.thCell}>{isHe ? 'תשואה (%)' : 'Yield %'}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fetchedPeriodResult.items.map((item) => {
-                        const isGain = item.profit >= 0;
-                        return (
-                          <tr key={item.asset_id} style={styles.trRow}>
-                            <td style={styles.tdCell}>
-                              <div style={styles.tickerPill}>{item.ticker}</div>
-                              {getEffectiveSecurityNumber(item) && (
-                                <div style={styles.secNumText}>#{getEffectiveSecurityNumber(item)}</div>
-                              )}
-                            </td>
-                            <td style={styles.tdCell}>
-                              <span style={styles.boldCellText}>{item.name}</span>
-                            </td>
-                            <td style={styles.tdCell}>
-                              <span style={styles.quoteSourceBadge}>{item.quote_source}</span>
-                            </td>
-                            <td style={styles.tdCell}>
-                              <strong style={{ color: '#2563EB' }}>
-                                {item.currency === 'USD' ? '$' : '₪'}
-                                {item.market_price.toFixed(2)}
-                              </strong>
-                            </td>
-                            <td style={styles.tdCell}>{formatDate(item.quote_date) || '—'}</td>
-                            <td style={styles.tdCell}>{item.shares}</td>
-                            <td style={styles.tdCell}>
-                              {item.currency === 'USD' ? '$' : '₪'}
-                              {item.total_cost.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                            </td>
-                            <td style={styles.tdCell}>
-                              <strong>
-                                {item.currency === 'USD' ? '$' : '₪'}
-                                {item.market_value.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                              </strong>
-                            </td>
-                            <td style={styles.tdCell}>
-                              <span style={{ color: isGain ? '#059669' : '#DC2626', fontWeight: '700' }}>
-                                {isGain ? '+' : ''}
-                                {item.currency === 'USD' ? '$' : '₪'}
-                                {item.profit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                              </span>
-                            </td>
-                            <td style={styles.tdCell}>
-                              <span
-                                style={{
-                                  ...styles.yieldBadge,
-                                  backgroundColor: isGain ? '#DCFCE7' : '#FEE2E2',
-                                  color: isGain ? '#15803D' : '#B91C1C',
-                                }}
-                              >
-                                {isGain ? '+' : ''}
-                                {item.return_pct.toFixed(2)}%
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                {(() => {
+                  const heldCount = fetchedPeriodResult.items.filter((it) => it.shares > 0).length;
+                  const totalCount = fetchedPeriodResult.items.length;
+                  const filteredItems = fetchedPeriodResult.items.filter((item) =>
+                    hideZeroSharesInPeriod ? item.shares > 0 : true
+                  );
+
+                  return (
+                    <>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginTop: '16px',
+                          marginBottom: '8px',
+                          flexWrap: 'wrap',
+                          gap: '8px',
+                        }}
+                      >
+                        <label
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '0.8125rem',
+                            fontWeight: '700',
+                            color: '#1E293B',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={hideZeroSharesInPeriod}
+                            onChange={(e) => setHideZeroSharesInPeriod(e.target.checked)}
+                            style={{ accentColor: '#2563EB', cursor: 'pointer', width: '15px', height: '15px' }}
+                          />
+                          <span>
+                            {isHe
+                              ? `הצג רק ניירות שהוחזקו במועד זה (${heldCount})`
+                              : `Show only held assets (${heldCount})`}
+                          </span>
+                        </label>
+                        {totalCount - heldCount > 0 && (
+                          <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: '500' }}>
+                            {isHe
+                              ? `(${totalCount - heldCount} ניירות נרכשו רק לאחר מועד זה — כמותם חושבה כ-0)`
+                              : `(${totalCount - heldCount} assets purchased after this date — calculated as 0 shares)`}
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ overflowX: 'auto', marginTop: '6px' }}>
+                        <table style={styles.table}>
+                          <thead>
+                            <tr style={styles.thRow}>
+                              <th style={styles.thCell}>{isHe ? 'סימול / מספר נייר' : 'Ticker / Security No.'}</th>
+                              <th style={styles.thCell}>{isHe ? 'שם נייר' : 'Name'}</th>
+                              <th style={styles.thCell}>{isHe ? 'מקור הציטוט' : 'Source'}</th>
+                              <th style={styles.thCell}>{isHe ? 'שער סגירה בתקופה' : 'Closing Price'}</th>
+                              <th style={styles.thCell}>{isHe ? 'תאריך יום מסחר' : 'Trade Date'}</th>
+                              <th style={styles.thCell}>{isHe ? 'כמות' : 'Shares'}</th>
+                              <th style={styles.thCell}>{isHe ? 'סך עלות' : 'Total Cost'}</th>
+                              <th style={styles.thCell}>{isHe ? 'שווי במועד זה' : 'Valuation'}</th>
+                              <th style={styles.thCell}>{isHe ? 'רווח/הפסד נקודתי' : 'P&L'}</th>
+                              <th style={styles.thCell}>{isHe ? 'תשואה (%)' : 'Yield %'}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredItems.map((item) => {
+                              const isGain = item.profit >= 0;
+                              const hasShares = item.shares > 0;
+                              return (
+                                <tr
+                                  key={item.asset_id}
+                                  style={{
+                                    ...styles.trRow,
+                                    ...(hasShares ? {} : { opacity: 0.65, backgroundColor: '#F8FAFC' }),
+                                  }}
+                                >
+                                  <td style={styles.tdCell}>
+                                    <div style={styles.tickerPill}>{item.ticker}</div>
+                                    {getEffectiveSecurityNumber(item) && (
+                                      <div style={styles.secNumText}>#{getEffectiveSecurityNumber(item)}</div>
+                                    )}
+                                  </td>
+                                  <td style={styles.tdCell}>
+                                    <span style={styles.boldCellText}>{item.name}</span>
+                                  </td>
+                                  <td style={styles.tdCell}>
+                                    <span style={styles.quoteSourceBadge}>{item.quote_source}</span>
+                                  </td>
+                                  <td style={styles.tdCell}>
+                                    <strong style={{ color: '#2563EB' }}>
+                                      {item.currency === 'USD' ? '$' : '₪'}
+                                      {item.market_price.toFixed(2)}
+                                    </strong>
+                                  </td>
+                                  <td style={styles.tdCell}>{formatDate(item.quote_date) || '—'}</td>
+                                  <td style={styles.tdCell}>
+                                    {hasShares ? (
+                                      <strong>{item.shares}</strong>
+                                    ) : (
+                                      <span style={{ color: '#94A3B8', fontWeight: '600', fontSize: '0.75rem' }}>
+                                        {isHe ? '0 (טרם נרכש)' : '0 (Not owned)'}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td style={styles.tdCell}>
+                                    {hasShares ? (
+                                      `${item.currency === 'USD' ? '$' : '₪'}${item.total_cost.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                                    ) : (
+                                      <span style={{ color: '#94A3B8' }}>—</span>
+                                    )}
+                                  </td>
+                                  <td style={styles.tdCell}>
+                                    {hasShares ? (
+                                      <strong>
+                                        {item.currency === 'USD' ? '$' : '₪'}
+                                        {item.market_value.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                      </strong>
+                                    ) : (
+                                      <span style={{ color: '#94A3B8' }}>—</span>
+                                    )}
+                                  </td>
+                                  <td style={styles.tdCell}>
+                                    {hasShares ? (
+                                      <span style={{ color: isGain ? '#059669' : '#DC2626', fontWeight: '700' }}>
+                                        {isGain ? '+' : ''}
+                                        {item.currency === 'USD' ? '$' : '₪'}
+                                        {item.profit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: '#94A3B8' }}>—</span>
+                                    )}
+                                  </td>
+                                  <td style={styles.tdCell}>
+                                    {hasShares ? (
+                                      <span
+                                        style={{
+                                          ...styles.yieldBadge,
+                                          backgroundColor: isGain ? '#DCFCE7' : '#FEE2E2',
+                                          color: isGain ? '#15803D' : '#B91C1C',
+                                        }}
+                                      >
+                                        {isGain ? '+' : ''}
+                                        {item.return_pct.toFixed(2)}%
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: '#94A3B8' }}>—</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
