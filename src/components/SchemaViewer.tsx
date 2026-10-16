@@ -567,6 +567,29 @@ export const SchemaViewer: React.FC = () => {
             3. Click "RUN" to apply the migration
           </p>
         </div>
+
+        <div style={styles.archCard}>
+          <div style={{ ...styles.archIconBox, backgroundColor: 'rgba(37, 99, 235, 0.1)' }}>
+            <Database size={18} color="#2563EB" />
+          </div>
+          <h3 style={styles.archCardTitle}>Adminer (NAS Port 8088)</h3>
+          <p style={styles.archCardDesc}>
+            <a
+              href="http://10.0.0.16:8088"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: '#2563EB', fontWeight: '700', textDecoration: 'underline', display: 'inline-block', marginBottom: '6px' }}
+            >
+              🔗 פתח Adminer (http://10.0.0.16:8088)
+            </a>
+            <br />
+            <strong>System:</strong> PostgreSQL<br />
+            <strong>Server:</strong> home_budget_db<br />
+            <strong>Username:</strong> postgres<br />
+            <strong>Password:</strong> HomeBudgetSecurePass2026!<br />
+            <strong>Database:</strong> home_budget
+          </p>
+        </div>
       </div>
 
       {/* SQL Code Box */}
