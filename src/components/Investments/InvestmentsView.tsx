@@ -433,17 +433,10 @@ export const InvestmentsView: React.FC = () => {
     }
   }, [activeHousehold?.id]);
 
+  // Load snapshots from DB once on mount or household change (strictly manual refresh on button click)
   useEffect(() => {
     loadDbSnapshots();
-    loadDbInvestments();
-
-    const handleFocus = () => {
-      loadDbSnapshots();
-      loadDbInvestments();
-    };
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [loadDbSnapshots, loadDbInvestments]);
+  }, [activeHousehold?.id]);
 
   // Load daily closing prices from security_daily_prices
   const loadDailyPrices = async () => {
