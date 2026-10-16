@@ -102,14 +102,18 @@ input, select, textarea {
    ========================================== */
 
 .desktop-only {
-  display: block;
+  display: inherit;
 }
 
 .mobile-only {
-  display: none;
+  display: none !important;
 }
 
-@media (max-width: 768px) {
+.mobile-only-block {
+  display: none !important;
+}
+
+@media (max-width: 768px), (max-height: 520px) and (orientation: landscape) {
   .desktop-only {
     display: none !important;
   }
@@ -118,9 +122,24 @@ input, select, textarea {
     display: flex !important;
   }
 
+  .mobile-only-block {
+    display: block !important;
+  }
+
   /* Safe padding for bottom navigation bar on mobile */
   body {
     padding-bottom: 76px;
+  }
+
+  /* Responsive main container padding */
+  main {
+    padding: 16px 12px 80px !important;
+  }
+
+  /* Header compact mobile horizontal padding */
+  header > div {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
   }
 
   /* Responsive card transform for tables */

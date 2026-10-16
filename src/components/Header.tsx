@@ -193,6 +193,7 @@ export const Header: React.FC = () => {
 
         {/* Quick Manual Entry Top Bar Button */}
         <button
+          className="desktop-only"
           style={styles.topBarNewEntryBtn}
           onClick={() => setActiveTab('manual-entry')}
           title={t('newEntryBtn', language)}
@@ -262,7 +263,7 @@ export const Header: React.FC = () => {
             <div style={styles.avatarCircle}>
               <User size={14} color="var(--primary)" />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div className="desktop-only" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
               <span style={styles.userName}>
                 {user?.full_name || user?.email?.split('@')[0] || 'משתמש'}
               </span>

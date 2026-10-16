@@ -2486,8 +2486,8 @@ export const InvestmentsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Sub Tabs: Active Portfolio vs Periodic Snapshots (שלב ב') */}
-      <div style={styles.subTabNav}>
+      {/* Sub Tabs Desktop: Active Portfolio vs Periodic Snapshots */}
+      <div className="desktop-only" style={styles.subTabNav}>
         <button
           style={{
             ...styles.subTabBtn,
@@ -2537,6 +2537,107 @@ export const InvestmentsView: React.FC = () => {
           <span>{isHe ? 'שערי סוף יום (23:55 אוטומטי)' : 'Daily Closing Prices'}</span>
           <span style={styles.subTabCountPill}>{dailyPrices.length}</span>
         </button>
+      </div>
+
+      {/* Sub Tabs Mobile: Dropdown List Selector */}
+      <div className="mobile-only-block" style={{ marginBottom: '16px', position: 'relative' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 14px',
+            backgroundColor: 'var(--bg-surface)',
+            borderRadius: 'var(--radius-md)',
+            border: '1.5px solid var(--primary)',
+            boxShadow: '0 2px 8px rgba(79, 70, 229, 0.08)',
+            cursor: 'pointer',
+            position: 'relative',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--primary-light)',
+                color: 'var(--primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              {activeSubTab === 'portfolio' && <Layers size={18} />}
+              {activeSubTab === 'snapshots' && <Clock size={18} />}
+              {activeSubTab === 'charts' && <TrendingUp size={18} />}
+              {activeSubTab === 'daily_prices' && <Calendar size={18} />}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                {isHe ? 'תצוגת השקעות פעילה:' : 'Active Investment View:'}
+              </span>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                {activeSubTab === 'portfolio' && (isHe ? 'ניירות ערך ופוזיציות' : 'Active Holdings')}
+                {activeSubTab === 'snapshots' && (isHe ? 'עץ סגירות תקופה' : 'Periodic Snapshots')}
+                {activeSubTab === 'charts' && (isHe ? 'גרפים ומדדי תשואה' : 'Charts & Performance')}
+                {activeSubTab === 'daily_prices' && (isHe ? 'שערי סוף יום (23:55)' : 'Daily Closing Prices')}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {activeSubTab === 'portfolio' && (
+              <span style={styles.subTabCountPill}>{investments.length}</span>
+            )}
+            {activeSubTab === 'snapshots' && (
+              <span style={styles.subTabCountPill}>{snapshots.length}</span>
+            )}
+            {activeSubTab === 'charts' && (
+              <span style={{ ...styles.subTabCountPill, backgroundColor: '#FEF08A', color: '#854D0E' }}>
+                {isHe ? 'חדש' : 'New'}
+              </span>
+            )}
+            {activeSubTab === 'daily_prices' && (
+              <span style={styles.subTabCountPill}>{dailyPrices.length}</span>
+            )}
+            <ChevronDown size={18} color="var(--primary)" />
+          </div>
+
+          {/* Invisible native select overlay for 100% reliable mobile UX (iOS / Android picker wheel) */}
+          <select
+            value={activeSubTab}
+            onChange={(e) => setActiveSubTab(e.target.value as any)}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100%',
+              height: '100%',
+              opacity: 0,
+              cursor: 'pointer',
+              fontSize: '16px', // Prevents iOS Safari auto-zoom
+              WebkitAppearance: 'menulist-button',
+            }}
+            aria-label={isHe ? 'בחר תצוגת השקעות' : 'Select investment view'}
+          >
+            <option value="portfolio">
+              {isHe ? `💼 ניירות ערך ופוזיציות (${investments.length})` : `💼 Active Holdings (${investments.length})`}
+            </option>
+            <option value="snapshots">
+              {isHe ? `🌳 עץ סגירות תקופה (${snapshots.length})` : `🌳 Periodic Snapshots Tree (${snapshots.length})`}
+            </option>
+            <option value="charts">
+              {isHe ? `📊 גרפים ומדדי תשואה (שווי מול עלות)` : `📊 Charts & Performance`}
+            </option>
+            <option value="daily_prices">
+              {isHe ? `📅 שערי סוף יום (${dailyPrices.length})` : `📅 Daily Closing Prices (${dailyPrices.length})`}
+            </option>
+          </select>
+        </div>
       </div>
 
       {/* TAB 1: ACTIVE HOLDINGS TABLE */}
