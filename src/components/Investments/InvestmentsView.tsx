@@ -34,7 +34,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { fetchAssetQuote, fetchBatchAssetQuotes, fetchUsdIlsRate, MarketQuoteResult } from '../../lib/quotesService';
-import { formatDate, normalizeToISODate, isDuplicateTranche, sortTranchesByDateDesc } from '../../lib/i18n';
+import { formatDate, normalizeToISODate, healSnapshotDate, isDuplicateTranche, sortTranchesByDateDesc } from '../../lib/i18n';
 import { IsraeliDateInput } from '../common/IsraeliDateInput';
 import { InvestmentsCharts } from './InvestmentsCharts';
 import { InvestmentsSnapshotsTree } from './InvestmentsSnapshotsTree';
@@ -235,7 +235,7 @@ export const InvestmentsView: React.FC = () => {
                 !s.id.includes('sample')
             )
             .map((s: any) => {
-              const cleanDate = normalizeToISODate(s.date);
+              const cleanDate = healSnapshotDate(s);
               if (cleanDate !== s.date) {
                 hasModified = true;
                 return { ...s, date: cleanDate };
@@ -258,7 +258,7 @@ export const InvestmentsView: React.FC = () => {
   const saveSnapshots = async (newList: InvestmentPeriodicSnapshot[]) => {
     const sanitizedList = newList.map((s) => ({
       ...s,
-      date: normalizeToISODate(s.date),
+      date: healSnapshotDate(s),
     }));
     setSnapshots(sanitizedList);
     try {
@@ -309,7 +309,7 @@ export const InvestmentsView: React.FC = () => {
         if (!error && data && data.length > 0) {
           let hasHealedDb = false;
           const dbSnaps: InvestmentPeriodicSnapshot[] = data.map((d: any) => {
-            const cleanDate = normalizeToISODate(d.date);
+            const cleanDate = healSnapshotDate(d);
             if (cleanDate !== d.date) {
               hasHealedDb = true;
             }
@@ -345,7 +345,7 @@ export const InvestmentsView: React.FC = () => {
 
           setSnapshots((prev) => {
             const map = new Map<string, InvestmentPeriodicSnapshot>();
-            prev.forEach((s) => map.set(s.id, { ...s, date: normalizeToISODate(s.date) }));
+            prev.forEach((s) => map.set(s.id, { ...s, date: healSnapshotDate(s) }));
             dbSnaps.forEach((s) => map.set(s.id, s));
             const merged = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
             localStorage.setItem('household_investment_snapshots', JSON.stringify(merged));
@@ -1580,8 +1580,11 @@ export const InvestmentsView: React.FC = () => {
           }
         }
         priceToUse = Number(priceToUse.toFixed(4));
-        if (quoteDate && (!latestDateFound || quoteDate > latestDateFound)) {
-          latestDateFound = quoteDate;
+        // Only accept quoteDate if it belongs to this period (<= periodCutoffDate)
+        if (quoteDate && quoteDate <= periodCutoffDate) {
+          if (!latestDateFound || quoteDate > latestDateFound) {
+            latestDateFound = quoteDate;
+          }
         }
 
         const val = totalShares * priceToUse;
@@ -1638,12 +1641,18 @@ export const InvestmentsView: React.FC = () => {
     // Filter to save only assets that were actually held on that date (shares > 0)
     const activeItems = fetchedPeriodResult.items.filter((it) => it.shares > 0);
 
+    const cleanDate = healSnapshotDate({
+      date: fetchedPeriodResult.date,
+      period_label: fetchedPeriodResult.periodLabel,
+      period_type: fetchedPeriodResult.periodType,
+    });
+
     const newSnapshot: InvestmentPeriodicSnapshot = {
       id: `snap-${Date.now()}`,
       household_id: activeHousehold?.id || 'hh-main',
       period_type: fetchedPeriodResult.periodType,
       period_label: fetchedPeriodResult.periodLabel,
-      date: normalizeToISODate(fetchedPeriodResult.date),
+      date: cleanDate,
       total_invested: fetchedPeriodResult.totalInvested,
       total_value: fetchedPeriodResult.totalValue,
       total_profit: fetchedPeriodResult.totalProfit,
@@ -1653,7 +1662,11 @@ export const InvestmentsView: React.FC = () => {
       notes: `נמשך אוטומטית מאתרי הבורסה (${fetchedPeriodResult.periodLabel})`,
     };
 
-    saveSnapshots([newSnapshot, ...snapshots]);
+    // Filter out existing snapshot with same label to avoid duplicate rows
+    const filteredOld = snapshots.filter(
+      (s) => s.period_label !== fetchedPeriodResult.periodLabel
+    );
+    saveSnapshots([newSnapshot, ...filteredOld]);
     alert(isHe ? 'צילום המצב נשמר בהצלחה בהיסטוריית התיק!' : 'Snapshot saved successfully!');
   };
 

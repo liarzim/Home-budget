@@ -454,6 +454,62 @@ export function normalizeToISODate(input: string | Date | null | undefined): str
   return new Date().toISOString().split('T')[0];
 }
 
+const HEBREW_MONTHS_MAP: { [key: string]: number } = {
+  'ינואר': 1,
+  'פברואר': 2,
+  'מרץ': 3,
+  'אפריל': 4,
+  'מאי': 5,
+  'יוני': 6,
+  'יולי': 7,
+  'אוגוסט': 8,
+  'ספטמבר': 9,
+  'אוקטובר': 10,
+  'נובמבר': 11,
+  'דצמבר': 12,
+};
+
+/**
+ * Heals and ensures that a snapshot date strictly corresponds to its stated period_label or period_type.
+ * For example, if a snapshot has period_label "סיום חודש ינואר 2026", but its date was mistakenly recorded
+ * as "2026-10-15" due to a fallback quote date, this function heals it to "2026-01-30" or "2026-01-31".
+ */
+export function healSnapshotDate(snap: { date?: string; period_label?: string; period_type?: string } | null | undefined): string {
+  if (!snap) return new Date().toISOString().split('T')[0];
+  let cleanDate = normalizeToISODate(snap.date);
+
+  if (snap.period_label) {
+    const label = snap.period_label;
+    const yearMatch = label.match(/\b(20\d{2})\b/);
+    const expectedYear = yearMatch ? parseInt(yearMatch[1], 10) : null;
+
+    let expectedMonth: number | null = null;
+    for (const [mName, mNum] of Object.entries(HEBREW_MONTHS_MAP)) {
+      if (label.includes(mName)) {
+        expectedMonth = mNum;
+        break;
+      }
+    }
+
+    if (expectedYear) {
+      const parts = cleanDate.split('-').map(Number);
+      const dY = parts[0];
+      const dM = parts[1];
+      const dD = parts[2];
+
+      if (dY !== expectedYear || (expectedMonth && dM !== expectedMonth)) {
+        const m = expectedMonth || dM || 1;
+        const lastDay = new Date(expectedYear, m, 0).getDate();
+        // If current day is plausible end of month (>=20) and <= lastDay, keep it, otherwise use lastDay
+        const day = (dD && dD >= 20 && dD <= lastDay) ? String(dD).padStart(2, '0') : String(lastDay).padStart(2, '0');
+        cleanDate = `${expectedYear}-${String(m).padStart(2, '0')}-${day}`;
+      }
+    }
+  }
+
+  return cleanDate;
+}
+
 /**
  * Checks if two investment tranches are duplicates based on date, shares, price (handling Shekel/Agorot) or total cost.
  */

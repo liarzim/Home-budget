@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { InvestmentPeriodicSnapshot, InvestmentSnapshotItem } from '../../lib/types';
-import { formatDate, normalizeToISODate } from '../../lib/i18n';
+import { formatDate, normalizeToISODate, healSnapshotDate } from '../../lib/i18n';
 import {
   Folder,
   FolderOpen,
@@ -136,7 +136,7 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
 
     // Process all snapshots
     snapshots.forEach((snap) => {
-      const isoDate = normalizeToISODate(snap.date);
+      const isoDate = healSnapshotDate(snap);
       const parts = isoDate.split('-');
       const y = parseInt(parts[0], 10) || new Date().getFullYear();
       const m = parseInt(parts[1], 10) || 1;

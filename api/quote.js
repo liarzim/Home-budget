@@ -115,10 +115,10 @@ export async function fetchYahooQuote(symbol, periodType, year, month, quarter) 
     if (lp != null && isAgorot) lp = lp / 100;
     return {
       symbol,
-      source: 'Yahoo Finance',
+      source: 'Yahoo Finance (Fallback Current)',
       currency,
       price: lp != null ? Number(lp.toFixed(4)) : null,
-      date: points[0]?.date || new Date().toISOString().split('T')[0],
+      date: isHistorical ? null : (points[0]?.date || new Date().toISOString().split('T')[0]),
       periodType,
       success: true
     };
@@ -239,13 +239,25 @@ function formatBizportalDate(dStr) {
       return y < targetYear || (y === targetYear && m <= targetMonth);
     });
 
-    const selected = nearest || points[0];
+    if (nearest) {
+      return {
+        securityNumber,
+        source: 'Bizportal TASE',
+        currency: 'ILS',
+        price: formatBizportalPrice(nearest.C_p),
+        date: formatBizportalDate(nearest.D_p),
+        periodType,
+        success: true
+      };
+    }
+
+    const fallbackPoint = points[0];
     return {
       securityNumber,
-      source: 'Bizportal TASE',
+      source: 'Bizportal TASE (מחיר נוכחי כברירת מחדל)',
       currency: 'ILS',
-      price: formatBizportalPrice(selected.C_p),
-      date: formatBizportalDate(selected.D_p),
+      price: fallbackPoint ? formatBizportalPrice(fallbackPoint.C_p) : 0,
+      date: null,
       periodType,
       success: true
     };
