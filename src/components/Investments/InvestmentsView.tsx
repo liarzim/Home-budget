@@ -2319,10 +2319,10 @@ export const InvestmentsView: React.FC = () => {
             title={
               isHe
                 ? `פנה לאתרים (Yahoo Finance / ביזפורטל) ומשוך שער שוק עדכני${
-                    effectiveLastRefreshTime ? `\nרענון אחרון במסד (DB): ${formatLastRefreshTime(effectiveLastRefreshTime)}` : ''
+                    effectiveLastRefreshTime ? `\nרענון אחרון: ${formatLastRefreshTime(effectiveLastRefreshTime)}` : ''
                   }`
                 : `Fetch live market quotes${
-                    effectiveLastRefreshTime ? `\nDB Last updated: ${formatLastRefreshTime(effectiveLastRefreshTime)}` : ''
+                    effectiveLastRefreshTime ? `\nLast updated: ${formatLastRefreshTime(effectiveLastRefreshTime)}` : ''
                   }`
             }
           >
@@ -2345,8 +2345,8 @@ export const InvestmentsView: React.FC = () => {
               <Clock size={10} color="#047857" />
               <span>
                 {isHe
-                  ? `עודכן ב-DB: ${formatLastRefreshTime(effectiveLastRefreshTime)}`
-                  : `DB: ${formatLastRefreshTime(effectiveLastRefreshTime)}`}
+                  ? `עודכן: ${formatLastRefreshTime(effectiveLastRefreshTime)}`
+                  : `Updated: ${formatLastRefreshTime(effectiveLastRefreshTime)}`}
               </span>
             </div>
           </button>
