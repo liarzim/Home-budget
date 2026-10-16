@@ -41,6 +41,22 @@ import { InvestmentsSnapshotsTree } from './InvestmentsSnapshotsTree';
 import { TranchesImportModal } from './TranchesImportModal';
 import * as XLSX from 'xlsx';
 
+const HEBREW_MONTH_NAMES = [
+  '',
+  'ינואר',
+  'פברואר',
+  'מרץ',
+  'אפריל',
+  'מאי',
+  'יוני',
+  'יולי',
+  'אוגוסט',
+  'ספטמבר',
+  'אוקטובר',
+  'נובמבר',
+  'דצמבר',
+];
+
 export const getEffectiveSecurityNumber = (asset?: {
   security_number?: string | null;
   ticker?: string;
@@ -214,6 +230,13 @@ export const InvestmentsView: React.FC = () => {
     totalReturnPct: number;
   } | null>(null);
   const [fetchPeriodError, setFetchPeriodError] = useState<string | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{
+    isRunning: boolean;
+    title: string;
+    currentMonthName: string;
+    currentIndex: number;
+    totalCount: number;
+  } | null>(null);
   const [expandedSnapshotId, setExpandedSnapshotId] = useState<string | null>(null);
   const [hideZeroSharesInPeriod, setHideZeroSharesInPeriod] = useState<boolean>(true);
 
@@ -1670,6 +1693,217 @@ export const InvestmentsView: React.FC = () => {
     alert(isHe ? 'צילום המצב נשמר בהצלחה בהיסטוריית התיק!' : 'Snapshot saved successfully!');
   };
 
+  // Helper to fetch and build a single month snapshot
+  const fetchAndSaveMonthSnapshot = async (
+    year: number,
+    month: number,
+    currentList: InvestmentPeriodicSnapshot[]
+  ): Promise<InvestmentPeriodicSnapshot[] | null> => {
+    const q = Math.ceil(month / 3);
+    const resultsMap = await fetchBatchAssetQuotes(investments, {
+      periodType: 'month_end',
+      year,
+      month,
+      quarter: q,
+    });
+
+    const monthName = HEBREW_MONTH_NAMES[month] || `חודש ${month}`;
+    const periodLabel = `סיום חודש ${monthName} ${year}`;
+    const lastDayOfM = new Date(year, month, 0).getDate();
+    const periodCutoffDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDayOfM).padStart(2, '0')}`;
+
+    let totalInvestedILS = 0;
+    let totalValueILS = 0;
+    let latestDateFound = '';
+
+    const items: InvestmentSnapshotItem[] = investments.map((asset) => {
+      const quote = resultsMap.get(asset.id);
+      const quoteDate = quote?.date ? normalizeToISODate(quote.date) : '';
+
+      // Only include tranches that were actually purchased ON OR BEFORE the period cutoff date!
+      const validTranches = (asset.tranches || []).filter((t) => {
+        if ((Number(t.shares) || 0) <= 0 || (Number(t.price_per_share) || 0) <= 0) return false;
+        const trancheDate = normalizeToISODate(t.date);
+        return trancheDate <= periodCutoffDate;
+      });
+
+      const totalCost = validTranches.reduce(
+        (sum, t) => sum + (Number(t.shares) || 0) * (Number(t.price_per_share) || 0),
+        0
+      );
+      const totalShares = validTranches.reduce((sum, t) => sum + (Number(t.shares) || 0), 0);
+      const avgPrice = totalShares > 0 ? totalCost / totalShares : 0;
+
+      let priceToUse = quote && quote.success && quote.price > 0 ? quote.price : asset.current_price;
+      if (asset.currency === 'ILS' || quote?.currency === 'ILA' || quote?.currency === 'ILX') {
+        if (quote?.currency === 'ILA' || quote?.currency === 'ILX') {
+          priceToUse = priceToUse / 100;
+        } else if (
+          asset.current_price > 0 &&
+          priceToUse / asset.current_price >= 70 &&
+          priceToUse / asset.current_price <= 130
+        ) {
+          priceToUse = priceToUse / 100;
+        } else if (avgPrice > 0 && priceToUse / avgPrice >= 40) {
+          priceToUse = priceToUse / 100;
+        } else if (priceToUse >= 500) {
+          priceToUse = priceToUse / 100;
+        }
+      }
+      priceToUse = Number(priceToUse.toFixed(4));
+      if (quoteDate && quoteDate <= periodCutoffDate) {
+        if (!latestDateFound || quoteDate > latestDateFound) {
+          latestDateFound = quoteDate;
+        }
+      }
+
+      const val = totalShares * priceToUse;
+      const profit = val - totalCost;
+      const returnPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+
+      const mult = asset.currency === 'USD' ? usdRate : 1;
+      totalInvestedILS += totalCost * mult;
+      totalValueILS += val * mult;
+
+      return {
+        asset_id: asset.id,
+        ticker: asset.ticker,
+        security_number: getEffectiveSecurityNumber(asset) || undefined,
+        name: asset.name,
+        currency: asset.currency,
+        shares: totalShares,
+        avg_cost_price: avgPrice,
+        total_cost: totalCost,
+        market_price: priceToUse,
+        market_value: val,
+        profit,
+        return_pct: returnPct,
+        quote_date: quoteDate,
+        quote_source: quote?.source || 'ברירת מחדל תיק',
+      };
+    });
+
+    const activeItems = items.filter((it) => it.shares > 0);
+    const totalProfitILS = totalValueILS - totalInvestedILS;
+    const totalReturnPct = totalInvestedILS > 0 ? (totalProfitILS / totalInvestedILS) * 100 : 0;
+
+    const cleanDate = healSnapshotDate({
+      date: latestDateFound || periodCutoffDate,
+      period_label: periodLabel,
+      period_type: 'month',
+    });
+
+    const newSnapshot: InvestmentPeriodicSnapshot = {
+      id: `snap-${year}-${String(month).padStart(2, '0')}-${Date.now()}`,
+      household_id: activeHousehold?.id || 'hh-main',
+      period_type: 'month',
+      period_label: periodLabel,
+      date: cleanDate,
+      total_invested: Number(totalInvestedILS.toFixed(2)),
+      total_value: Number(totalValueILS.toFixed(2)),
+      total_profit: Number(totalProfitILS.toFixed(2)),
+      total_return_pct: Number(totalReturnPct.toFixed(2)),
+      assets_count: activeItems.length,
+      items: activeItems,
+      notes: `סנכרון רציף אוטומטי (${periodLabel})`,
+    };
+
+    const filteredOld = currentList.filter((s) => s.period_label !== periodLabel);
+    return [newSnapshot, ...filteredOld];
+  };
+
+  // Run Batch Loop across all months of a Year or Quarter
+  const handleRunBatchLoop = async (
+    type: 'year_end' | 'quarter_end' | 'month_end',
+    year: number,
+    quarter?: number,
+    month?: number
+  ) => {
+    if (investments.length === 0) {
+      alert(isHe ? 'אין ניירות ערך בתיק למשיכת נתונים' : 'No assets in portfolio');
+      return;
+    }
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    let monthsToFetch: number[] = [];
+    let title = '';
+
+    if (type === 'year_end') {
+      title = isHe ? `סגירת שנת ${year} בלופ (ינואר - דצמבר)` : `Closing Year ${year} (Jan - Dec)`;
+      const maxM = year === currentYear ? Math.min(12, currentMonth) : 12;
+      for (let m = 1; m <= maxM; m++) {
+        monthsToFetch.push(m);
+      }
+    } else if (type === 'quarter_end') {
+      const q = quarter || fetchQuarter || 1;
+      const qStart = (q - 1) * 3 + 1;
+      const qEnd = q * 3;
+      title = isHe ? `סגירת רבעון Q${q} ${year} בלופ` : `Closing Q${q} ${year}`;
+      for (let m = qStart; m <= qEnd; m++) {
+        if (year === currentYear && m > currentMonth) continue;
+        monthsToFetch.push(m);
+      }
+    } else {
+      const m = month || fetchMonth || 1;
+      monthsToFetch = [m];
+      title = isHe ? `סגירת חודש ${m}/${year}` : `Closing Month ${m}/${year}`;
+    }
+
+    if (monthsToFetch.length === 0) {
+      alert(isHe ? 'התקופה המבוקשת היא בעתיד וטרם נסחרה.' : 'Selected period is in the future.');
+      return;
+    }
+
+    setIsFetchingPeriodQuotes(true);
+    setFetchPeriodError(null);
+
+    let currentSnapshots = [...snapshots];
+    let successCount = 0;
+
+    try {
+      for (let i = 0; i < monthsToFetch.length; i++) {
+        const m = monthsToFetch[i];
+        const mName = HEBREW_MONTH_NAMES[m] || `חודש ${m}`;
+
+        setBatchProgress({
+          isRunning: true,
+          title,
+          currentMonthName: mName,
+          currentIndex: i + 1,
+          totalCount: monthsToFetch.length,
+        });
+
+        const updated = await fetchAndSaveMonthSnapshot(year, m, currentSnapshots);
+        if (updated) {
+          currentSnapshots = updated;
+          successCount++;
+          await saveSnapshots(currentSnapshots);
+        }
+      }
+
+      setQuotesRefreshMessage(
+        isHe
+          ? `✓ הושלם בהצלחה! עודכנו ${successCount} חודשים עבור ${title}`
+          : `✓ Done! Successfully updated ${successCount} months.`
+      );
+      setTimeout(() => setQuotesRefreshMessage(null), 7000);
+      alert(
+        isHe
+          ? `✓ הסנכרון בלופ הושלם בהצלחה! עודכנו ${successCount} חודשים בעץ התקופות.`
+          : `✓ Batch sync complete! Updated ${successCount} months.`
+      );
+    } catch (err: any) {
+      console.error(err);
+      setFetchPeriodError(err?.message || (isHe ? 'שגיאה בסנכרון הרציף' : 'Batch sync error'));
+    } finally {
+      setIsFetchingPeriodQuotes(false);
+      setBatchProgress(null);
+    }
+  };
+
   // 4. Export detailed periodic snapshot to CSV (with Hebrew UTF-8 BOM)
   const handleExportFetchedPeriodCSV = (result: {
     periodLabel: string;
@@ -1865,7 +2099,7 @@ export const InvestmentsView: React.FC = () => {
     }
   };
 
-  const handleQuickFetchFromTree = (
+  const handleQuickFetchFromTree = async (
     type: 'year_end' | 'quarter_end' | 'month_end',
     year: number,
     quarter?: number,
@@ -1876,6 +2110,30 @@ export const InvestmentsView: React.FC = () => {
     if (quarter) setFetchQuarter(quarter);
     if (month) setFetchMonth(month);
     setActiveSubTab('snapshots');
+
+    if (type === 'year_end') {
+      const confirmRun = window.confirm(
+        isHe
+          ? `האם להריץ סנכרון שערים בלופ עבור כל חודשי שנת ${year} (מינואר עד דצמבר) ולשמור אוטומטית בעץ?`
+          : `Run batch loop for all months of ${year} (Jan - Dec) and save automatically?`
+      );
+      if (confirmRun) {
+        await handleRunBatchLoop('year_end', year);
+        return;
+      }
+    } else if (type === 'quarter_end') {
+      const q = quarter || 1;
+      const confirmRun = window.confirm(
+        isHe
+          ? `האם להריץ סנכרון שערים בלופ עבור כל חודשי רבעון Q${q} ${year} ולשמור אוטומטית בעץ?`
+          : `Run batch loop for all months of Q${q} ${year} and save automatically?`
+      );
+      if (confirmRun) {
+        await handleRunBatchLoop('quarter_end', year, q);
+        return;
+      }
+    }
+
     setTimeout(() => {
       const el = document.getElementById('market-quotes-fetcher-section');
       if (el) {
@@ -3462,15 +3720,35 @@ export const InvestmentsView: React.FC = () => {
                     ...styles.fetchActionBtn,
                     ...(isFetchingPeriodQuotes ? styles.fetchActionBtnLoading : {}),
                   }}
-                  onClick={handleFetchPeriodQuotes}
+                  onClick={() => {
+                    if (fetchPeriodType === 'year_end') {
+                      handleRunBatchLoop('year_end', fetchYear);
+                    } else if (fetchPeriodType === 'quarter_end') {
+                      handleRunBatchLoop('quarter_end', fetchYear, fetchQuarter);
+                    } else {
+                      handleFetchPeriodQuotes();
+                    }
+                  }}
                   disabled={isFetchingPeriodQuotes}
                 >
                   <Globe size={18} className={isFetchingPeriodQuotes ? 'spin-icon' : ''} />
                   <span>
                     {isFetchingPeriodQuotes
-                      ? isHe
+                      ? batchProgress
+                        ? isHe
+                          ? `מסנכרן ${batchProgress.currentMonthName} (${batchProgress.currentIndex}/${batchProgress.totalCount})...`
+                          : `Syncing ${batchProgress.currentMonthName} (${batchProgress.currentIndex}/${batchProgress.totalCount})...`
+                        : isHe
                         ? 'פונה לאתרים ומושך ציטוטי סגירה...'
                         : 'Fetching closing quotes...'
+                      : fetchPeriodType === 'year_end'
+                      ? isHe
+                        ? `סנכרן את כל חודשי שנת ${fetchYear} בלופ (ינואר - דצמבר)`
+                        : `Sync Full Year ${fetchYear} Loop (Jan - Dec)`
+                      : fetchPeriodType === 'quarter_end'
+                      ? isHe
+                        ? `סנכרן את כל חודשי רבעון Q${fetchQuarter} ${fetchYear} בלופ`
+                        : `Sync Q${fetchQuarter} ${fetchYear} Months Loop`
                       : isHe
                       ? 'פנה לאתרים ומשוך ציטוטים לתקופה זו'
                       : 'Fetch Closing Quotes & Calculate P&L'}
@@ -3478,6 +3756,73 @@ export const InvestmentsView: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {/* LIVE BATCH LOOP PROGRESS BAR */}
+            {batchProgress && (
+              <div
+                style={{
+                  marginTop: '16px',
+                  backgroundColor: '#EFF6FF',
+                  border: '1px solid #BFDBFE',
+                  borderRadius: '10px',
+                  padding: '14px 18px',
+                  boxShadow: '0 2px 4px rgba(37, 99, 235, 0.08)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '8px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      color: '#1E40AF',
+                      fontWeight: '700',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    <RefreshCw size={16} className="spin-icon" color="#2563EB" />
+                    <span>{batchProgress.title}</span>
+                  </div>
+                  <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#2563EB' }}>
+                    {batchProgress.currentIndex} {isHe ? 'מתוך' : 'of'} {batchProgress.totalCount} (
+                    {Math.round((batchProgress.currentIndex / batchProgress.totalCount) * 100)}%)
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    width: '100%',
+                    height: '10px',
+                    backgroundColor: '#DBEAFE',
+                    borderRadius: '999px',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${(batchProgress.currentIndex / batchProgress.totalCount) * 100}%`,
+                      backgroundColor: '#2563EB',
+                      borderRadius: '999px',
+                      transition: 'width 0.4s ease',
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginTop: '8px', fontSize: '0.8rem', color: '#1E3A8A' }}>
+                  {isHe
+                    ? `מעבד כעת: ${batchProgress.currentMonthName} (משיכת שערים וחישוב פעימות לפי מועד רכישה)...`
+                    : `Processing: ${batchProgress.currentMonthName}...`}
+                </div>
+              </div>
+            )}
 
             {/* Error Message */}
             {fetchPeriodError && (

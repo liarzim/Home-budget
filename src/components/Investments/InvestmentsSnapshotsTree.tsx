@@ -429,10 +429,10 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                         <button
                           style={treeStyles.quickFetchBtn}
                           onClick={() => onQuickFetch('year_end', yNode.year, 4, 12)}
-                          title={isHe ? 'משוך שערים מסוף דצמבר וסגור שנה' : 'Fetch Dec 31 closing quotes'}
+                          title={isHe ? 'סנכרן את כל חודשי השנה בלופ רציף (מינואר עד דצמבר)' : 'Fetch all months in a loop (Jan - Dec)'}
                         >
                           <Sparkles size={13} color="#2563EB" />
-                          <span>{isHe ? '+ סגירת שנת ' + yNode.year : '+ Close Year'}</span>
+                          <span>{isHe ? `+ סגירת שנת ${yNode.year} (בלופ)` : `+ Close Year ${yNode.year} (Loop)`}</span>
                         </button>
                       )
                     )}
@@ -541,10 +541,10 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                                     onClick={() =>
                                       onQuickFetch('quarter_end', yNode.year, qNode.quarter, qNode.quarter * 3)
                                     }
-                                    title={isHe ? 'משוך שערים לסוף רבעון' : 'Fetch quarter closing quotes'}
+                                    title={isHe ? `סנכרן את כל חודשי רבעון Q${qNode.quarter} בלופ רציף` : 'Fetch quarter months in a loop'}
                                   >
                                     <Sparkles size={12} color="#2563EB" />
-                                    <span>{isHe ? `+ סגירת Q${qNode.quarter}` : `+ Close Q${qNode.quarter}`}</span>
+                                    <span>{isHe ? `+ סגירת Q${qNode.quarter} (בלופ)` : `+ Close Q${qNode.quarter} (Loop)`}</span>
                                   </button>
                                 )
                               )}
