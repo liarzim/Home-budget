@@ -4,6 +4,22 @@
 import { createClient } from '@supabase/supabase-js';
 import { fetchYahooQuote, fetchBizportalQuote } from './quote.js';
 
+const HEBREW_MONTHS = [
+  '',
+  'ינואר',
+  'פברואר',
+  'מרץ',
+  'אפריל',
+  'מאי',
+  'יוני',
+  'יולי',
+  'אוגוסט',
+  'ספטמבר',
+  'אוקטובר',
+  'נובמבר',
+  'דצמבר',
+];
+
 export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -57,6 +73,16 @@ export default async function handler(req, res) {
       month: '2-digit',
       day: '2-digit',
     }).format(new Date());
+
+    const [yearNum, monthNum, dayNum] = israelDate.split('-').map(Number);
+    const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+
+    // Check if end of period
+    const forceMonthEnd = url.searchParams.get('force_month_end') === 'true';
+    const isLastDayOfMonth = forceMonthEnd || dayNum === daysInMonth;
+    const quarterNum = Math.ceil(monthNum / 3);
+    const isQuarterEnd = isLastDayOfMonth && (monthNum === 3 || monthNum === 6 || monthNum === 9 || monthNum === 12);
+    const isYearEnd = isLastDayOfMonth && monthNum === 12;
 
     // 2. Fetch USD / ILS exchange rate
     let usdRate = 3.70;
@@ -163,7 +189,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 8. Generate daily snapshot per household
+    // 8. Generate daily and periodic snapshots per household
     const householdsMap = new Map();
     for (const inv of investments) {
       if (!householdsMap.has(inv.household_id)) {
@@ -172,7 +198,11 @@ export default async function handler(req, res) {
       householdsMap.get(inv.household_id).push(inv);
     }
 
-    let snapshotsSavedCount = 0;
+    let dailySnapshotsSaved = 0;
+    let monthlySnapshotsSaved = 0;
+    let quarterlySnapshotsSaved = 0;
+    let yearlySnapshotsSaved = 0;
+
     for (const [householdId, hInvs] of householdsMap.entries()) {
       let totalInvestedILS = 0;
       let currentValueILS = 0;
@@ -218,6 +248,7 @@ export default async function handler(req, res) {
       const totalProfitILS = currentValueILS - totalInvestedILS;
       const totalReturnPct = totalInvestedILS > 0 ? (totalProfitILS / totalInvestedILS) * 100 : 0;
 
+      // 8a. Daily snapshot
       const snapshotId = `daily-${householdId}-${israelDate}`;
       const { error: snapErr } = await supabase
         .from('investment_snapshots')
@@ -238,11 +269,112 @@ export default async function handler(req, res) {
           { onConflict: 'id' }
         );
 
-      if (!snapErr) {
-        snapshotsSavedCount++;
-      } else {
-        console.warn('Warning saving daily snapshot:', snapErr.message);
+      if (!snapErr) dailySnapshotsSaved++;
+
+      // 8b. End of Month snapshot: populate periodic snapshots tree
+      if (isLastDayOfMonth) {
+        const monthSnapId = `month-${householdId}-${yearNum}-${String(monthNum).padStart(2, '0')}`;
+        const monthLabel = `סגירת חודש ${HEBREW_MONTHS[monthNum]} ${yearNum}`;
+        const { error: mErr } = await supabase
+          .from('investment_snapshots')
+          .upsert(
+            {
+              id: monthSnapId,
+              household_id: householdId,
+              period_type: 'month',
+              period_label: monthLabel,
+              date: israelDate,
+              items: snapshotItems,
+              total_invested: Number(totalInvestedILS.toFixed(2)),
+              total_value: Number(currentValueILS.toFixed(2)),
+              total_profit: Number(totalProfitILS.toFixed(2)),
+              total_return_pct: Number(totalReturnPct.toFixed(2)),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'id' }
+          );
+
+        if (!mErr) monthlySnapshotsSaved++;
+
+        // 8c. End of Quarter snapshot (if month 3, 6, 9, 12)
+        if (isQuarterEnd) {
+          const qSnapId = `quarter-${householdId}-${yearNum}-Q${quarterNum}`;
+          const qLabel = `סיום רבעון Q${quarterNum} ${yearNum}`;
+          const { error: qErr } = await supabase
+            .from('investment_snapshots')
+            .upsert(
+              {
+                id: qSnapId,
+                household_id: householdId,
+                period_type: 'quarter',
+                period_label: qLabel,
+                date: israelDate,
+                items: snapshotItems,
+                total_invested: Number(totalInvestedILS.toFixed(2)),
+                total_value: Number(currentValueILS.toFixed(2)),
+                total_profit: Number(totalProfitILS.toFixed(2)),
+                total_return_pct: Number(totalReturnPct.toFixed(2)),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'id' }
+            );
+
+          if (!qErr) quarterlySnapshotsSaved++;
+        }
+
+        // 8d. End of Year snapshot (if December 31)
+        if (isYearEnd) {
+          const ySnapId = `year-${householdId}-${yearNum}`;
+          const yLabel = `סיכום שנת ${yearNum}`;
+          const { error: yErr } = await supabase
+            .from('investment_snapshots')
+            .upsert(
+              {
+                id: ySnapId,
+                household_id: householdId,
+                period_type: 'year',
+                period_label: yLabel,
+                date: israelDate,
+                items: snapshotItems,
+                total_invested: Number(totalInvestedILS.toFixed(2)),
+                total_value: Number(currentValueILS.toFixed(2)),
+                total_profit: Number(totalProfitILS.toFixed(2)),
+                total_return_pct: Number(totalReturnPct.toFixed(2)),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'id' }
+            );
+
+          if (!yErr) yearlySnapshotsSaved++;
+        }
       }
+    }
+
+    // 9. Retention & Cleanup: If end of month, delete older daily records keeping only the last 7 days
+    let cleanedOldDailyPrices = false;
+    let cleanedOldDailySnapshots = false;
+
+    if (isLastDayOfMonth) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      const cutoffDateStr = cutoff.toISOString().split('T')[0];
+
+      // Delete old daily prices from security_daily_prices older than 7 days
+      const { error: delPriceErr } = await supabase
+        .from('security_daily_prices')
+        .delete()
+        .lt('price_date', cutoffDateStr);
+
+      if (!delPriceErr) cleanedOldDailyPrices = true;
+
+      // Delete only daily snapshots older than 7 days (month/quarter/year snapshots are NEVER deleted)
+      const { error: delSnapErr } = await supabase
+        .from('investment_snapshots')
+        .delete()
+        .eq('period_type', 'daily')
+        .lt('date', cutoffDateStr);
+
+      if (!delSnapErr) cleanedOldDailySnapshots = true;
     }
 
     return res.status(200).json({
@@ -250,7 +382,15 @@ export default async function handler(req, res) {
       date: israelDate,
       usdRate,
       securitiesUpdated: priceRows.length,
-      snapshotsSaved: snapshotsSavedCount,
+      dailySnapshotsSaved,
+      isLastDayOfMonth,
+      isQuarterEnd,
+      isYearEnd,
+      monthlySnapshotsSaved,
+      quarterlySnapshotsSaved,
+      yearlySnapshotsSaved,
+      cleanedOldDailyPrices,
+      cleanedOldDailySnapshots,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

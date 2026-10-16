@@ -320,18 +320,25 @@ export const InvestmentsView: React.FC = () => {
     loadDailyPrices();
   }, []);
 
-  const triggerManualDailySync = async () => {
+  const triggerManualDailySync = async (forceMonthEnd: boolean = false) => {
     setIsSyncingDailyQuotes(true);
     setDailySyncStatusMsg({
       type: 'info',
-      text: isHe ? 'מושך שערי נעילה יומיים עבור כל הניירות הפעילים ומייצר סנפשוט...' : 'Fetching end-of-day quotes and generating snapshot...',
+      text: isHe
+        ? (forceMonthEnd
+            ? 'מבצע סגירת חודש יזומה: מושך שערים, מייצר סגירת חודש בעץ ומנקה נתוני יום מעבר ל-7 ימים...'
+            : 'מושך שערי נעילה יומיים עבור כל הניירות הפעילים ומייצר סנפשוט...')
+        : 'Fetching end-of-day quotes and generating snapshot...',
     });
 
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token || '';
 
-      const res = await fetch('/api/cron-daily-quotes', {
+      const queryParams = new URLSearchParams();
+      if (forceMonthEnd) queryParams.set('force_month_end', 'true');
+
+      const res = await fetch(`/api/cron-daily-quotes?${queryParams.toString()}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -339,12 +346,26 @@ export const InvestmentsView: React.FC = () => {
 
       const data = await res.json();
       if (res.ok && data.success) {
+        let msg = isHe
+          ? `✅ סנכרון סוף יום הצליח! עודכנו ${data.securitiesUpdated} ניירות עבור תאריך ${data.date}.`
+          : `✅ Daily sync succeeded! Updated ${data.securitiesUpdated} securities for ${data.date}.`;
+
+        if (data.monthlySnapshotsSaved > 0) {
+          msg += isHe
+            ? ` נוצרה סגירת חודש חדשה שהתווספה ישירות לעץ סגירות התקופה!`
+            : ` Monthly snapshot created and added to snapshots tree!`;
+        }
+        if (data.cleanedOldDailyPrices || data.cleanedOldDailySnapshots) {
+          msg += isHe
+            ? ` בוצע ניקוי של נתוני עבר (נשמרו 7 הימים האחרונים).`
+            : ` Older daily records cleaned (retained last 7 days).`;
+        }
+
         setDailySyncStatusMsg({
           type: 'success',
-          text: isHe
-            ? `✅ סנכרון סוף יום הצליח! עודכנו ${data.securitiesUpdated} ניירות עבור תאריך ${data.date}. שווי התיק חושב והתווסף לגרף!`
-            : `✅ Daily sync succeeded! Updated ${data.securitiesUpdated} securities for ${data.date}. Portfolio graph updated!`,
+          text: msg,
         });
+
         await loadDailyPrices();
         if (activeHousehold?.id) {
           const { data: dbSnaps } = await supabase
@@ -374,7 +395,7 @@ export const InvestmentsView: React.FC = () => {
       setIsSyncingDailyQuotes(false);
       setTimeout(() => {
         setDailySyncStatusMsg(null);
-      }, 9000);
+      }, 10000);
     }
   };
 
@@ -3501,7 +3522,7 @@ export const InvestmentsView: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={triggerManualDailySync}
+                  onClick={() => triggerManualDailySync(false)}
                   disabled={isSyncingDailyQuotes}
                   style={{
                     display: 'inline-flex',
@@ -3523,7 +3544,35 @@ export const InvestmentsView: React.FC = () => {
                   <span>
                     {isSyncingDailyQuotes
                       ? (isHe ? 'מושך שערים ומייצר סנפשוט...' : 'Syncing EOD Quotes...')
-                      : (isHe ? 'סנכרן שערים עכשיו (בדיקה ידנית)' : 'Sync EOD Quotes Now')}
+                      : (isHe ? 'סנכרן שערים יומיים' : 'Sync EOD Quotes')}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => triggerManualDailySync(true)}
+                  disabled={isSyncingDailyQuotes}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '9px 18px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    color: '#FFFFFF',
+                    fontSize: '0.88rem',
+                    fontWeight: '700',
+                    cursor: isSyncingDailyQuotes ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
+                    opacity: isSyncingDailyQuotes ? 0.7 : 1,
+                  }}
+                  title={isHe ? 'סגירת חודש יזומה, עדכון עץ התקופות וניקוי שבועי' : 'Trigger Month-End snapshot and retention cleanup'}
+                >
+                  <Calendar size={16} />
+                  <span>
+                    {isSyncingDailyQuotes
+                      ? (isHe ? 'מעבד סגירת חודש...' : 'Processing EOM...')
+                      : (isHe ? 'בצע סגירת חודש יזומה (בדיקת עץ וניקוי)' : 'Trigger Month-End & Cleanup')}
                   </span>
                 </button>
               </div>
