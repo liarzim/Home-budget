@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { InvestmentPeriodicSnapshot, InvestmentSnapshotItem } from '../../lib/types';
-import { formatDate } from '../../lib/i18n';
+import { formatDate, normalizeToISODate } from '../../lib/i18n';
 import {
   Folder,
   FolderOpen,
@@ -136,7 +136,8 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
 
     // Process all snapshots
     snapshots.forEach((snap) => {
-      const parts = snap.date.split('-');
+      const isoDate = normalizeToISODate(snap.date);
+      const parts = isoDate.split('-');
       const y = parseInt(parts[0], 10) || new Date().getFullYear();
       const m = parseInt(parts[1], 10) || 1;
       const q = Math.ceil(m / 3);
@@ -153,7 +154,7 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
       yEntry.allSnapshots.push(snap);
 
       if (snap.period_type === 'year' || snap.period_label.includes('שנה') || m === 12) {
-        if (!yEntry.yearSnapshot || snap.date >= yEntry.yearSnapshot.date) {
+        if (!yEntry.yearSnapshot || isoDate >= normalizeToISODate(yEntry.yearSnapshot.date)) {
           yEntry.yearSnapshot = snap;
         }
       }
@@ -167,7 +168,7 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
 
       const qEntry = yEntry.quarters.get(q)!;
       if (snap.period_type === 'quarter' || snap.period_label.includes('רבעון')) {
-        if (!qEntry.quarterSnapshot || snap.date >= qEntry.quarterSnapshot.date) {
+        if (!qEntry.quarterSnapshot || isoDate >= normalizeToISODate(qEntry.quarterSnapshot.date)) {
           qEntry.quarterSnapshot = snap;
         }
       }
@@ -224,7 +225,9 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
       });
 
       // Latest snapshot for year
-      const sortedSnaps = [...yData.allSnapshots].sort((a, b) => b.date.localeCompare(a.date));
+      const sortedSnaps = [...yData.allSnapshots].sort((a, b) =>
+        normalizeToISODate(b.date).localeCompare(normalizeToISODate(a.date))
+      );
       const latestSnap = yData.yearSnapshot || sortedSnaps[0];
 
       return {

@@ -172,6 +172,18 @@ export async function fetchBizportalQuote(securityNumber, periodType, year, mont
     // Note: C_p is in Agorot -> divide by 100 to get ILS
     const isHistorical = periodType && periodType !== 'current';
 
+function formatBizportalDate(dStr) {
+  if (!dStr) return new Date().toISOString().split('T')[0];
+  const parts = String(dStr).trim().split('/');
+  if (parts.length === 3) {
+    const day = parts[0].padStart(2, '0');
+    const month = parts[1].padStart(2, '0');
+    const year = parts[2];
+    return `${year}-${month}-${day}`;
+  }
+  return dStr;
+}
+
     if (!isHistorical) {
       const latest = points[0];
       return {
@@ -179,7 +191,7 @@ export async function fetchBizportalQuote(securityNumber, periodType, year, mont
         source: 'Bizportal TASE',
         currency: 'ILS',
         price: formatBizportalPrice(latest.C_p),
-        date: latest.D_p,
+        date: formatBizportalDate(latest.D_p),
         success: true
       };
     }
@@ -210,7 +222,7 @@ export async function fetchBizportalQuote(securityNumber, periodType, year, mont
         source: 'Bizportal TASE',
         currency: 'ILS',
         price: formatBizportalPrice(match.C_p),
-        date: match.D_p,
+        date: formatBizportalDate(match.D_p),
         periodType,
         targetYear,
         targetMonth,
@@ -233,7 +245,7 @@ export async function fetchBizportalQuote(securityNumber, periodType, year, mont
       source: 'Bizportal TASE',
       currency: 'ILS',
       price: formatBizportalPrice(selected.C_p),
-      date: selected.D_p,
+      date: formatBizportalDate(selected.D_p),
       periodType,
       success: true
     };

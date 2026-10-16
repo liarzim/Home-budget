@@ -224,15 +224,25 @@ export const InvestmentsView: React.FC = () => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          // Purge any mock/sample snapshots automatically
-          const userOnlySnapshots = parsed.filter(
-            (s: any) =>
-              s.id &&
-              !s.id.startsWith('snap-2026-') &&
-              !s.id.startsWith('snap-2025-') &&
-              !s.id.includes('sample')
-          );
-          if (userOnlySnapshots.length !== parsed.length) {
+          // Purge any mock/sample snapshots automatically and heal dates
+          let hasModified = false;
+          const userOnlySnapshots = parsed
+            .filter(
+              (s: any) =>
+                s.id &&
+                !s.id.startsWith('snap-2026-') &&
+                !s.id.startsWith('snap-2025-') &&
+                !s.id.includes('sample')
+            )
+            .map((s: any) => {
+              const cleanDate = normalizeToISODate(s.date);
+              if (cleanDate !== s.date) {
+                hasModified = true;
+                return { ...s, date: cleanDate };
+              }
+              return s;
+            });
+          if (hasModified || userOnlySnapshots.length !== parsed.length) {
             localStorage.setItem('household_investment_snapshots', JSON.stringify(userOnlySnapshots));
           }
           return userOnlySnapshots;
@@ -246,15 +256,19 @@ export const InvestmentsView: React.FC = () => {
   });
 
   const saveSnapshots = async (newList: InvestmentPeriodicSnapshot[]) => {
-    setSnapshots(newList);
+    const sanitizedList = newList.map((s) => ({
+      ...s,
+      date: normalizeToISODate(s.date),
+    }));
+    setSnapshots(sanitizedList);
     try {
-      localStorage.setItem('household_investment_snapshots', JSON.stringify(newList));
+      localStorage.setItem('household_investment_snapshots', JSON.stringify(sanitizedList));
     } catch (e) {
       console.error(e);
     }
     if (activeHousehold?.id) {
       try {
-        const toUpsert = newList.map((s) => ({
+        const toUpsert = sanitizedList.map((s) => ({
           id: s.id,
           household_id: activeHousehold.id,
           period_type: s.period_type,
@@ -293,24 +307,45 @@ export const InvestmentsView: React.FC = () => {
           .order('date', { ascending: true });
 
         if (!error && data && data.length > 0) {
-          const dbSnaps: InvestmentPeriodicSnapshot[] = data.map((d: any) => ({
-            id: d.id,
-            household_id: d.household_id,
-            period_type: d.period_type,
-            period_label: d.period_label,
-            date: d.date,
-            items: d.items || [],
-            total_invested: Number(d.total_invested) || 0,
-            total_value: Number(d.total_value) || 0,
-            total_profit: Number(d.total_profit) || 0,
-            total_return_pct: Number(d.total_return_pct) || 0,
-            assets_count: Array.isArray(d.items) ? d.items.length : 0,
-            notes: d.notes || undefined,
-          }));
+          let hasHealedDb = false;
+          const dbSnaps: InvestmentPeriodicSnapshot[] = data.map((d: any) => {
+            const cleanDate = normalizeToISODate(d.date);
+            if (cleanDate !== d.date) {
+              hasHealedDb = true;
+            }
+            return {
+              id: d.id,
+              household_id: d.household_id,
+              period_type: d.period_type,
+              period_label: d.period_label,
+              date: cleanDate,
+              items: d.items || [],
+              total_invested: Number(d.total_invested) || 0,
+              total_value: Number(d.total_value) || 0,
+              total_profit: Number(d.total_profit) || 0,
+              total_return_pct: Number(d.total_return_pct) || 0,
+              assets_count: Array.isArray(d.items) ? d.items.length : 0,
+              notes: d.notes || undefined,
+            };
+          });
+
+          if (hasHealedDb) {
+            const toUpdate = dbSnaps.map((s) => ({
+              id: s.id,
+              household_id: activeHousehold.id,
+              date: s.date,
+              updated_at: new Date().toISOString(),
+            }));
+            try {
+              await supabase.from('investment_snapshots').upsert(toUpdate, { onConflict: 'id' });
+            } catch (healErr) {
+              console.warn('Failed to heal snapshot dates in Supabase:', healErr);
+            }
+          }
 
           setSnapshots((prev) => {
             const map = new Map<string, InvestmentPeriodicSnapshot>();
-            prev.forEach((s) => map.set(s.id, s));
+            prev.forEach((s) => map.set(s.id, { ...s, date: normalizeToISODate(s.date) }));
             dbSnaps.forEach((s) => map.set(s.id, s));
             const merged = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
             localStorage.setItem('household_investment_snapshots', JSON.stringify(merged));
@@ -421,8 +456,12 @@ export const InvestmentsView: React.FC = () => {
             .eq('household_id', activeHousehold.id)
             .order('date', { ascending: true });
           if (dbSnaps && dbSnaps.length > 0) {
-            setSnapshots(dbSnaps);
-            localStorage.setItem('household_investment_snapshots', JSON.stringify(dbSnaps));
+            const sanitized = dbSnaps.map((d: any) => ({
+              ...d,
+              date: normalizeToISODate(d.date),
+            }));
+            setSnapshots(sanitized);
+            localStorage.setItem('household_investment_snapshots', JSON.stringify(sanitized));
           }
         }
       } else {
@@ -1505,7 +1544,7 @@ export const InvestmentsView: React.FC = () => {
 
       const items: InvestmentSnapshotItem[] = investments.map((asset) => {
         const quote = resultsMap.get(asset.id);
-        const quoteDate = quote?.date || '';
+        const quoteDate = quote?.date ? normalizeToISODate(quote.date) : '';
 
         // Only include tranches that were actually purchased ON OR BEFORE the period cutoff date!
         const validTranches = (asset.tranches || []).filter((t) => {
@@ -1576,7 +1615,7 @@ export const InvestmentsView: React.FC = () => {
 
       setFetchedPeriodResult({
         periodLabel,
-        date: latestDateFound || periodCutoffDate || new Date().toISOString().split('T')[0],
+        date: normalizeToISODate(latestDateFound || periodCutoffDate || new Date().toISOString().split('T')[0]),
         periodType: fetchPeriodType === 'year_end' ? 'year' : fetchPeriodType === 'quarter_end' ? 'quarter' : fetchPeriodType === 'month_end' ? 'month' : 'current',
         items,
         totalInvested: totalInvestedILS,
@@ -1604,7 +1643,7 @@ export const InvestmentsView: React.FC = () => {
       household_id: activeHousehold?.id || 'hh-main',
       period_type: fetchedPeriodResult.periodType,
       period_label: fetchedPeriodResult.periodLabel,
-      date: fetchedPeriodResult.date,
+      date: normalizeToISODate(fetchedPeriodResult.date),
       total_invested: fetchedPeriodResult.totalInvested,
       total_value: fetchedPeriodResult.totalValue,
       total_profit: fetchedPeriodResult.totalProfit,
