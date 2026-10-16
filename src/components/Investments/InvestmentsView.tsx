@@ -366,16 +366,23 @@ export const InvestmentsView: React.FC = () => {
       if (forceMonthEnd) queryParams.set('force_month_end', 'true');
 
       const res = await fetch(`/api/cron-daily-quotes?${queryParams.toString()}`, {
+        method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({
+          householdId: activeHousehold?.id,
+          investments: investments,
+        }),
       });
 
       const data = await res.json();
       if (res.ok && data.success) {
+        const count = data.securitiesUpdated ?? data.securitiesCount ?? 0;
         let msg = isHe
-          ? `✅ סנכרון סוף יום הצליח! עודכנו ${data.securitiesUpdated} ניירות עבור תאריך ${data.date}.`
-          : `✅ Daily sync succeeded! Updated ${data.securitiesUpdated} securities for ${data.date}.`;
+          ? `✅ סנכרון סוף יום הצליח! עודכנו ${count} ניירות עבור תאריך ${data.date}.`
+          : `✅ Daily sync succeeded! Updated ${count} securities for ${data.date}.`;
 
         if (data.monthlySnapshotsSaved > 0) {
           msg += isHe
@@ -386,6 +393,11 @@ export const InvestmentsView: React.FC = () => {
           msg += isHe
             ? ` בוצע ניקוי של נתוני עבר (נשמרו 7 הימים האחרונים).`
             : ` Older daily records cleaned (retained last 7 days).`;
+        }
+        if (data.dailyPricesWarning) {
+          msg += isHe
+            ? ` (הסנפשוט נשמר בעץ! טבלת security_daily_prices דורשת יצירה ב-Adminer)`
+            : ` (Snapshot saved! Table security_daily_prices pending Adminer creation)`;
         }
 
         setDailySyncStatusMsg({
