@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { InvestmentAsset, InvestmentTranche, SecurityType, InvestmentPeriodicSnapshot, InvestmentSnapshotItem, SecurityDailyPrice } from '../../lib/types';
 import { supabase } from '../../lib/supabase';
@@ -278,6 +278,33 @@ export const InvestmentsView: React.FC = () => {
     return [];
   });
 
+  // Dynamically derive the latest refresh timestamp directly from the database objects (investments & snapshots)
+  // so that all devices (PC, Mobile, Tablet) always see the actual time the DB was updated!
+  const effectiveLastRefreshTime = useMemo(() => {
+    let latest: string | null = null;
+    for (const inv of (investments || [])) {
+      if (inv.updated_at) {
+        if (!latest || inv.updated_at.localeCompare(latest) > 0) {
+          latest = inv.updated_at;
+        }
+      }
+    }
+    for (const snap of (snapshots || [])) {
+      const t: string | undefined = (snap as any).updated_at || (snap as any).created_at;
+      if (t) {
+        if (!latest || t.localeCompare(latest) > 0) {
+          latest = t;
+        }
+      }
+    }
+    if (lastQuotesRefreshTime) {
+      if (!latest || lastQuotesRefreshTime.localeCompare(latest) > 0) {
+        latest = lastQuotesRefreshTime;
+      }
+    }
+    return latest;
+  }, [investments, snapshots, lastQuotesRefreshTime]);
+
   const saveSnapshots = async (newList: InvestmentPeriodicSnapshot[]) => {
     const sanitizedList = newList.map((s) => ({
       ...s,
@@ -318,69 +345,105 @@ export const InvestmentsView: React.FC = () => {
   const [dailySyncStatusMsg, setDailySyncStatusMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [dailyPriceSearch, setDailyPriceSearch] = useState<string>('');
 
-  // Load snapshots from Supabase on mount / household change
-  useEffect(() => {
-    async function loadDbSnapshots() {
-      if (!activeHousehold?.id) return;
-      try {
-        const { data, error } = await supabase
-          .from('investment_snapshots')
-          .select('*')
-          .eq('household_id', activeHousehold.id)
-          .order('date', { ascending: true });
+  // Load investments from Supabase on mount / household change / window focus
+  const loadDbInvestments = useCallback(async () => {
+    if (!activeHousehold?.id) return;
+    try {
+      const { data: invs, error } = await supabase
+        .from('investments')
+        .select('*')
+        .eq('household_id', activeHousehold.id);
 
-        if (!error && data && data.length > 0) {
-          let hasHealedDb = false;
-          const dbSnaps: InvestmentPeriodicSnapshot[] = data.map((d: any) => {
-            const cleanDate = healSnapshotDate(d);
-            if (cleanDate !== d.date) {
-              hasHealedDb = true;
-            }
-            return {
-              id: d.id,
-              household_id: d.household_id,
-              period_type: d.period_type,
-              period_label: d.period_label,
-              date: cleanDate,
-              items: d.items || [],
-              total_invested: Number(d.total_invested) || 0,
-              total_value: Number(d.total_value) || 0,
-              total_profit: Number(d.total_profit) || 0,
-              total_return_pct: Number(d.total_return_pct) || 0,
-              assets_count: Array.isArray(d.items) ? d.items.length : 0,
-              notes: d.notes || undefined,
-            };
-          });
-
-          if (hasHealedDb) {
-            const toUpdate = dbSnaps.map((s) => ({
-              id: s.id,
-              household_id: activeHousehold.id,
-              date: s.date,
-              updated_at: new Date().toISOString(),
-            }));
-            try {
-              await supabase.from('investment_snapshots').upsert(toUpdate, { onConflict: 'id' });
-            } catch (healErr) {
-              console.warn('Failed to heal snapshot dates in Supabase:', healErr);
-            }
-          }
-
-          setSnapshots((prev) => {
-            const map = new Map<string, InvestmentPeriodicSnapshot>();
-            prev.forEach((s) => map.set(s.id, { ...s, date: healSnapshotDate(s) }));
-            dbSnaps.forEach((s) => map.set(s.id, s));
-            const merged = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
-            localStorage.setItem('household_investment_snapshots', JSON.stringify(merged));
-            return merged;
-          });
-        }
-      } catch (err) {
-        console.warn('Error loading snapshots from Supabase:', err);
+      if (!error && invs && invs.length > 0) {
+        const formattedInvs: InvestmentAsset[] = invs.map((inv: any) => {
+          const ticker = String(inv.ticker || '').trim();
+          const secNum = inv.security_number || (/^\d+$/.test(ticker) ? ticker : null);
+          return {
+            ...inv,
+            security_number: secNum,
+            tranches: inv.tranches ? sortTranchesByDateDesc(inv.tranches) : [],
+          };
+        });
+        saveInvestments(formattedInvs);
       }
+    } catch (err) {
+      console.warn('Error loading investments from Supabase:', err);
     }
-    loadDbSnapshots();
+  }, [activeHousehold?.id, saveInvestments]);
+
+  // Load snapshots from Supabase on mount / household change
+  const loadDbSnapshots = useCallback(async () => {
+    if (!activeHousehold?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('investment_snapshots')
+        .select('*')
+        .eq('household_id', activeHousehold.id)
+        .order('date', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        let hasHealedDb = false;
+        const dbSnaps: InvestmentPeriodicSnapshot[] = data.map((d: any) => {
+          const cleanDate = healSnapshotDate(d);
+          if (cleanDate !== d.date) {
+            hasHealedDb = true;
+          }
+          return {
+            id: d.id,
+            household_id: d.household_id,
+            period_type: d.period_type,
+            period_label: d.period_label,
+            date: cleanDate,
+            items: d.items || [],
+            total_invested: Number(d.total_invested) || 0,
+            total_value: Number(d.total_value) || 0,
+            total_profit: Number(d.total_profit) || 0,
+            total_return_pct: Number(d.total_return_pct) || 0,
+            assets_count: Array.isArray(d.items) ? d.items.length : 0,
+            notes: d.notes || undefined,
+            updated_at: d.updated_at || undefined,
+          };
+        });
+
+        if (hasHealedDb) {
+          const toUpdate = dbSnaps.map((s) => ({
+            id: s.id,
+            household_id: activeHousehold.id,
+            date: s.date,
+            updated_at: new Date().toISOString(),
+          }));
+          try {
+            await supabase.from('investment_snapshots').upsert(toUpdate, { onConflict: 'id' });
+          } catch (healErr) {
+            console.warn('Failed to heal snapshot dates in Supabase:', healErr);
+          }
+        }
+
+        setSnapshots((prev) => {
+          const map = new Map<string, InvestmentPeriodicSnapshot>();
+          prev.forEach((s) => map.set(s.id, { ...s, date: healSnapshotDate(s) }));
+          dbSnaps.forEach((s) => map.set(s.id, s));
+          const merged = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+          localStorage.setItem('household_investment_snapshots', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    } catch (err) {
+      console.warn('Error loading snapshots from Supabase:', err);
+    }
   }, [activeHousehold?.id]);
+
+  useEffect(() => {
+    loadDbSnapshots();
+    loadDbInvestments();
+
+    const handleFocus = () => {
+      loadDbSnapshots();
+      loadDbInvestments();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [loadDbSnapshots, loadDbInvestments]);
 
   // Load daily closing prices from security_daily_prices
   const loadDailyPrices = async () => {
@@ -2256,10 +2319,10 @@ export const InvestmentsView: React.FC = () => {
             title={
               isHe
                 ? `פנה לאתרים (Yahoo Finance / ביזפורטל) ומשוך שער שוק עדכני${
-                    lastQuotesRefreshTime ? `\nרענון אחרון: ${formatLastRefreshTime(lastQuotesRefreshTime)}` : ''
+                    effectiveLastRefreshTime ? `\nרענון אחרון במסד (DB): ${formatLastRefreshTime(effectiveLastRefreshTime)}` : ''
                   }`
                 : `Fetch live market quotes${
-                    lastQuotesRefreshTime ? `\nLast updated: ${formatLastRefreshTime(lastQuotesRefreshTime)}` : ''
+                    effectiveLastRefreshTime ? `\nDB Last updated: ${formatLastRefreshTime(effectiveLastRefreshTime)}` : ''
                   }`
             }
           >
@@ -2282,8 +2345,8 @@ export const InvestmentsView: React.FC = () => {
               <Clock size={10} color="#047857" />
               <span>
                 {isHe
-                  ? `עודכן: ${formatLastRefreshTime(lastQuotesRefreshTime)}`
-                  : `Updated: ${formatLastRefreshTime(lastQuotesRefreshTime)}`}
+                  ? `עודכן ב-DB: ${formatLastRefreshTime(effectiveLastRefreshTime)}`
+                  : `DB: ${formatLastRefreshTime(effectiveLastRefreshTime)}`}
               </span>
             </div>
           </button>
