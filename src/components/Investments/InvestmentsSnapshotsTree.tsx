@@ -211,29 +211,51 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
           };
         });
 
+        // Last month of quarter: March (3) for Q1, June (6) for Q2, September (9) for Q3, December (12) for Q4
+        const lastMonthOfQ = q * 3;
+        const lastMonthNode = monthNodes.find((mn) => mn.month === lastMonthOfQ);
+        const lastMonthSnap = lastMonthNode && lastMonthNode.snapshots.length > 0
+          ? lastMonthNode.snapshots[0]
+          : undefined;
+
+        // Effective Quarter Snapshot: either explicit quarterSnapshot or the snapshot from the last month of the quarter
+        const effectiveQuarterSnap = qData?.quarterSnapshot || lastMonthSnap;
+        const isFromLastMonth = !qData?.quarterSnapshot && Boolean(lastMonthSnap);
+
         const hasQuarterData = Boolean(
-          qData && (qData.quarterSnapshot || monthNodes.some((mn) => mn.hasData))
+          qData && (effectiveQuarterSnap || monthNodes.some((mn) => mn.hasData))
         );
 
         return {
           quarter: q,
           quarterLabelHe: `רבעון Q${q} (${HEBREW_MONTH_NAMES[(q - 1) * 3 + 1]} - ${HEBREW_MONTH_NAMES[q * 3]})`,
-          quarterSnapshot: qData?.quarterSnapshot,
+          quarterSnapshot: effectiveQuarterSnap,
+          isFromLastMonth,
+          lastMonthNameHe: HEBREW_MONTH_NAMES[lastMonthOfQ],
           months: monthNodes,
           hasData: hasQuarterData,
         };
       });
 
-      // Latest snapshot for year
+      // Effective Year Snapshot: explicit year snapshot OR snapshot from end of December (month 12)
+      const q4Data = yData.quarters.get(4);
+      const decSnaps = q4Data?.months.get(12);
+      const decSnap = decSnaps && decSnaps.length > 0 ? decSnaps[0] : undefined;
+
+      const effectiveYearSnap = yData.yearSnapshot || decSnap;
+      const isYearFromDec = !yData.yearSnapshot && Boolean(decSnap);
+
+      // Latest snapshot for year (prioritizing effectiveYearSnap, otherwise latest available)
       const sortedSnaps = [...yData.allSnapshots].sort((a, b) =>
         normalizeToISODate(b.date).localeCompare(normalizeToISODate(a.date))
       );
-      const latestSnap = yData.yearSnapshot || sortedSnaps[0];
+      const latestSnap = effectiveYearSnap || sortedSnaps[0];
 
       return {
         year,
         yearLabel: `שנת ${year}`,
-        yearSnapshot: yData.yearSnapshot,
+        yearSnapshot: effectiveYearSnap,
+        isYearFromDec,
         latestSnapshot: latestSnap,
         quarters: sortedQuarters,
         allSnapshots: yData.allSnapshots,
@@ -339,7 +361,11 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                     {yNode.yearSnapshot && (
                       <span style={treeStyles.yearEndBadge}>
                         <CheckCircle2 size={11} color="#16A34A" />
-                        <span>{isHe ? 'סגירה שנתית קיימת' : 'Year-End Closed'}</span>
+                        <span>
+                          {yNode.isYearFromDec
+                            ? (isHe ? 'סגירה שנתית (לפי דצמבר)' : 'Annual Closure (Dec)')
+                            : (isHe ? 'סגירה שנתית קיימת' : 'Year-End Closed')}
+                        </span>
                       </span>
                     )}
                   </div>
@@ -350,7 +376,11 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                   {latest ? (
                     <div style={treeStyles.metricsGroup}>
                       <div style={treeStyles.metricBox}>
-                        <span style={treeStyles.metricLabel}>{isHe ? 'שווי תיק (סוף שנה/עדכני):' : 'Valuation:'}</span>
+                        <span style={treeStyles.metricLabel}>
+                          {yNode.yearSnapshot
+                            ? (isHe ? 'שווי תיק (סוף שנה):' : 'Year-End Valuation:')
+                            : (isHe ? 'שווי תיק (עדכני):' : 'Valuation:')}
+                        </span>
                         <strong style={treeStyles.metricValBold}>
                           ₪{latest.total_value.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </strong>
@@ -448,7 +478,12 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                               <span style={treeStyles.quarterTitleText}>{qNode.quarterLabelHe}</span>
                               {qSnap && (
                                 <span style={treeStyles.quarterSnapBadge}>
-                                  {isHe ? 'סגירת רבעון שמורה' : 'Quarter Snapshot'}
+                                  <CheckCircle2 size={11} color="#2563EB" style={{ marginLeft: 3 }} />
+                                  <span>
+                                    {qNode.isFromLastMonth
+                                      ? (isHe ? `סגירת רבעון (לפי ${qNode.lastMonthNameHe})` : `Quarter End (${qNode.lastMonthNameHe})`)
+                                      : (isHe ? 'סגירת רבעון שמורה' : 'Quarter Snapshot')}
+                                  </span>
                                 </span>
                               )}
                             </div>
@@ -461,6 +496,12 @@ export const InvestmentsSnapshotsTree: React.FC<InvestmentsSnapshotsTreeProps> =
                                 <div style={treeStyles.metricBox}>
                                   <span style={treeStyles.metricLabel}>{isHe ? 'שווי בסוף רבעון:' : 'Valuation:'}</span>
                                   <strong>₪{qSnap.total_value.toLocaleString('en-US', { maximumFractionDigits: 0 })}</strong>
+                                </div>
+                                <div style={treeStyles.metricBox}>
+                                  <span style={treeStyles.metricLabel}>{isHe ? 'עלות הקרן:' : 'Cost Basis:'}</span>
+                                  <span style={treeStyles.metricCostVal}>
+                                    ₪{qSnap.total_invested.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                  </span>
                                 </div>
                                 <div style={treeStyles.metricBox}>
                                   <span style={treeStyles.metricLabel}>{isHe ? 'רווח/הפסד:' : 'P&L:'}</span>
