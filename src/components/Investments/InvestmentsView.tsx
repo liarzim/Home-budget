@@ -169,6 +169,33 @@ export const InvestmentsView: React.FC = () => {
   // Live Quotes Refresh
   const [isRefreshingQuotes, setIsRefreshingQuotes] = useState<boolean>(false);
   const [quotesRefreshMessage, setQuotesRefreshMessage] = useState<string | null>(null);
+  const [lastQuotesRefreshTime, setLastQuotesRefreshTime] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('investments_last_quotes_refresh') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const formatLastRefreshTime = (isoStr: string | null): string => {
+    if (!isoStr) return isHe ? 'טרם עודכן' : 'Not yet';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      const dateStr = d.toLocaleDateString(isHe ? 'he-IL' : 'en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+      const timeStr = d.toLocaleTimeString(isHe ? 'he-IL' : 'en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      return `${dateStr}, ${timeStr}`;
+    } catch {
+      return isoStr;
+    }
+  };
 
   // Periodic Market Quote Fetcher (שלב ב' - פנייה לאתרים)
   const [fetchPeriodType, setFetchPeriodType] = useState<'year_end' | 'quarter_end' | 'month_end' | 'current'>('year_end');
@@ -367,6 +394,13 @@ export const InvestmentsView: React.FC = () => {
         });
 
         await loadDailyPrices();
+        const nowIso = new Date().toISOString();
+        setLastQuotesRefreshTime(nowIso);
+        try {
+          localStorage.setItem('investments_last_quotes_refresh', nowIso);
+        } catch (err) {
+          console.error(err);
+        }
         if (activeHousehold?.id) {
           const { data: dbSnaps } = await supabase
             .from('investment_snapshots')
@@ -1385,6 +1419,14 @@ export const InvestmentsView: React.FC = () => {
           ? 'שערי השוק ושער הדולר מעודכנים.'
           : 'Market quotes and USD rate are up to date.';
 
+      const nowIso = new Date().toISOString();
+      setLastQuotesRefreshTime(nowIso);
+      try {
+        localStorage.setItem('investments_last_quotes_refresh', nowIso);
+      } catch (err) {
+        console.error(err);
+      }
+
       setQuotesRefreshMessage(finalMsg);
       setTimeout(() => setQuotesRefreshMessage(null), 6000);
     } catch (e) {
@@ -1807,13 +1849,48 @@ export const InvestmentsView: React.FC = () => {
             style={{
               ...styles.refreshQuotesBtn,
               ...(isRefreshingQuotes ? styles.refreshQuotesBtnLoading : {}),
+              display: 'inline-flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '6px 14px',
+              minHeight: '42px',
             }}
             onClick={handleRefreshLiveQuotes}
             disabled={isRefreshingQuotes}
-            title={isHe ? 'פנה לאתרים (Yahoo Finance / ביזפורטל) ומשוך שער שוק עדכני' : 'Fetch live market quotes'}
+            title={
+              isHe
+                ? `פנה לאתרים (Yahoo Finance / ביזפורטל) ומשוך שער שוק עדכני${
+                    lastQuotesRefreshTime ? `\nרענון אחרון: ${formatLastRefreshTime(lastQuotesRefreshTime)}` : ''
+                  }`
+                : `Fetch live market quotes${
+                    lastQuotesRefreshTime ? `\nLast updated: ${formatLastRefreshTime(lastQuotesRefreshTime)}` : ''
+                  }`
+            }
           >
-            <RefreshCw size={15} color="#059669" className={isRefreshingQuotes ? 'spin-icon' : ''} />
-            <span>{isRefreshingQuotes ? (isHe ? 'מעדכן שערים...' : 'Fetching...') : (isHe ? 'רענן שערי שוק' : 'Live Quotes')}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <RefreshCw size={14} color="#059669" className={isRefreshingQuotes ? 'spin-icon' : ''} />
+              <span>{isRefreshingQuotes ? (isHe ? 'מעדכן שערים...' : 'Fetching...') : (isHe ? 'רענן שערי שוק' : 'Live Quotes')}</span>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px',
+                fontSize: '0.6875rem',
+                fontWeight: '600',
+                color: '#047857',
+                opacity: 0.9,
+                marginTop: '1px',
+              }}
+            >
+              <Clock size={10} color="#047857" />
+              <span>
+                {isHe
+                  ? `עודכן: ${formatLastRefreshTime(lastQuotesRefreshTime)}`
+                  : `Updated: ${formatLastRefreshTime(lastQuotesRefreshTime)}`}
+              </span>
+            </div>
           </button>
 
 
