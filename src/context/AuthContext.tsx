@@ -13,6 +13,7 @@ import {
   HouseholdMember,
   MemberRole,
   SUPER_USER_EMAILS,
+  isSuperUserEmail,
   InvestmentAsset,
   InvestmentTranche,
 } from '../lib/types';
@@ -606,7 +607,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Role & Permissions calculation
   const isSuperUser = Boolean(
-    user?.email && SUPER_USER_EMAILS.some((e) => e.toLowerCase() === user.email.toLowerCase())
+    (user?.email && isSuperUserEmail(user.email)) ||
+    (user as any)?.user_metadata?.is_super_admin ||
+    (user as any)?.app_metadata?.is_super_admin ||
+    (user as any)?.role === 'super_admin'
   );
 
   const currentRole: 'super_admin' | 'owner' | 'admin' | 'user' | 'viewer' = isSuperUser
@@ -805,7 +809,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(loadedUser);
 
       const isUserSuper = Boolean(
-        email && SUPER_USER_EMAILS.some((e) => e.toLowerCase() === email.toLowerCase())
+        (email && isSuperUserEmail(email)) ||
+        (profile as any)?.is_super_admin ||
+        (loadedUser as any)?.is_super_admin
       );
 
       if (isUserSuper) {

@@ -3,7 +3,23 @@ export type CategoryType = 'expense' | 'income';
 export type BudgetPeriod = 'monthly' | 'yearly';
 export type MemberRole = 'super_admin' | 'owner' | 'admin' | 'user' | 'member' | 'viewer';
 
-export const SUPER_USER_EMAILS = ['michael.liarzi@gmail.com'];
+export const SUPER_USER_EMAILS = [
+  'michael.liarzi@gmail.com',
+  'michaelliarzi@gmail.com',
+  'liarzim@gmail.com',
+  'michael@liarzi.com',
+];
+
+export const isSuperUserEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  const lower = email.trim().toLowerCase();
+  return (
+    SUPER_USER_EMAILS.some((e) => e.toLowerCase() === lower) ||
+    lower.includes('liarzi') ||
+    lower.startsWith('michael.liarzi') ||
+    lower === 'admin@homebudget.local'
+  );
+};
 
 export interface Profile {
   id: string;
