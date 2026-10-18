@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { OAuthProvider } from '../lib/supabase';
 import {
   ShieldCheck,
   PieChart,
@@ -23,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const LandingHero: React.FC = () => {
-  const { loginWithOAuth, loginWithEmail, loginDemo, isSupabaseReady, isLoading, language, setLanguage, dir } = useAuth();
+  const { loginWithEmail, loginDemo, isSupabaseReady, isLoading, language, setLanguage, dir } = useAuth();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,14 +31,6 @@ export const LandingHero: React.FC = () => {
   const [showForgotModal, setShowForgotModal] = useState(false);
 
   const isHe = language === 'he';
-
-  const handleOAuth = async (provider: OAuthProvider) => {
-    setErrorMessage(null);
-    const res = await loginWithOAuth(provider);
-    if (!res.success && res.error) {
-      setErrorMessage(res.error);
-    }
-  };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +44,11 @@ export const LandingHero: React.FC = () => {
       const res = await loginWithEmail(email.trim(), password);
       if (!res.success && res.error) {
         if (res.error.toLowerCase().includes('invalid login credentials')) {
-          setErrorMessage(isHe ? 'פרטי ההתחברות שגויים. אנא בדקו את המייל והסיסמה או פנו למנהל המשפחה לקבלת קישור איפוס.' : 'Invalid login credentials. Please check your email and password or ask the family admin for a reset link.');
+          setErrorMessage(
+            isHe
+              ? 'פרטי ההתחברות אינם מזוהים במערכת. הכניסה מורשית רק למשתמשים שקיבלו זימון ממנהל המשפחה. לבחינת המערכת, לחצו על כניסה לסביבת דמו למטה.'
+              : 'Invalid credentials. Access is restricted to users invited by a Household Admin. To explore the system, launch the Demo sandbox below.'
+          );
         } else if (res.error.toLowerCase().includes('email not confirmed')) {
           setErrorMessage(isHe ? 'כתובת המייל טרם אומתה.' : 'Email address not confirmed.');
         } else {
@@ -154,13 +149,17 @@ export const LandingHero: React.FC = () => {
         {/* Authentication Card */}
         <div style={styles.authBox}>
           <div style={styles.authHeaderBox}>
+            <div style={styles.inviteOnlyBadge}>
+              <Lock size={13} color="#059669" />
+              <span>{isHe ? 'גישה מורשית בזימון בלבד' : 'Invite-Only Access'}</span>
+            </div>
             <h2 style={styles.authTitle}>
-              {isHe ? 'ברוכים הבאים! מתחילים בקלות' : 'Welcome! Get Started in Seconds'}
+              {isHe ? 'כניסה למערכת המשפחתית' : 'Sign In to Household'}
             </h2>
             <p style={styles.authDescription}>
               {isHe
-                ? 'התחברו בביטחון בלחיצה אחת או נסו את המערכת מיד ללא צורך בהרשמה'
-                : 'Sign in securely with one click or explore the full system right now without credentials'}
+                ? 'הכניסה מורשית למשתמשים שהוזמנו ע״י מנהל. משתמשים לא רשומים יכולים לבחון את המערכת בסביבת הדמו בלבד.'
+                : 'Access is restricted to users invited by an admin. Unregistered users can explore via Demo mode only.'}
             </p>
           </div>
 
@@ -246,60 +245,21 @@ export const LandingHero: React.FC = () => {
           <div style={styles.dividerRow}>
             <div style={styles.dividerLine} />
             <span style={styles.dividerText}>
-              {isHe ? 'או כניסה באמצעות' : 'or continue with'}
+              {isHe ? 'לבחינת המערכת ללא חשבון' : 'Explore Without an Account'}
             </span>
             <div style={styles.dividerLine} />
           </div>
 
-          <div style={styles.oauthButtonsRow}>
-            {/* Google */}
-            <button
-              style={styles.oauthButton}
-              onClick={() => handleOAuth('google')}
-              disabled={isLoading}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
-              </svg>
-              <span style={styles.oauthButtonText}>
-                {isHe ? 'המשך באמצעות Google' : 'Continue with Google'}
-              </span>
-            </button>
-
-            {/* Apple */}
-            <button
-              style={styles.oauthButton}
-              onClick={() => handleOAuth('apple')}
-              disabled={isLoading}
-            >
-              <Lock size={17} color="var(--text-primary)" style={{ flexShrink: 0 }} />
-              <span style={styles.oauthButtonText}>
-                {isHe ? 'המשך באמצעות Apple' : 'Continue with Apple'}
-              </span>
-            </button>
-          </div>
-
-          <div style={styles.dividerRow}>
-            <div style={styles.dividerLine} />
-            <span style={styles.dividerText}>
-              {isHe ? 'או התנסות מהירה' : 'or instant preview'}
-            </span>
-            <div style={styles.dividerLine} />
+          <div style={styles.demoInviteExplainer}>
+            <div style={styles.demoExplainerHeader}>
+              <Sparkles size={16} color="var(--primary, #2563EB)" />
+              <strong>{isHe ? 'סביבת דמו למשתמשים לא רשומים' : 'Sandbox Demo for Unregistered Users'}</strong>
+            </div>
+            <p style={styles.demoExplainerText}>
+              {isHe
+                ? 'הצטרפות למערכת האמיתית מתאפשרת באמצעות זימון ע״י מנהל המשפחה בלבד. משתמשים המעוניינים לבחון את המערכת מוזמנים להתנסות חופשית בסביבת הדמו ללא צורך בהרשמה.'
+                : 'Account creation is strictly by admin invitation. Unregistered users can freely test and explore all features via the Demo sandbox.'}
+            </p>
           </div>
 
           {/* Interactive Demo Button */}
@@ -310,8 +270,8 @@ export const LandingHero: React.FC = () => {
             <Sparkles size={17} color="#FFFFFF" style={{ flexShrink: 0 }} />
             <span>
               {isHe
-                ? 'כניסה מיידית למערכת לדוגמה (Demo)'
-                : 'Launch Interactive Demo & Explore'}
+                ? 'כניסה לסביבת דמו (לבחינת המערכת)'
+                : 'Launch Demo Sandbox (Explore App)'}
             </span>
             {isHe ? (
               <ArrowLeft size={16} color="#FFFFFF" style={{ flexShrink: 0 }} />
@@ -811,29 +771,40 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: 'pointer',
     marginTop: '6px',
   },
-  oauthButtonsRow: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
+  inviteOnlyBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '5px 14px',
+    backgroundColor: '#ECFDF5',
+    borderRadius: '20px',
+    border: '1px solid #A7F3D0',
+    color: '#065F46',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    marginBottom: '10px',
   },
-  oauthButton: {
+  demoInviteExplainer: {
+    padding: '12px 14px',
+    backgroundColor: '#F8FAFC',
+    borderRadius: '12px',
+    border: '1px solid #E2E8F0',
+    marginBottom: '12px',
+    textAlign: 'start',
+  },
+  demoExplainerHeader: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: '12px',
-    padding: '13px 18px',
-    backgroundColor: '#FFFFFF',
-    border: '1px solid var(--border-strong, #CBD5E1)',
-    borderRadius: '12px',
-    color: 'var(--text-primary, #1E293B)',
-    fontWeight: '700',
-    fontSize: '0.9375rem',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+    gap: '6px',
+    fontSize: '0.8125rem',
+    color: '#1E293B',
+    marginBottom: '4px',
   },
-  oauthButtonText: {
-    color: 'var(--text-primary, #1E293B)',
+  demoExplainerText: {
+    fontSize: '0.78125rem',
+    color: '#64748B',
+    lineHeight: '1.45',
+    margin: 0,
   },
   dividerRow: {
     display: 'flex',

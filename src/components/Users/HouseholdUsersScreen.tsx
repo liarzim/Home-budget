@@ -131,6 +131,9 @@ export const HouseholdUsersScreen: React.FC = () => {
   const [newHhCurrency, setNewHhCurrency] = useState('ILS');
   const [newHhIcon, setNewHhIcon] = useState('Home');
   const [newHhColor, setNewHhColor] = useState('#4F46E5');
+  const [newHhAdminEmail, setNewHhAdminEmail] = useState('');
+  const [newHhAdminName, setNewHhAdminName] = useState('');
+  const [newHhAdminExpiry, setNewHhAdminExpiry] = useState<number>(168);
 
   useEffect(() => {
     if (activeHousehold) {
@@ -348,6 +351,11 @@ export const HouseholdUsersScreen: React.FC = () => {
       return;
     }
 
+    if (!isSuperUser && (newR === 'admin' || newR === 'owner' || newR === 'super_admin')) {
+      alert(language === 'he' ? 'מינוי מנהל משפחה שמור למנהל המערכת בלבד.' : 'Only System Admin can appoint Family Admins.');
+      return;
+    }
+
     const confirmMsg =
       language === 'he'
         ? `האם לשנות את תפקיד ${member.full_name || member.email} ל-${getRoleLabel(newR)}?`
@@ -378,11 +386,66 @@ export const HouseholdUsersScreen: React.FC = () => {
     e.preventDefault();
     if (!newHhName.trim()) return;
 
-    await createHouseholdAsSuperUser(newHhName.trim(), newHhCurrency, newHhIcon, newHhColor);
-    setNewHhName('');
-    setNewHhIcon('Home');
-    setNewHhColor('#4F46E5');
-    setIsAddHhModalOpen(false);
+    setIsSubmitting(true);
+    try {
+      const createdHh = await createHouseholdAsSuperUser(newHhName.trim(), newHhCurrency, newHhIcon, newHhColor);
+      
+      // If a Family Admin email was entered, generate their invitation link right away!
+      if (createdHh && newHhAdminEmail.trim()) {
+        const expiryLabel =
+          newHhAdminExpiry === 48
+            ? (language === 'he' ? '48 שעות' : '48 Hours')
+            : newHhAdminExpiry === 720
+            ? (language === 'he' ? '30 יום' : '30 Days')
+            : (language === 'he' ? '7 ימים' : '7 Days');
+
+        const inviteRes = await createHouseholdInvitation({
+          householdId: createdHh.id,
+          email: newHhAdminEmail.trim(),
+          fullName: newHhAdminName.trim() || undefined,
+          role: 'admin',
+          expiryHours: newHhAdminExpiry,
+          tokenType: 'invite',
+          invitedBy: user?.id,
+        });
+
+        await addHouseholdMember(
+          createdHh.id,
+          newHhAdminEmail.trim(),
+          'admin',
+          newHhAdminName.trim() || undefined
+        );
+
+        if (inviteRes.success && inviteRes.inviteUrl) {
+          setShareModal({
+            isOpen: true,
+            title: language === 'he' ? 'משק הבית נוצר! קישור זימון למנהל המשפחה מוכן:' : 'Household Created! Family Admin Invite Ready:',
+            subtitle:
+              language === 'he'
+                ? `שלח את הקישור למנהל/ת המשפחה ${newHhAdminName || newHhAdminEmail}. הקישור מאפשר לו/לה להגדיר סיסמה ולהיכנס כמנהל/ת המשפחה של ${newHhName}.`
+                : `Share this invite link with the new Family Admin ${newHhAdminName || newHhAdminEmail}.`,
+            inviteUrl: inviteRes.inviteUrl,
+            recipientName: newHhAdminName.trim() || newHhAdminEmail.split('@')[0],
+            recipientEmail: newHhAdminEmail.trim(),
+            expiryText: expiryLabel,
+            isCopied: false,
+            tokenType: 'invite',
+          });
+        }
+      }
+
+      setNewHhName('');
+      setNewHhAdminEmail('');
+      setNewHhAdminName('');
+      setNewHhAdminExpiry(168);
+      setNewHhIcon('Home');
+      setNewHhColor('#4F46E5');
+      setIsAddHhModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Error creating household');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getRoleLabel = (r: MemberRole | string) => {
@@ -529,8 +592,8 @@ export const HouseholdUsersScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Super User Banner (If logged in as Super User) */}
-      {isSuperUser && (
+      {/* Super User / Family Admin Hierarchy Banner */}
+      {isSuperUser ? (
         <div style={styles.superUserBanner} className="animate-fade-in">
           <div style={styles.superBannerLeft}>
             <div style={styles.crownIconWrap}>
@@ -539,21 +602,39 @@ export const HouseholdUsersScreen: React.FC = () => {
             <div>
               <div style={styles.superTitle}>
                 {language === 'he'
-                  ? '👑 מחובר כמנהל על (Super User)'
-                  : '👑 Logged in as Super User'}
+                  ? '👑 מחובר כמנהל מערכת ראשי (Super User)'
+                  : '👑 Logged in as System Admin (Super User)'}
                 <span style={styles.superEmailBadge}>{user?.email}</span>
               </div>
               <div style={styles.superSub}>
                 {language === 'he'
-                  ? 'לך הרשאה מלאה לצפות ולעבור בין כל משקי הבית במערכת, ליצור משקי בית חדשים ולשנות שמות ואייקונים.'
-                  : 'You have full global access to switch between all households, add new households, and manage names/icons.'}
+                  ? 'לך הרשאה בלעדית להקים משקי בית חדשים ולזמן מנהלי משפחה חדשים למערכת.'
+                  : 'You have exclusive permission to create households and invite new Family Admins.'}
               </div>
             </div>
           </div>
           <button style={styles.createHhBtn} onClick={() => setIsAddHhModalOpen(true)}>
             <Plus size={16} />
-            <span>{language === 'he' ? 'צור משק בית חדש' : 'Create New Household'}</span>
+            <span>{language === 'he' ? 'צור משק בית וזמן מנהל משפחה' : 'Create Household & Invite Admin'}</span>
           </button>
+        </div>
+      ) : (
+        <div style={styles.familyAdminNoticeBanner} className="animate-fade-in">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ ...styles.roleIconWrap, backgroundColor: '#EFF6FF' }}>
+              <ShieldCheck size={20} color="#2563EB" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.9375rem', color: '#1E293B', marginBottom: '2px' }}>
+                {language === 'he' ? '🛡️ סמכויות מנהל/ת משפחה' : '🛡️ Family Admin Permissions'}
+              </div>
+              <div style={{ fontSize: '0.8125rem', color: '#475569', lineHeight: '1.45' }}>
+                {language === 'he'
+                  ? 'באפשרותך לזמן חברי משפחה (עורכים וצופים) לתוך המשפחה הנוכחית בלבד. זימון מנהל משפחה חדש מתבצע ע״י מנהל המערכת בלבד.'
+                  : 'You can invite family members (editors & viewers) into this household. Appointing a new Family Admin is handled by System Admin only.'}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -682,13 +763,15 @@ export const HouseholdUsersScreen: React.FC = () => {
 
                       {/* Role */}
                       <td style={styles.td}>
-                        {canManageUsers && !isCurrentLoggedUser ? (
+                        {canManageUsers && !isCurrentLoggedUser && (isSuperUser || member.role !== 'admin') ? (
                           <select
                             style={styles.roleSelect}
                             value={member.role}
                             onChange={(e) => handleRoleChange(member, e.target.value as MemberRole)}
                           >
-                            <option value="admin">🛡️ {getRoleLabel('admin')}</option>
+                            {isSuperUser && (
+                              <option value="admin">🛡️ {getRoleLabel('admin')}</option>
+                            )}
                             <option value="user">✏️ {getRoleLabel('user')}</option>
                             <option value="viewer">👁️ {getRoleLabel('viewer')}</option>
                           </select>
@@ -1146,30 +1229,44 @@ export const HouseholdUsersScreen: React.FC = () => {
                 <label style={styles.label}>
                   {language === 'he' ? 'בחר רמת הרשאה (תפקיד) *' : 'Select User Role *'}
                 </label>
-                <div style={styles.roleOptionsGrid}>
-                  {/* Admin Option */}
-                  <label
-                    style={{
-                      ...styles.roleOptionCard,
-                      ...(newRole === 'admin' ? styles.roleOptionCardActive : {}),
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="role"
-                      value="admin"
-                      checked={newRole === 'admin'}
-                      onChange={() => setNewRole('admin')}
-                      style={{ display: 'none' }}
-                    />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <ShieldCheck size={16} color="var(--primary)" />
-                      <strong>{language === 'he' ? 'מנהל (Admin)' : 'Admin'}</strong>
-                    </div>
-                    <span style={styles.roleOptionSub}>
-                      {language === 'he' ? 'גישה מלאה כולל עריכת שם משק בית וניהול משתמשים' : 'Full access & management'}
+
+                {!isSuperUser && (
+                  <div style={styles.roleHierarchyNotice}>
+                    <ShieldCheck size={16} color="#2563EB" style={{ flexShrink: 0 }} />
+                    <span>
+                      {language === 'he'
+                        ? 'כמנהל/ת משפחה, באפשרותך לזמן חברים (עורכים וצופים) לתוך המשפחה שלך. מינוי מנהל משפחה חדש מתבצע ע״י מנהל המערכת בלבד.'
+                        : 'As Family Admin, you can invite household members (editors/viewers). New Family Admins are appointed by the System Admin only.'}
                     </span>
-                  </label>
+                  </div>
+                )}
+
+                <div style={styles.roleOptionsGrid}>
+                  {/* Admin Option - ONLY visible to Super User */}
+                  {isSuperUser && (
+                    <label
+                      style={{
+                        ...styles.roleOptionCard,
+                        ...(newRole === 'admin' ? styles.roleOptionCardActive : {}),
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="role"
+                        value="admin"
+                        checked={newRole === 'admin'}
+                        onChange={() => setNewRole('admin')}
+                        style={{ display: 'none' }}
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <ShieldCheck size={16} color="var(--primary)" />
+                        <strong>{language === 'he' ? 'מנהל משפחה (Admin)' : 'Family Admin'}</strong>
+                      </div>
+                      <span style={styles.roleOptionSub}>
+                        {language === 'he' ? 'ניהול משק הבית וזימון חברי משפחה' : 'Full access & management'}
+                      </span>
+                    </label>
+                  )}
 
                   {/* User Option */}
                   <label
@@ -1580,6 +1677,108 @@ export const HouseholdUsersScreen: React.FC = () => {
                 </div>
               </div>
 
+              {/* Family Admin Assignment Section */}
+              <div style={styles.adminAssignBox}>
+                <div style={styles.adminAssignHeader}>
+                  <ShieldCheck size={16} color="#7C3AED" />
+                  <strong>
+                    {language === 'he'
+                      ? 'זימון מנהל/ת משפחה למשק הבית (בלעדי למנהל מערכת)'
+                      : 'Invite Family Admin for Household (Super User Only)'}
+                  </strong>
+                </div>
+                <p style={styles.adminAssignDesc}>
+                  {language === 'he'
+                    ? 'הזן את פרטי מנהל המשפחה. עם יצירת משק הבית יופק קישור זימון ייעודי לתפקיד מנהל משפחה (Admin).'
+                    : 'Enter the Family Admin details. A secure invitation link for the Admin role will be generated.'}
+                </p>
+
+                <div style={{ ...styles.formGroup, marginBottom: '10px' }}>
+                  <label style={styles.label}>
+                    {language === 'he' ? 'אימייל מנהל המשפחה החדש' : 'Family Admin Email'}
+                  </label>
+                  <input
+                    style={styles.input}
+                    type="email"
+                    placeholder="family.admin@example.com"
+                    value={newHhAdminEmail}
+                    onChange={(e) => setNewHhAdminEmail(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ ...styles.formGroup, marginBottom: '10px' }}>
+                  <label style={styles.label}>
+                    {language === 'he' ? 'שם מלא (אופציונלי)' : 'Full Name (Optional)'}
+                  </label>
+                  <input
+                    style={styles.input}
+                    type="text"
+                    placeholder="לדוגמה: משה כהן"
+                    value={newHhAdminName}
+                    onChange={(e) => setNewHhAdminName(e.target.value)}
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>
+                    {language === 'he' ? 'תוקף קישור הזימון:' : 'Invite Expiry:'}
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setNewHhAdminExpiry(48)}
+                      style={{
+                        flex: 1,
+                        padding: '7px 4px',
+                        borderRadius: '8px',
+                        border: newHhAdminExpiry === 48 ? '2px solid #7C3AED' : '1px solid #CBD5E1',
+                        backgroundColor: newHhAdminExpiry === 48 ? '#F5F3FF' : '#FFFFFF',
+                        fontWeight: newHhAdminExpiry === 48 ? 700 : 500,
+                        color: newHhAdminExpiry === 48 ? '#7C3AED' : '#475569',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      48 שעות
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewHhAdminExpiry(168)}
+                      style={{
+                        flex: 1,
+                        padding: '7px 4px',
+                        borderRadius: '8px',
+                        border: newHhAdminExpiry === 168 ? '2px solid #7C3AED' : '1px solid #CBD5E1',
+                        backgroundColor: newHhAdminExpiry === 168 ? '#F5F3FF' : '#FFFFFF',
+                        fontWeight: newHhAdminExpiry === 168 ? 700 : 500,
+                        color: newHhAdminExpiry === 168 ? '#7C3AED' : '#475569',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      7 ימים
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewHhAdminExpiry(720)}
+                      style={{
+                        flex: 1,
+                        padding: '7px 4px',
+                        borderRadius: '8px',
+                        border: newHhAdminExpiry === 720 ? '2px solid #7C3AED' : '1px solid #CBD5E1',
+                        backgroundColor: newHhAdminExpiry === 720 ? '#F5F3FF' : '#FFFFFF',
+                        fontWeight: newHhAdminExpiry === 720 ? 700 : 500,
+                        color: newHhAdminExpiry === 720 ? '#7C3AED' : '#475569',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      30 יום
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div style={styles.modalActions}>
                 <button
                   type="button"
@@ -1589,7 +1788,7 @@ export const HouseholdUsersScreen: React.FC = () => {
                   {language === 'he' ? 'ביטול' : 'Cancel'}
                 </button>
                 <button type="submit" style={{ ...styles.modalSaveBtn, backgroundColor: '#7C3AED' }}>
-                  {language === 'he' ? 'צור משק בית' : 'Create Household'}
+                  {language === 'he' ? 'צור משק בית וזמן מנהל' : 'Create & Invite Admin'}
                 </button>
               </div>
             </form>
@@ -2021,6 +2220,47 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '16px 20px',
     flexWrap: 'wrap',
     gap: '16px',
+  },
+  familyAdminNoticeBanner: {
+    backgroundColor: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    borderRadius: 'var(--radius-lg)',
+    padding: '14px 18px',
+  },
+  roleHierarchyNotice: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '10px 12px',
+    backgroundColor: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    borderRadius: '10px',
+    fontSize: '0.8125rem',
+    color: '#1E40AF',
+    lineHeight: '1.45',
+    marginBottom: '12px',
+  },
+  adminAssignBox: {
+    padding: '14px',
+    borderRadius: '12px',
+    backgroundColor: '#FAF5FF',
+    border: '1.5px dashed #D8B4FE',
+    marginTop: '12px',
+    marginBottom: '16px',
+  },
+  adminAssignHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '0.875rem',
+    color: '#6B21A8',
+    marginBottom: '4px',
+  },
+  adminAssignDesc: {
+    fontSize: '0.78125rem',
+    color: '#7E22CE',
+    lineHeight: '1.45',
+    margin: '0 0 12px',
   },
   superBannerLeft: {
     display: 'flex',
