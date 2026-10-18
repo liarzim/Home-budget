@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { supabase, isSupabaseConfigured, signInWithSocialOAuth, signOutUser, OAuthProvider } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, signInWithSocialOAuth, signInWithEmail, signOutUser, OAuthProvider } from '../lib/supabase';
 import {
   Profile,
   Household,
@@ -110,6 +110,7 @@ interface AuthContextType {
       | 'users'
   ) => void;
   loginWithOAuth: (provider: OAuthProvider) => Promise<{ success: boolean; error?: string }>;
+  loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginDemo: (userName?: string) => void;
   logout: () => Promise<void>;
   switchHousehold: (householdId: string) => void;
@@ -1018,6 +1019,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'OAuth error' };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWithEmail = async (email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      if (!isSupabaseConfigured) {
+        return { success: false, error: 'Database is not configured' };
+      }
+      const { data, error } = await signInWithEmail(email, password);
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      if (data?.user) {
+        await loadSupabaseUserData(data.user.id, data.user.email);
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Login error' };
     } finally {
       setIsLoading(false);
     }
@@ -2105,6 +2127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activeTab,
         setActiveTab,
         loginWithOAuth,
+        loginWithEmail,
         loginDemo,
         logout,
         switchHousehold,

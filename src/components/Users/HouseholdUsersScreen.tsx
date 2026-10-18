@@ -20,9 +20,22 @@ import {
   X,
   Palette,
   Check,
+  Share2,
+  Copy,
+  RotateCcw,
+  KeyRound,
+  ExternalLink,
+  MessageCircle,
 } from 'lucide-react';
-import { MemberRole, Household, HouseholdMember } from '../../lib/types';
+import { MemberRole, Household, HouseholdMember, HouseholdInvitation } from '../../lib/types';
 import { formatDate } from '../../lib/i18n';
+import {
+  createHouseholdInvitation,
+  fetchHouseholdInvitations,
+  revokeInvitation,
+  renewInvitation,
+  getAppBaseUrl,
+} from '../../lib/services/invitationService';
 import {
   HOUSEHOLD_ICONS,
   HOUSEHOLD_COLORS,
@@ -65,9 +78,53 @@ export const HouseholdUsersScreen: React.FC = () => {
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<MemberRole>('user');
+  const [expiryHours, setExpiryHours] = useState<number>(168); // 48, 168 (7 days), 720 (30 days)
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Invitations & Token states
+  const [invitations, setInvitations] = useState<HouseholdInvitation[]>([]);
+  const [shareModal, setShareModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle: string;
+    inviteUrl: string;
+    recipientName: string;
+    recipientEmail: string;
+    expiryText: string;
+    isCopied: boolean;
+    tokenType: 'invite' | 'password_reset';
+  }>({
+    isOpen: false,
+    title: '',
+    subtitle: '',
+    inviteUrl: '',
+    recipientName: '',
+    recipientEmail: '',
+    expiryText: '',
+    isCopied: false,
+    tokenType: 'invite',
+  });
+
+  const [renewModal, setRenewModal] = useState<{
+    isOpen: boolean;
+    invitation: HouseholdInvitation | null;
+    expiryHours: number;
+  }>({
+    isOpen: false,
+    invitation: null,
+    expiryHours: 168,
+  });
+
+  const loadInvitations = async (hhId: string) => {
+    try {
+      const list = await fetchHouseholdInvitations(hhId);
+      setInvitations(list);
+    } catch (e) {
+      console.warn('Error loading invitations:', e);
+    }
+  };
 
   // New Household form state (Super User)
   const [newHhName, setNewHhName] = useState('');
@@ -78,6 +135,7 @@ export const HouseholdUsersScreen: React.FC = () => {
   useEffect(() => {
     if (activeHousehold) {
       fetchHouseholdMembers(activeHousehold.id);
+      loadInvitations(activeHousehold.id);
     }
   }, [activeHousehold?.id]);
 
@@ -132,33 +190,155 @@ export const HouseholdUsersScreen: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const res = await addHouseholdMember(
+      // 1. Create invitation link
+      const inviteRes = await createHouseholdInvitation({
+        householdId: activeHousehold.id,
+        email: newEmail.trim(),
+        fullName: newName.trim() || undefined,
+        role: newRole,
+        expiryHours,
+        tokenType: 'invite',
+        invitedBy: user?.id,
+      });
+
+      // 2. Also register household member placeholder
+      await addHouseholdMember(
         activeHousehold.id,
         newEmail.trim(),
         newRole,
         newName.trim() || undefined
       );
 
-      if (res.success) {
-        setFormSuccess(
-          language === 'he'
-            ? `המשתמש ${newEmail} נוסף בהצלחה למשק הבית עם הרשאת ${getRoleLabel(newRole)}!`
-            : `User ${newEmail} added successfully with role ${newRole}!`
-        );
+      if (inviteRes.success && inviteRes.inviteUrl) {
+        setIsAddModalOpen(false);
+        const expiryLabel =
+          expiryHours === 48
+            ? (language === 'he' ? '48 שעות' : '48 Hours')
+            : expiryHours === 720
+            ? (language === 'he' ? '30 יום' : '30 Days')
+            : (language === 'he' ? '7 ימים' : '7 Days');
+
+        setShareModal({
+          isOpen: true,
+          title: language === 'he' ? 'קישור ההזמנה מוכן לשיתוף!' : 'Invitation Link Ready!',
+          subtitle:
+            language === 'he'
+              ? `שלח את הקישור ל-${newName || newEmail}. הקישור מאפשר לו להירשם ישירות, להגדיר סיסמה ולהצטרף למשק הבית.`
+              : `Share this link with ${newName || newEmail} to set their password and join.`,
+          inviteUrl: inviteRes.inviteUrl,
+          recipientName: newName.trim() || newEmail.split('@')[0],
+          recipientEmail: newEmail.trim(),
+          expiryText: expiryLabel,
+          isCopied: false,
+          tokenType: 'invite',
+        });
+
         setNewEmail('');
         setNewName('');
         setNewRole('user');
-        setTimeout(() => {
-          setIsAddModalOpen(false);
-          setFormSuccess(null);
-        }, 2000);
+        setExpiryHours(168);
+        loadInvitations(activeHousehold.id);
       } else {
-        setFormError(res.error || (language === 'he' ? 'שגיאה בהוספת המשתמש' : 'Error adding user'));
+        setFormError(inviteRes.error || (language === 'he' ? 'שגיאה ביצירת הקישור' : 'Error creating link'));
       }
     } catch (err: any) {
       setFormError(err.message || 'An error occurred');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleGeneratePasswordReset = async (member: HouseholdMember) => {
+    if (!activeHousehold || !member.email) return;
+
+    try {
+      const resetRes = await createHouseholdInvitation({
+        householdId: activeHousehold.id,
+        email: member.email,
+        fullName: member.full_name || undefined,
+        role: member.role,
+        expiryHours: 24, // 24 hours for reset
+        tokenType: 'password_reset',
+        invitedBy: user?.id,
+      });
+
+      if (resetRes.success && resetRes.inviteUrl) {
+        setShareModal({
+          isOpen: true,
+          title: language === 'he' ? 'קישור איפוס סיסמה נוצר בהצלחה!' : 'Password Reset Link Ready!',
+          subtitle:
+            language === 'he'
+              ? `העבר את הקישור המאובטח ל-${member.full_name || member.email}. הקישור תקף ל-24 שעות ומאפשר לו להגדיר סיסמה חדשה מיד.`
+              : `Share this secure link with ${member.full_name || member.email}. Valid for 24 hours.`,
+          inviteUrl: resetRes.inviteUrl,
+          recipientName: member.full_name || member.email.split('@')[0],
+          recipientEmail: member.email,
+          expiryText: language === 'he' ? '24 שעות' : '24 Hours',
+          isCopied: false,
+          tokenType: 'password_reset',
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      alert(language === 'he' ? 'שגיאה ביצירת קישור איפוס' : 'Failed to generate reset link');
+    }
+  };
+
+  const handleOpenRenewModal = (inv: HouseholdInvitation) => {
+    setRenewModal({
+      isOpen: true,
+      invitation: inv,
+      expiryHours: 168,
+    });
+  };
+
+  const handleConfirmRenew = async () => {
+    if (!renewModal.invitation || !activeHousehold) return;
+
+    try {
+      const res = await renewInvitation(renewModal.invitation, renewModal.expiryHours);
+      if (res.success && res.newInviteUrl && res.newInvitation) {
+        setRenewModal({ isOpen: false, invitation: null, expiryHours: 168 });
+        const expiryLabel =
+          renewModal.expiryHours === 48
+            ? (language === 'he' ? '48 שעות' : '48 Hours')
+            : renewModal.expiryHours === 720
+            ? (language === 'he' ? '30 יום' : '30 Days')
+            : (language === 'he' ? '7 ימים' : '7 Days');
+
+        setShareModal({
+          isOpen: true,
+          title: language === 'he' ? 'ההזמנה חודשה בהצלחה!' : 'Invitation Renewed!',
+          subtitle:
+            language === 'he'
+              ? `נוצר קישור חדש ורענן עבור ${res.newInvitation.full_name || res.newInvitation.email}. הקישור הקודם בוטל.`
+              : `New link generated for ${res.newInvitation.full_name || res.newInvitation.email}.`,
+          inviteUrl: res.newInviteUrl,
+          recipientName: res.newInvitation.full_name || res.newInvitation.email.split('@')[0],
+          recipientEmail: res.newInvitation.email,
+          expiryText: expiryLabel,
+          isCopied: false,
+          tokenType: 'invite',
+        });
+        loadInvitations(activeHousehold.id);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error renewing invitation');
+    }
+  };
+
+  const handleRevokeInvitation = async (invId: string) => {
+    const confirmMsg =
+      language === 'he'
+        ? 'האם לבטל את קישור ההזמנה? הקישור לא יוכל לשמש יותר להרשמה.'
+        : 'Are you sure you want to cancel this invitation?';
+
+    if (confirm(confirmMsg)) {
+      await revokeInvitation(invId);
+      if (activeHousehold) {
+        loadInvitations(activeHousehold.id);
+      }
     }
   };
 
@@ -530,13 +710,35 @@ export const HouseholdUsersScreen: React.FC = () => {
                       {/* Actions */}
                       <td style={{ ...styles.td, textAlign: 'center' }}>
                         {canManageUsers && !isCurrentLoggedUser ? (
-                          <button
-                            style={styles.deleteBtn}
-                            onClick={() => handleRemoveMember(member)}
-                            title={language === 'he' ? 'הסר משתמש ממשק הבית' : 'Remove user'}
-                          >
-                            <Trash2 size={15} color="var(--danger)" />
-                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                            <button
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '5px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #CBD5E1',
+                                backgroundColor: '#F8FAFC',
+                                color: '#334155',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                              }}
+                              onClick={() => handleGeneratePasswordReset(member)}
+                              title={language === 'he' ? 'הפק קישור איפוס סיסמה' : 'Generate password reset link'}
+                            >
+                              <KeyRound size={13} color="var(--primary)" />
+                              <span>{language === 'he' ? 'איפוס סיסמה' : 'Reset'}</span>
+                            </button>
+                            <button
+                              style={styles.deleteBtn}
+                              onClick={() => handleRemoveMember(member)}
+                              title={language === 'he' ? 'הסר משתמש ממשק הבית' : 'Remove user'}
+                            >
+                              <Trash2 size={15} color="var(--danger)" />
+                            </button>
+                          </div>
                         ) : (
                           <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
                         )}
@@ -549,6 +751,248 @@ export const HouseholdUsersScreen: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Pending Invitations Card */}
+      {canManageUsers && (
+        <div style={styles.tableCard}>
+          <div style={styles.tableHeader}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Mail size={18} color="var(--primary)" />
+              <span style={styles.tableTitle}>
+                {language === 'he' ? 'קישורי הזמנה פעילים הממתינים למימוש' : 'Pending Invitations'}
+              </span>
+              <span style={styles.countBadge}>
+                {invitations.filter((i) => i.status === 'pending').length}
+              </span>
+            </div>
+            <button
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 12px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--primary-light)',
+                color: 'var(--primary)',
+                border: '1px solid var(--border-main)',
+                fontSize: '0.8125rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+              onClick={() => setIsAddModalOpen(true)}
+            >
+              <Plus size={14} />
+              <span>{language === 'he' ? '+ הזמן חבר נוסף' : '+ Invite Member'}</span>
+            </button>
+          </div>
+
+          <div style={styles.tableResponsive}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>{language === 'he' ? 'מוזמן / אימייל' : 'Invited Member'}</th>
+                  <th style={styles.th}>{language === 'he' ? 'סוג והרשאה' : 'Type & Role'}</th>
+                  <th style={styles.th}>{language === 'he' ? 'תאריך שליחה' : 'Sent Date'}</th>
+                  <th style={styles.th}>{language === 'he' ? 'תוקף הקישור' : 'Status / Expiry'}</th>
+                  <th style={{ ...styles.th, textAlign: 'center' }}>{language === 'he' ? 'פעולות' : 'Actions'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invitations.filter((i) => i.status === 'pending').length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={styles.emptyTd}>
+                      {language === 'he' ? 'אין כרגע הזמנות ממתינות' : 'No pending invitations'}
+                    </td>
+                  </tr>
+                ) : (
+                  invitations
+                    .filter((i) => i.status === 'pending')
+                    .map((inv) => {
+                      const isExpired = new Date() > new Date(inv.expires_at);
+                      const diffHours = Math.round(
+                        (new Date(inv.expires_at).getTime() - new Date().getTime()) / (1000 * 60 * 60)
+                      );
+                      const diffDays = Math.ceil(diffHours / 24);
+
+                      const inviteParam = inv.token_type === 'password_reset' ? 'reset' : 'invite';
+                      const linkUrl = `${getAppBaseUrl()}/?${inviteParam}=${inv.token}`;
+
+                      return (
+                        <tr key={inv.id} style={styles.tr}>
+                          <td style={styles.td}>
+                            <div style={styles.memberCell}>
+                              <div style={{ ...styles.memberAvatar, backgroundColor: '#EFF6FF', color: '#2563EB' }}>
+                                {(inv.full_name || inv.email || 'I')[0].toUpperCase()}
+                              </div>
+                              <div>
+                                <div style={styles.memberName}>
+                                  {inv.full_name || inv.email.split('@')[0]}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                  {inv.email}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td style={styles.td}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ ...styles.roleBadge, ...getRoleBadgeStyle(inv.role) }}>
+                                {getRoleLabel(inv.role)}
+                              </span>
+                              {inv.token_type === 'password_reset' && (
+                                <span
+                                  style={{
+                                    fontSize: '0.6875rem',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: '#FEF3C7',
+                                    color: '#B45309',
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {language === 'he' ? 'איפוס סיסמה' : 'Password Reset'}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td style={styles.td}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
+                              <Clock size={13} />
+                              <span>{formatDate(inv.created_at)}</span>
+                            </div>
+                          </td>
+
+                          <td style={styles.td}>
+                            {isExpired ? (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#FEE2E2',
+                                  color: '#DC2626',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ⚠️ {language === 'he' ? 'פג תוקף' : 'Expired'}
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#ECFDF5',
+                                  color: '#059669',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ⏱️ {diffDays > 1
+                                  ? language === 'he' ? `תקף לעוד ${diffDays} ימים` : `Valid for ${diffDays} days`
+                                  : language === 'he' ? `תקף לעוד ${Math.max(1, diffHours)} שעות` : `Valid for ${Math.max(1, diffHours)} hrs`}
+                              </span>
+                            )}
+                          </td>
+
+                          <td style={{ ...styles.td, textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                              {/* Copy Link */}
+                              <button
+                                style={{
+                                  padding: '6px',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#EFF6FF',
+                                  border: '1px solid #BFDBFE',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                }}
+                                onClick={() => {
+                                  navigator.clipboard.writeText(linkUrl);
+                                  alert(language === 'he' ? 'הקישור הועתק ללוח!' : 'Link copied to clipboard!');
+                                }}
+                                title={language === 'he' ? 'העתק קישור' : 'Copy Link'}
+                              >
+                                <Copy size={14} color="var(--primary)" />
+                              </button>
+
+                              {/* WhatsApp Share */}
+                              <a
+                                href={`https://wa.me/?text=${encodeURIComponent(
+                                  language === 'he'
+                                    ? `היי ${inv.full_name || ''}! ${
+                                        inv.token_type === 'password_reset'
+                                          ? `קישור מאובטח לאיפוס הסיסמה שלך ב-HomeBudget:\n${linkUrl}`
+                                          : `הוזמנת להצטרף לניהול התקציב המשפחתי שלנו ב-HomeBudget (${activeHousehold?.name || ''}). להרשמה והגדרת סיסמה לחץ כאן:\n${linkUrl}`
+                                      }`
+                                    : `HomeBudget link:\n${linkUrl}`
+                                )}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  padding: '6px',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#DCFCE7',
+                                  border: '1px solid #BBF7D0',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  textDecoration: 'none',
+                                }}
+                                title={language === 'he' ? 'שתף בוואטסאפ' : 'Share to WhatsApp'}
+                              >
+                                <MessageCircle size={14} color="#16A34A" />
+                              </a>
+
+                              {/* Renew / Resend Button */}
+                              <button
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#EFF6FF',
+                                  border: '1px solid #BFDBFE',
+                                  color: '#2563EB',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                                onClick={() => handleOpenRenewModal(inv)}
+                                title={language === 'he' ? 'שלח שוב / חדש קישור' : 'Renew / Resend'}
+                              >
+                                <RotateCcw size={13} color="#2563EB" />
+                                <span>{language === 'he' ? 'חדש תוקף' : 'Renew'}</span>
+                              </button>
+
+                              {/* Cancel / Revoke */}
+                              <button
+                                style={styles.deleteBtn}
+                                onClick={() => handleRevokeInvitation(inv.id)}
+                                title={language === 'he' ? 'בטל קישור זה' : 'Cancel invitation'}
+                              >
+                                <Trash2 size={14} color="var(--danger)" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Super User Global Households Hub */}
       {isSuperUser && (
@@ -777,6 +1221,81 @@ export const HouseholdUsersScreen: React.FC = () => {
                 </div>
               </div>
 
+              {/* Expiry Selector (48h / 7 days / 30 days) */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  {language === 'he' ? 'תוקף קישור ההזמנה:' : 'Invitation Link Expiry:'}
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setExpiryHours(48)}
+                    style={{
+                      flex: 1,
+                      padding: '9px 6px',
+                      borderRadius: '8px',
+                      border: expiryHours === 48 ? '2px solid var(--primary)' : '1px solid #CBD5E1',
+                      backgroundColor: expiryHours === 48 ? 'var(--primary-light)' : '#F8FAFC',
+                      fontWeight: expiryHours === 48 ? 700 : 500,
+                      color: expiryHours === 48 ? 'var(--primary)' : '#475569',
+                      fontSize: '0.8125rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <span>⏱️</span>
+                    <span>{language === 'he' ? '48 שעות' : '48 Hours'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpiryHours(168)}
+                    style={{
+                      flex: 1,
+                      padding: '9px 6px',
+                      borderRadius: '8px',
+                      border: expiryHours === 168 ? '2px solid var(--primary)' : '1px solid #CBD5E1',
+                      backgroundColor: expiryHours === 168 ? 'var(--primary-light)' : '#F8FAFC',
+                      fontWeight: expiryHours === 168 ? 700 : 500,
+                      color: expiryHours === 168 ? 'var(--primary)' : '#475569',
+                      fontSize: '0.8125rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <span>📅</span>
+                    <span>{language === 'he' ? '7 ימים (מומלץ)' : '7 Days (Rec.)'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpiryHours(720)}
+                    style={{
+                      flex: 1,
+                      padding: '9px 6px',
+                      borderRadius: '8px',
+                      border: expiryHours === 720 ? '2px solid var(--primary)' : '1px solid #CBD5E1',
+                      backgroundColor: expiryHours === 720 ? 'var(--primary-light)' : '#F8FAFC',
+                      fontWeight: expiryHours === 720 ? 700 : 500,
+                      color: expiryHours === 720 ? 'var(--primary)' : '#475569',
+                      fontSize: '0.8125rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <span>📆</span>
+                    <span>{language === 'he' ? '30 יום' : '30 Days'}</span>
+                  </button>
+                </div>
+              </div>
+
               <div style={styles.modalActions}>
                 <button
                   type="button"
@@ -791,8 +1310,8 @@ export const HouseholdUsersScreen: React.FC = () => {
                   disabled={isSubmitting}
                 >
                   {isSubmitting
-                    ? (language === 'he' ? 'מוסיף...' : 'Adding...')
-                    : (language === 'he' ? 'הוסף משתמש' : 'Add User')}
+                    ? (language === 'he' ? 'מפיק קישור...' : 'Generating...')
+                    : (language === 'he' ? 'צור קישור הזמנה' : 'Generate Invite Link')}
                 </button>
               </div>
             </form>
@@ -1074,6 +1593,296 @@ export const HouseholdUsersScreen: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Share Link Modal (Direct Copy + WhatsApp) */}
+      {shareModal.isOpen && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.modalContent, maxWidth: '480px' }} className="animate-scale-in">
+            <div style={styles.modalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    backgroundColor: shareModal.tokenType === 'password_reset' ? '#FEF3C7' : '#DCFCE7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {shareModal.tokenType === 'password_reset' ? (
+                    <KeyRound size={20} color="#D97706" />
+                  ) : (
+                    <Sparkles size={20} color="#16A34A" />
+                  )}
+                </div>
+                <h3 style={styles.modalTitle}>{shareModal.title}</h3>
+              </div>
+              <button
+                style={styles.closeBtn}
+                onClick={() => setShareModal((prev) => ({ ...prev, isOpen: false }))}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.875rem', color: '#475569', lineHeight: '1.5', margin: '0 0 16px' }}>
+              {shareModal.subtitle}
+            </p>
+
+            {/* Recipient & Expiry Info Card */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                backgroundColor: '#F8FAFC',
+                border: '1px solid #E2E8F0',
+                marginBottom: '16px',
+                fontSize: '0.8125rem',
+              }}
+            >
+              <div>
+                <span style={{ color: '#64748B' }}>
+                  {language === 'he' ? 'נמען: ' : 'Recipient: '}
+                </span>
+                <strong style={{ color: '#0F172A' }}>{shareModal.recipientName}</strong>
+                <span style={{ color: '#94A3B8', margin: '0 4px' }}>({shareModal.recipientEmail})</span>
+              </div>
+              <span
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  backgroundColor: '#EFF6FF',
+                  color: '#2563EB',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                }}
+              >
+                ⏱️ {shareModal.expiryText}
+              </span>
+            </div>
+
+            {/* URL Display Box */}
+            <div style={{ position: 'relative', marginBottom: '16px' }}>
+              <input
+                type="text"
+                readOnly
+                value={shareModal.inviteUrl}
+                style={{
+                  ...styles.input,
+                  direction: 'ltr',
+                  backgroundColor: '#F1F5F9',
+                  paddingRight: '12px',
+                  paddingLeft: '12px',
+                  fontSize: '0.8125rem',
+                  fontFamily: 'monospace',
+                }}
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+              />
+            </div>
+
+            {/* Action Buttons: Copy & WhatsApp */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* WhatsApp Share Button */}
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(
+                  language === 'he'
+                    ? `היי ${shareModal.recipientName}! ${
+                        shareModal.tokenType === 'password_reset'
+                          ? `הנה קישור מאובטח לאיפוס הסיסמה שלך ב-HomeBudget:\n${shareModal.inviteUrl}\n(תקף ל-${shareModal.expiryText})`
+                          : `הוזמנת להצטרף לניהול התקציב המשפחתי שלנו ב-HomeBudget (${activeHousehold?.name || ''})!\nלהרשמה והגדרת סיסמה אישית לחץ כאן:\n${shareModal.inviteUrl}\n(הקישור תקף ל-${shareModal.expiryText})`
+                      }`
+                    : `HomeBudget link:\n${shareModal.inviteUrl}`
+                )}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  backgroundColor: '#25D366',
+                  color: '#FFFFFF',
+                  fontWeight: 700,
+                  fontSize: '0.9375rem',
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 12px rgba(37, 211, 102, 0.25)',
+                  transition: 'opacity 0.15s ease',
+                }}
+              >
+                <MessageCircle size={18} color="#FFFFFF" />
+                <span>{language === 'he' ? 'שתף קישור ב-WhatsApp' : 'Share via WhatsApp'}</span>
+              </a>
+
+              {/* Copy to Clipboard Button */}
+              <button
+                type="button"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  backgroundColor: shareModal.isCopied ? '#ECFDF5' : 'var(--bg-surface-subtle)',
+                  color: shareModal.isCopied ? '#059669' : 'var(--text-primary)',
+                  border: shareModal.isCopied ? '1.5px solid #10B981' : '1px solid var(--border-main)',
+                  fontWeight: 700,
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onClick={() => {
+                  navigator.clipboard.writeText(shareModal.inviteUrl);
+                  setShareModal((prev) => ({ ...prev, isCopied: true }));
+                  setTimeout(() => {
+                    setShareModal((prev) => ({ ...prev, isCopied: false }));
+                  }, 2500);
+                }}
+              >
+                {shareModal.isCopied ? (
+                  <>
+                    <Check size={16} color="#059669" />
+                    <span>{language === 'he' ? '✓ הקישור הועתק ללוח!' : 'Copied to Clipboard!'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy size={16} color="var(--primary)" />
+                    <span>{language === 'he' ? 'העתק קישור ללוח' : 'Copy Link'}</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                style={{
+                  padding: '10px',
+                  border: 'none',
+                  background: 'none',
+                  color: '#64748B',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                }}
+                onClick={() => setShareModal((prev) => ({ ...prev, isOpen: false }))}
+              >
+                {language === 'he' ? 'סגור' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Renew / Resend Invitation Modal */}
+      {renewModal.isOpen && renewModal.invitation && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.modalContent, maxWidth: '440px' }} className="animate-scale-in">
+            <div style={styles.modalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RotateCcw size={20} color="var(--primary)" />
+                <h3 style={styles.modalTitle}>
+                  {language === 'he' ? 'חידוש קישור הזמנה' : 'Renew Invitation Link'}
+                </h3>
+              </div>
+              <button
+                style={styles.closeBtn}
+                onClick={() => setRenewModal({ isOpen: false, invitation: null, expiryHours: 168 })}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.875rem', color: '#475569', lineHeight: '1.5', margin: '0 0 16px' }}>
+              {language === 'he'
+                ? `בחר תוקף חדש עבור ההזמנה של ${renewModal.invitation.full_name || renewModal.invitation.email}. יופק קישור חדש ורענן והקישור הקודם יבוטל.`
+                : `Select new expiry for ${renewModal.invitation.full_name || renewModal.invitation.email}.`}
+            </p>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>
+                {language === 'he' ? 'תוקף הקישור המחודש:' : 'New Expiry Duration:'}
+              </label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => setRenewModal((prev) => ({ ...prev, expiryHours: 48 }))}
+                  style={{
+                    flex: 1,
+                    padding: '9px 6px',
+                    borderRadius: '8px',
+                    border: renewModal.expiryHours === 48 ? '2px solid var(--primary)' : '1px solid #CBD5E1',
+                    backgroundColor: renewModal.expiryHours === 48 ? 'var(--primary-light)' : '#F8FAFC',
+                    fontWeight: renewModal.expiryHours === 48 ? 700 : 500,
+                    color: renewModal.expiryHours === 48 ? 'var(--primary)' : '#475569',
+                    fontSize: '0.8125rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ⏱️ {language === 'he' ? '48 שעות' : '48 Hours'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRenewModal((prev) => ({ ...prev, expiryHours: 168 }))}
+                  style={{
+                    flex: 1,
+                    padding: '9px 6px',
+                    borderRadius: '8px',
+                    border: renewModal.expiryHours === 168 ? '2px solid var(--primary)' : '1px solid #CBD5E1',
+                    backgroundColor: renewModal.expiryHours === 168 ? 'var(--primary-light)' : '#F8FAFC',
+                    fontWeight: renewModal.expiryHours === 168 ? 700 : 500,
+                    color: renewModal.expiryHours === 168 ? 'var(--primary)' : '#475569',
+                    fontSize: '0.8125rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  📅 {language === 'he' ? '7 ימים' : '7 Days'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRenewModal((prev) => ({ ...prev, expiryHours: 720 }))}
+                  style={{
+                    flex: 1,
+                    padding: '9px 6px',
+                    borderRadius: '8px',
+                    border: renewModal.expiryHours === 720 ? '2px solid var(--primary)' : '1px solid #CBD5E1',
+                    backgroundColor: renewModal.expiryHours === 720 ? 'var(--primary-light)' : '#F8FAFC',
+                    fontWeight: renewModal.expiryHours === 720 ? 700 : 500,
+                    color: renewModal.expiryHours === 720 ? 'var(--primary)' : '#475569',
+                    fontSize: '0.8125rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  📆 {language === 'he' ? '30 יום' : '30 Days'}
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.modalActions}>
+              <button
+                type="button"
+                style={styles.modalCancelBtn}
+                onClick={() => setRenewModal({ isOpen: false, invitation: null, expiryHours: 168 })}
+              >
+                {language === 'he' ? 'ביטול' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                style={styles.modalSaveBtn}
+                onClick={handleConfirmRenew}
+              >
+                {language === 'he' ? 'חדש קישור עכשיו' : 'Renew Link Now'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1769,5 +2578,93 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '700',
     cursor: 'pointer',
     boxShadow: 'var(--shadow-sm)',
+  },
+  keyResetBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '5px 8px',
+    borderRadius: '6px',
+    border: '1px solid #CBD5E1',
+    backgroundColor: '#F8FAFC',
+    color: '#334155',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  inviteNewBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '7px 12px',
+    borderRadius: '8px',
+    backgroundColor: 'var(--primary-light)',
+    color: 'var(--primary)',
+    border: '1px solid var(--border-main)',
+    fontSize: '0.8125rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  resetTag: {
+    fontSize: '0.6875rem',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    backgroundColor: '#FEF3C7',
+    color: '#B45309',
+    fontWeight: 700,
+  },
+  expiredBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '3px 8px',
+    borderRadius: '6px',
+    backgroundColor: '#FEE2E2',
+    color: '#DC2626',
+    fontSize: '0.75rem',
+    fontWeight: 700,
+  },
+  activeExpiryBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '3px 8px',
+    borderRadius: '6px',
+    backgroundColor: '#ECFDF5',
+    color: '#059669',
+    fontSize: '0.75rem',
+    fontWeight: 700,
+  },
+  actionIconBtn: {
+    padding: '6px',
+    borderRadius: '6px',
+    backgroundColor: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  whatsappBtn: {
+    padding: '6px',
+    borderRadius: '6px',
+    backgroundColor: '#DCFCE7',
+    border: '1px solid #BBF7D0',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    textDecoration: 'none',
+  },
+  renewBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '5px 8px',
+    borderRadius: '6px',
+    backgroundColor: '#EFF6FF',
+    border: '1px solid #BFDBFE',
+    color: '#2563EB',
+    fontSize: '0.75rem',
+    fontWeight: 700,
+    cursor: 'pointer',
   },
 };

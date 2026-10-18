@@ -17,6 +17,7 @@ import { ConnectedAccountsScreen } from './components/Settings/ConnectedAccounts
 import { SystemTablesScreen } from './components/Settings/SystemTablesScreen';
 import { HouseholdUsersScreen } from './components/Users/HouseholdUsersScreen';
 import { InvestmentsView } from './components/Investments/InvestmentsView';
+import { InviteAcceptanceModal } from './components/Auth/InviteAcceptanceModal';
 
 const MainScreen: React.FC = () => {
   const { user, isDemoMode, isLoading, activeTab } = useAuth();
@@ -68,6 +69,7 @@ export default function App() {
   return (
     <AuthProvider>
       <MainScreen />
+      <InviteAcceptanceModal />
     </AuthProvider>
   );
 }

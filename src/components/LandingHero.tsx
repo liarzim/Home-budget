@@ -14,11 +14,22 @@ import {
   TrendingUp,
   Users,
   CheckCircle2,
+  Mail,
+  KeyRound,
+  Eye,
+  EyeOff,
+  HelpCircle,
+  X,
 } from 'lucide-react';
 
 export const LandingHero: React.FC = () => {
-  const { loginWithOAuth, loginDemo, isSupabaseReady, isLoading, language, setLanguage, dir } = useAuth();
+  const { loginWithOAuth, loginWithEmail, loginDemo, isSupabaseReady, isLoading, language, setLanguage, dir } = useAuth();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showForgotModal, setShowForgotModal] = useState(false);
 
   const isHe = language === 'he';
 
@@ -27,6 +38,32 @@ export const LandingHero: React.FC = () => {
     const res = await loginWithOAuth(provider);
     if (!res.success && res.error) {
       setErrorMessage(res.error);
+    }
+  };
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password) {
+      setErrorMessage(isHe ? 'נא להזין כתובת אימייל וסיסמה' : 'Please enter email and password');
+      return;
+    }
+    setErrorMessage(null);
+    setIsSubmitting(true);
+    try {
+      const res = await loginWithEmail(email.trim(), password);
+      if (!res.success && res.error) {
+        if (res.error.toLowerCase().includes('invalid login credentials')) {
+          setErrorMessage(isHe ? 'פרטי ההתחברות שגויים. אנא בדקו את המייל והסיסמה או פנו למנהל המשפחה לקבלת קישור איפוס.' : 'Invalid login credentials. Please check your email and password or ask the family admin for a reset link.');
+        } else if (res.error.toLowerCase().includes('email not confirmed')) {
+          setErrorMessage(isHe ? 'כתובת המייל טרם אומתה.' : 'Email address not confirmed.');
+        } else {
+          setErrorMessage(res.error);
+        }
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || (isHe ? 'שגיאה בהתחברות' : 'Sign in failed'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -132,6 +169,87 @@ export const LandingHero: React.FC = () => {
               <span>{errorMessage}</span>
             </div>
           )}
+
+          {/* Email & Password Sign In Form */}
+          <form onSubmit={handleEmailSubmit} style={styles.emailForm}>
+            <div style={styles.inputGroup}>
+              <label style={styles.inputLabel}>
+                {isHe ? 'דואר אלקטרוני' : 'Email Address'}
+              </label>
+              <div style={styles.inputWrapper}>
+                <Mail size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  required
+                  disabled={isLoading || isSubmitting}
+                  style={styles.textInput}
+                  dir="ltr"
+                />
+              </div>
+            </div>
+
+            <div style={styles.inputGroup}>
+              <div style={styles.passwordLabelRow}>
+                <label style={styles.inputLabel}>
+                  {isHe ? 'סיסמה' : 'Password'}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(true)}
+                  style={styles.forgotPassBtn}
+                >
+                  {isHe ? 'שכחת סיסמה?' : 'Forgot password?'}
+                </button>
+              </div>
+              <div style={styles.inputWrapper}>
+                <KeyRound size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  disabled={isLoading || isSubmitting}
+                  style={styles.textInput}
+                  dir="ltr"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={styles.eyeBtn}
+                  aria-label="Toggle password visibility"
+                >
+                  {showPassword ? <EyeOff size={16} color="#64748B" /> : <Eye size={16} color="#64748B" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading || isSubmitting}
+              style={styles.submitButton}
+            >
+              {isSubmitting ? (
+                <span>{isHe ? 'מתחבר למערכת...' : 'Signing in...'}</span>
+              ) : (
+                <>
+                  <span>{isHe ? 'כניסה למערכת' : 'Sign In'}</span>
+                  {isHe ? <ArrowLeft size={16} /> : <ArrowRight size={16} />}
+                </>
+              )}
+            </button>
+          </form>
+
+          <div style={styles.dividerRow}>
+            <div style={styles.dividerLine} />
+            <span style={styles.dividerText}>
+              {isHe ? 'או כניסה באמצעות' : 'or continue with'}
+            </span>
+            <div style={styles.dividerLine} />
+          </div>
 
           <div style={styles.oauthButtonsRow}>
             {/* Google */}
@@ -299,6 +417,52 @@ export const LandingHero: React.FC = () => {
           </span>
         </footer>
       </main>
+
+      {/* Forgot Password Modal */}
+      {showForgotModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowForgotModal(false)}>
+          <div style={styles.forgotModalCard} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.forgotModalHeader}>
+              <div style={styles.forgotModalIconWrap}>
+                <KeyRound size={22} color="#2563EB" />
+              </div>
+              <button
+                onClick={() => setShowForgotModal(false)}
+                style={styles.closeModalBtn}
+                aria-label="Close"
+              >
+                <X size={18} color="#64748B" />
+              </button>
+            </div>
+
+            <h3 style={styles.forgotModalTitle}>
+              {isHe ? 'איפוס סיסמה למשתמשי המשפחה' : 'Reset Account Password'}
+            </h3>
+
+            <p style={styles.forgotModalDesc}>
+              {isHe
+                ? 'לשמירה על פרטיות מלאה ואבטחה ברמה הגבוהה ביותר, מנהל/ת המשפחה יכול/ה להפיק עבורך קישור איפוס סיסמה מאובטח ישירות ממסך ניהול המשתמשים ולשלוח לך אותו בוואטסאפ או במייל.'
+                : 'For strict family privacy and bank-grade isolation, your Household Admin can generate a secure 24-hour reset link directly from the Users screen and send it to you via WhatsApp or Email.'}
+            </p>
+
+            <div style={styles.forgotTipBox}>
+              <HelpCircle size={18} color="#2563EB" style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>
+                {isHe
+                  ? 'פנה/י למנהל התקציב במשפחה ובקש/י קישור איפוס אישי. בלחיצה על הקישור תוכל/י לקבוע סיסמה חדשה ולהתחבר מיד.'
+                  : 'Contact your household budget admin for a direct reset link. With one click you can set your new password and sign in instantly.'}
+              </span>
+            </div>
+
+            <button
+              onClick={() => setShowForgotModal(false)}
+              style={styles.forgotCloseButton}
+            >
+              {isHe ? 'הבנתי, סגור' : 'Got it, close'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -483,6 +647,169 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.8125rem',
     marginBottom: '16px',
     textAlign: 'center',
+  },
+  emailForm: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+    marginBottom: '8px',
+  },
+  inputGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    textAlign: 'start',
+  },
+  passwordLabelRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  inputLabel: {
+    fontSize: '0.8125rem',
+    fontWeight: '700',
+    color: 'var(--text-primary, #1E293B)',
+  },
+  forgotPassBtn: {
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    fontSize: '0.75rem',
+    fontWeight: '600',
+    color: '#2563EB',
+    cursor: 'pointer',
+    textDecoration: 'underline',
+  },
+  inputWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '10px 14px',
+    backgroundColor: '#F8FAFC',
+    borderRadius: '10px',
+    border: '1px solid #CBD5E1',
+    transition: 'border-color 0.15s ease',
+  },
+  textInput: {
+    flex: 1,
+    border: 'none',
+    outline: 'none',
+    backgroundColor: 'transparent',
+    fontSize: '0.875rem',
+    color: '#0F172A',
+  },
+  eyeBtn: {
+    background: 'none',
+    border: 'none',
+    padding: '2px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '12px 18px',
+    backgroundColor: '#2563EB',
+    color: '#FFFFFF',
+    border: 'none',
+    borderRadius: '10px',
+    fontWeight: '700',
+    fontSize: '0.9375rem',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
+    transition: 'all 0.15s ease',
+    marginTop: '4px',
+  },
+  modalOverlay: {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backdropFilter: 'blur(4px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+    padding: '20px',
+  },
+  forgotModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: '20px',
+    maxWidth: '440px',
+    width: '100%',
+    padding: '28px',
+    boxShadow: '0 20px 50px rgba(0, 0, 0, 0.2)',
+    border: '1px solid #E2E8F0',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+    textAlign: 'start',
+  },
+  forgotModalHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  forgotModalIconWrap: {
+    width: '44px',
+    height: '44px',
+    borderRadius: '12px',
+    backgroundColor: '#EFF6FF',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeModalBtn: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '6px',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  forgotModalTitle: {
+    fontSize: '1.2rem',
+    fontWeight: '800',
+    color: '#0F172A',
+    margin: 0,
+  },
+  forgotModalDesc: {
+    fontSize: '0.875rem',
+    color: '#475569',
+    lineHeight: '1.6',
+    margin: 0,
+  },
+  forgotTipBox: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '10px',
+    padding: '12px 14px',
+    backgroundColor: '#EFF6FF',
+    borderRadius: '12px',
+    border: '1px solid #BFDBFE',
+    fontSize: '0.8125rem',
+    color: '#1E40AF',
+    lineHeight: '1.5',
+  },
+  forgotCloseButton: {
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#0F172A',
+    color: '#FFFFFF',
+    border: 'none',
+    borderRadius: '10px',
+    fontWeight: '700',
+    fontSize: '0.875rem',
+    cursor: 'pointer',
+    marginTop: '6px',
   },
   oauthButtonsRow: {
     display: 'flex',

@@ -39,6 +39,21 @@ export interface HouseholdMember {
   full_name?: string;
 }
 
+export interface HouseholdInvitation {
+  id: string;
+  household_id: string;
+  email: string;
+  full_name: string | null;
+  role: MemberRole;
+  token: string;
+  token_type: 'invite' | 'password_reset';
+  invited_by?: string;
+  created_at: string;
+  expires_at: string;
+  used_at?: string | null;
+  status: 'pending' | 'accepted' | 'expired' | 'revoked';
+}
+
 export interface MacroCategory {
   id: string;
   household_id: string;

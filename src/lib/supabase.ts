@@ -49,6 +49,49 @@ export async function signInWithSocialOAuth(provider: OAuthProvider) {
 }
 
 /**
+ * Sign In with Email & Password
+ */
+export async function signInWithEmail(email: string, password: string) {
+  if (!isSupabaseConfigured) {
+    return { data: null, error: new Error('Supabase is not configured') };
+  }
+  return supabase.auth.signInWithPassword({
+    email: email.trim().toLowerCase(),
+    password,
+  });
+}
+
+/**
+ * Sign Up with Email & Password
+ */
+export async function signUpWithEmail(email: string, password: string, fullName?: string) {
+  if (!isSupabaseConfigured) {
+    return { data: null, error: new Error('Supabase is not configured') };
+  }
+  return supabase.auth.signUp({
+    email: email.trim().toLowerCase(),
+    password,
+    options: {
+      data: {
+        full_name: fullName?.trim() || email.split('@')[0],
+      },
+    },
+  });
+}
+
+/**
+ * Update current user password
+ */
+export async function updateUserPassword(newPassword: string) {
+  if (!isSupabaseConfigured) {
+    return { data: null, error: new Error('Supabase is not configured') };
+  }
+  return supabase.auth.updateUser({
+    password: newPassword,
+  });
+}
+
+/**
  * Sign Out helper
  */
 export async function signOutUser() {
@@ -57,3 +100,4 @@ export async function signOutUser() {
   }
   return supabase.auth.signOut();
 }
+
