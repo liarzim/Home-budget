@@ -26,6 +26,7 @@ import {
   KeyRound,
   ExternalLink,
   MessageCircle,
+  TableProperties,
 } from 'lucide-react';
 import { MemberRole, Household, HouseholdMember, HouseholdInvitation } from '../../lib/types';
 import { formatDate } from '../../lib/i18n';
@@ -59,6 +60,7 @@ export const HouseholdUsersScreen: React.FC = () => {
     createHouseholdAsSuperUser,
     updateHousehold,
     switchHousehold,
+    setActiveTab,
     language,
   } = useAuth();
 
@@ -1145,19 +1147,38 @@ export const HouseholdUsersScreen: React.FC = () => {
                   </div>
 
                   <div style={styles.hhCardBottom}>
-                    {isActive ? (
-                      <span style={styles.activeHhTag}>
-                        ✓ {language === 'he' ? 'משק בית נוכחי' : 'Current Active'}
-                      </span>
-                    ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {isActive ? (
+                        <span style={styles.activeHhTag}>
+                          ✓ {language === 'he' ? 'משק בית נוכחי' : 'Current Active'}
+                        </span>
+                      ) : (
+                        <button
+                          style={styles.switchHhBtn}
+                          onClick={() => switchHousehold(hh.id)}
+                        >
+                          <ArrowRightLeft size={14} />
+                          <span>{language === 'he' ? 'עבור למשק בית זה' : 'Switch Household'}</span>
+                        </button>
+                      )}
+
                       <button
-                        style={styles.switchHhBtn}
-                        onClick={() => switchHousehold(hh.id)}
+                        style={{
+                          ...styles.switchHhBtn,
+                          backgroundColor: 'var(--bg-app)',
+                          color: 'var(--primary)',
+                          border: '1px solid var(--border-main)',
+                        }}
+                        onClick={() => {
+                          switchHousehold(hh.id);
+                          setActiveTab('system-tables');
+                        }}
+                        title={language === 'he' ? 'ערוך טבלאות וסיווגי משפחה זו' : 'Edit family tables & categories'}
                       >
-                        <ArrowRightLeft size={14} />
-                        <span>{language === 'he' ? 'עבור למשק בית זה' : 'Switch Household'}</span>
+                        <TableProperties size={13} />
+                        <span>{language === 'he' ? 'טבלאות המשפחה' : 'Family Tables'}</span>
                       </button>
-                    )}
+                    </div>
                   </div>
                 </div>
               );

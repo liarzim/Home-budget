@@ -125,10 +125,10 @@ export const translations = {
     totalRemaining: 'נותר לתקציב',
     budgetUtilization: 'ניצול תקציבי',
 
-    // System Tables & Settings
-    navSystemTables: 'הגדרות טבלאות מערכת',
-    systemTablesTitle: 'ניהול טבלאות מערכת והמרות',
-    systemTablesSub: 'טעינה מקובץ (Excel / CSV) וניהול ישיר של קבוצות על, סוגי הוצאות, הכנסות, כללי בתי עסק ושמות כרטיסים להצגה.',
+    // System Tables & Settings (Family-Isolated)
+    navSystemTables: 'טבלאות וסיווגי המשפחה',
+    systemTablesTitle: 'טבלאות סיווג והמרות של המשפחה',
+    systemTablesSub: 'ניהול והתאמה אישית של קבוצות על, סוגי הוצאות, הכנסות, כללי בתי עסק וכרטיסים - מבודדים לחלוטין עבור משק בית זה בלבד.',
     tabMacroCategories: 'קבוצות על (הוצאות קבועות/משתנות)',
     tabExpenseCategories: 'סוגי הוצאות',
     tabIncomeCategories: 'סוגי הכנסות',
@@ -295,10 +295,10 @@ export const translations = {
     totalRemaining: 'Remaining',
     budgetUtilization: 'Budget Utilization',
 
-    // System Tables & Settings
-    navSystemTables: 'System Tables & Settings',
-    systemTablesTitle: 'System Classification & Mapping Tables',
-    systemTablesSub: 'Upload from Excel / CSV or manage macro groups, expense types, income types, merchant auto-rules, and credit card display aliases.',
+    // System Tables & Settings (Family-Isolated)
+    navSystemTables: 'Family Tables & Categories',
+    systemTablesTitle: 'Family Classification & Mapping Tables',
+    systemTablesSub: 'Customized classifications for this household: macro groups, expense types, income types, merchant auto-rules, and credit card display aliases.',
     tabMacroCategories: 'Macro Categories (Fixed/Variable)',
     tabExpenseCategories: 'Expense Types',
     tabIncomeCategories: 'Income Types',

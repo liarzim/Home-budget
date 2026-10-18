@@ -26,6 +26,9 @@ import {
   Filter,
   RotateCcw,
   ChevronDown,
+  Home,
+  Lock,
+  ShieldCheck,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
@@ -36,6 +39,11 @@ type SystemTab = 'macros' | 'expenses' | 'incomes' | 'merchants' | 'cards';
 
 export const SystemTablesScreen: React.FC = () => {
   const {
+    activeHousehold,
+    households,
+    allSystemHouseholds,
+    switchHousehold,
+    isSuperUser,
     macroCategories,
     categories,
     businessMappings,
@@ -601,7 +609,7 @@ export const SystemTablesScreen: React.FC = () => {
             disabled={isSeeding}
             onClick={async () => {
               setIsSeeding(true);
-              await seedDefaultHouseholdData();
+              await seedDefaultHouseholdData(activeHousehold?.id);
               setIsSeeding(false);
               setSeedSuccess(true);
               setTimeout(() => setSeedSuccess(false), 4000);
@@ -618,11 +626,60 @@ export const SystemTablesScreen: React.FC = () => {
                   ? '✓ נתונים נטענו בהצלחה!'
                   : '✓ Seeded Successfully!'
                 : language === 'he'
-                ? '✨ אתחל קבוצות על וסיווגים מומלצים'
-                : '✨ Seed Default Categories'}
+                ? `✨ אתחל סיווגי ברירת מחדל עבור ${activeHousehold?.name || 'המשפחה'}`
+                : `✨ Seed Default Categories for ${activeHousehold?.name || 'Household'}`}
             </span>
           </button>
         </div>
+      </div>
+
+      {/* Active Household Isolation Banner & Super User Switcher */}
+      <div style={styles.hhBannerCard}>
+        <div style={styles.hhBannerLeft}>
+          <div style={styles.hhBannerIconBox}>
+            <Home size={22} color="var(--primary)" />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={styles.hhBannerTitle}>
+                {language === 'he' ? 'משק בית פעיל:' : 'Active Household:'}{' '}
+                <strong style={{ color: 'var(--primary)' }}>
+                  {activeHousehold?.name || (language === 'he' ? 'לא נבחר' : 'None')}
+                </strong>
+              </span>
+              <span style={styles.hhIsolatedBadge}>
+                <Lock size={12} />
+                {language === 'he' ? 'טבלאות מבודדות למשפחה זו בלבד' : 'Isolated Household Data'}
+              </span>
+            </div>
+            <p style={styles.hhBannerSub}>
+              {language === 'he'
+                ? `כל 5 הטבלאות (קבוצות על, הוצאות, הכנסות, בתי עסק וכרטיסים) שייכות בלעדית למשק הבית "${activeHousehold?.name || 'הנוכחי'}". כל שינוי, ייבוא מקובץ או מחיקה שמורים תחת מזהה המשפחה ואינם משפיעים כלל על משפחות אחרות במערכת.`
+                : `All 5 tables (macro groups, expenses, incomes, merchants, cards) belong exclusively to "${activeHousehold?.name || 'this household'}". Any modifications or uploads are isolated and do not affect other families.`}
+            </p>
+          </div>
+        </div>
+
+        {/* If Super User, allow switching household directly from this screen */}
+        {isSuperUser && (
+          <div style={styles.superSwitchWrapper}>
+            <label style={styles.superSwitchLabel}>
+              <ShieldCheck size={14} color="#10B981" />
+              {language === 'he' ? 'Super Admin - החלף משפחה לעריכה:' : 'Super Admin - Switch Family:'}
+            </label>
+            <select
+              style={styles.superSwitchSelect}
+              value={activeHousehold?.id || ''}
+              onChange={(e) => switchHousehold(e.target.value)}
+            >
+              {(allSystemHouseholds.length > 0 ? allSystemHouseholds : households).map((hh) => (
+                <option key={hh.id} value={hh.id}>
+                  {hh.name} ({hh.currency || 'ILS'})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Supabase SQL Migration Guide Banner */}
@@ -1819,6 +1876,87 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.875rem',
     color: 'var(--text-secondary)',
     marginTop: '4px',
+  },
+  hhBannerCard: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'var(--bg-surface)',
+    border: '1.5px solid var(--border-main)',
+    borderInlineStart: '5px solid var(--primary)',
+    borderRadius: 'var(--radius-lg)',
+    padding: '16px 20px',
+    boxShadow: 'var(--shadow-sm)',
+    flexWrap: 'wrap',
+    gap: '16px',
+  },
+  hhBannerLeft: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '14px',
+    flex: 1,
+    minWidth: '280px',
+  },
+  hhBannerIconBox: {
+    width: '42px',
+    height: '42px',
+    borderRadius: '10px',
+    backgroundColor: 'var(--primary-light)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: '2px',
+  },
+  hhBannerTitle: {
+    fontSize: '1rem',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
+  },
+  hhIsolatedBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '5px',
+    padding: '3px 10px',
+    borderRadius: '999px',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    backgroundColor: '#ECFDF5',
+    color: '#065F46',
+    border: '1px solid #A7F3D0',
+  },
+  hhBannerSub: {
+    fontSize: '0.8125rem',
+    color: 'var(--text-secondary)',
+    marginTop: '6px',
+    lineHeight: '1.45',
+  },
+  superSwitchWrapper: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    minWidth: '220px',
+  },
+  superSwitchLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '0.75rem',
+    fontWeight: '700',
+    color: 'var(--text-secondary)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
+  superSwitchSelect: {
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1.5px solid var(--border-main)',
+    backgroundColor: 'var(--bg-app)',
+    color: 'var(--text-primary)',
+    fontSize: '0.875rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    outline: 'none',
   },
   preferencesCard: {
     display: 'flex',

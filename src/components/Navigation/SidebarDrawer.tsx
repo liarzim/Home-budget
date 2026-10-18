@@ -40,6 +40,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
     setActiveTab,
     isDemoMode,
     isSuperUser,
+    currentRole,
     canImportFiles,
     canEditRecords,
     canManageUsers,
@@ -85,29 +86,55 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
     ...(canImportFiles
       ? [{ id: 'import', label: t('navImport', language), icon: UploadCloud, badge: null }]
       : []),
-    {
-      id: 'users',
-      label: language === 'he' ? 'משתמשים והרשאות' : 'Users & Roles',
-      icon: Users,
-      badge: isSuperUser ? 'Super' : null,
-    },
+    ...(!isSuperUser && canManageUsers
+      ? [
+          {
+            id: 'users',
+            label: language === 'he' ? 'חברי המשפחה והרשאות' : 'Family Members & Roles',
+            icon: Users,
+            badge: currentRole === 'admin' || currentRole === 'owner' ? (language === 'he' ? 'מנהל משפחה' : 'Admin') : null,
+          },
+        ]
+      : []),
   ];
 
   const systemItems = [
     ...(canManageSystemTables
-      ? [{ id: 'system-tables', label: t('navSystemTables', language), icon: TableProperties, badge: language === 'he' ? '5 טבלאות' : '5 Tables' }]
+      ? [
+          {
+            id: 'system-tables',
+            label: t('navSystemTables', language),
+            icon: TableProperties,
+            badge: language === 'he' ? '5 טבלאות מבודדות' : '5 Tables',
+          },
+        ]
       : []),
     { id: 'bank-accounts', label: t('navBankSync', language), icon: Landmark, badge: 'Open Banking' },
     { id: 'migration', label: t('navMigration', language), icon: FileSpreadsheet, badge: language === 'he' ? 'שנתי' : 'Yearly' },
   ];
 
   const navGroups = [
+    ...(isSuperUser
+      ? [
+          {
+            groupTitle: language === 'he' ? '👑 ניהול מערכת ראשי (Super Admin)' : '👑 Global Admin Portal',
+            items: [
+              {
+                id: 'users',
+                label: language === 'he' ? 'ניהול כל המשפחות והמשתמשים' : 'Manage All Households & Users',
+                icon: ShieldCheck,
+                badge: language === 'he' ? 'אדמין כללי' : 'Super Admin',
+              },
+            ],
+          },
+        ]
+      : []),
     {
       groupTitle: language === 'he' ? 'פעולות ראשיות' : 'Main Menu',
       items: mainItems,
     },
     {
-      groupTitle: language === 'he' ? 'בנקאות והגדרות מערכת' : 'Banking & System Tables',
+      groupTitle: language === 'he' ? 'בנקאות וטבלאות המשפחה' : 'Banking & Family Tables',
       items: systemItems,
     },
     {

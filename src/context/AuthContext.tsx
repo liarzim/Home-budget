@@ -1396,12 +1396,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             is_default: false,
           });
         }
+        await seedDefaultHouseholdData(newHh.id);
         if (data) {
           await loadSupabaseUserData(user!.id, user!.email);
         }
       } catch (err) {
         console.error('Failed to create household in Supabase:', err);
       }
+    } else {
+      await seedDefaultHouseholdData(newHh.id);
     }
     return newHh;
   };
@@ -2078,10 +2081,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       { id: generateUUID(), household_id: hhId, raw_pattern: 'עו"ש לאומי', display_name: 'עו״ש בנק לאומי', card_last_digits: null, payment_type: 'bank_transfer', color: '#06B6D4', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
     ];
 
-    setMacroCategories((prev) => [...prev, ...newMacros]);
-    setCategories((prev) => [...prev, ...newCats]);
-    setBusinessMappings((prev) => [...prev, ...newBms]);
-    setCardMappings((prev) => [...prev, ...newCards]);
+    if (!targetHouseholdId || targetHouseholdId === activeHousehold?.id) {
+      setMacroCategories((prev) => [...prev, ...newMacros]);
+      setCategories((prev) => [...prev, ...newCats]);
+      setBusinessMappings((prev) => [...prev, ...newBms]);
+      setCardMappings((prev) => [...prev, ...newCards]);
+    }
 
     if (isSupabaseConfigured && !isDemoMode) {
       try {
