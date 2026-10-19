@@ -40,6 +40,7 @@ export const TransactionsView: React.FC = () => {
   const {
     transactions,
     categories,
+    macroCategories,
     businessMappings,
     cardMappings,
     activeHousehold,
@@ -303,6 +304,58 @@ export const TransactionsView: React.FC = () => {
       balance: income - expense,
     };
   }, [filteredTransactions]);
+
+  const renderCategoryOptions = (targetType: 'expense' | 'income' | 'savings') => {
+    const effectiveType = targetType === 'income' ? 'income' : 'expense';
+    const filtered = categories.filter((c) => c.type === effectiveType);
+
+    const relevantMacros = (macroCategories || []).filter((m) => m.type === effectiveType);
+    const hasMacroGrouping = relevantMacros.some((m) =>
+      filtered.some((c) => c.macro_category_id === m.id)
+    );
+
+    if (hasMacroGrouping) {
+      const unassigned = filtered.filter(
+        (c) => !c.macro_category_id || !relevantMacros.some((m) => m.id === c.macro_category_id)
+      );
+      return (
+        <>
+          {relevantMacros.map((m) => {
+            const mCats = filtered.filter((c) => c.macro_category_id === m.id);
+            if (mCats.length === 0) return null;
+            return (
+              <optgroup key={m.id} label={m.name}>
+                {mCats.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {formatCategoryName(cat.name, language)}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
+          {unassigned.length > 0 && (
+            <optgroup label={language === 'he' ? 'קטגוריות נוספות' : 'Other Categories'}>
+              {unassigned.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {formatCategoryName(cat.name, language)}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </>
+      );
+    }
+
+    return (
+      <>
+        {filtered.map((cat) => (
+          <option key={cat.id} value={cat.id}>
+            {formatCategoryName(cat.name, language)}
+          </option>
+        ))}
+      </>
+    );
+  };
 
   return (
     <div style={styles.container}>
@@ -988,40 +1041,32 @@ export const TransactionsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* 4. Category Picker */}
+              {/* 4. Category Dropdown */}
               <div style={styles.formGroup}>
                 <label style={styles.inputLabel}>
                   {language === 'he'
                     ? newType === 'income' ? 'סוג הכנסה (קטגוריה)' : newType === 'savings' ? 'יעד חיסכון / קטגוריה' : 'סוג הוצאה (קטגוריה)'
                     : 'Category'}
                 </label>
-                <div style={styles.catPickerScroll}>
-                  {categories
-                    .filter((c) => (newType === 'income' ? c.type === 'income' : c.type === 'expense'))
-                    .map((cat) => {
-                      const isSelected = newCategoryId === cat.id;
-                      return (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          style={{
-                            ...styles.catPill,
-                            ...(isSelected
-                              ? {
-                                  backgroundColor: cat.color || 'var(--primary)',
-                                  borderColor: cat.color || 'var(--primary)',
-                                  color: '#FFFFFF',
-                                  fontWeight: '700',
-                                }
-                              : {}),
-                          }}
-                          onClick={() => setNewCategoryId(cat.id)}
-                        >
-                          {formatCategoryName(cat.name, language)}
-                        </button>
-                      );
-                    })}
-                </div>
+                <select
+                  style={styles.textInput}
+                  value={newCategoryId}
+                  onChange={(e) => setNewCategoryId(e.target.value)}
+                >
+                  <option value="">
+                    {language === 'he' ? '-- בחר קטגוריה מהרשימה --' : '-- Select Category --'}
+                  </option>
+                  {renderCategoryOptions(newType)}
+                </select>
+                {detectedCategory && !newCategoryId && (
+                  <div style={styles.autoDetectedPill}>
+                    <Sparkles size={13} />
+                    <span>
+                      {language === 'he' ? 'סיווג זוהה לפי הכלל:' : 'Auto-detected by rule:'}{' '}
+                      <strong>{formatCategoryName(detectedCategory.name, language)}</strong>
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* 5. Payment Method & Optional Card Digits */}
@@ -1269,38 +1314,21 @@ export const TransactionsView: React.FC = () => {
                 </div>
               </div>
 
-              {/* 4. Category Picker */}
+              {/* 4. Category Dropdown */}
               <div style={styles.formGroup}>
                 <label style={styles.inputLabel}>
                   {language === 'he' ? 'קטגוריה' : 'Category'}
                 </label>
-                <div style={styles.catPickerScroll}>
-                  {categories
-                    .filter((c) => (editType === 'income' ? c.type === 'income' : c.type === 'expense'))
-                    .map((cat) => {
-                      const isSelected = editCategoryId === cat.id;
-                      return (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          style={{
-                            ...styles.catPill,
-                            ...(isSelected
-                              ? {
-                                  backgroundColor: cat.color || 'var(--primary)',
-                                  borderColor: cat.color || 'var(--primary)',
-                                  color: '#FFFFFF',
-                                  fontWeight: '700',
-                                }
-                              : {}),
-                          }}
-                          onClick={() => setEditCategoryId(cat.id)}
-                        >
-                          {formatCategoryName(cat.name, language)}
-                        </button>
-                      );
-                    })}
-                </div>
+                <select
+                  style={styles.textInput}
+                  value={editCategoryId}
+                  onChange={(e) => setEditCategoryId(e.target.value)}
+                >
+                  <option value="">
+                    {language === 'he' ? '-- בחר קטגוריה מהרשימה --' : '-- Select Category --'}
+                  </option>
+                  {renderCategoryOptions(editType)}
+                </select>
               </div>
 
               {/* 5. Payment Method & Optional Card Digits */}
