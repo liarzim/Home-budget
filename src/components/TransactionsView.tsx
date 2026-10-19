@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { t, formatCategoryName, formatDate } from '../lib/i18n';
 import { Transaction, TransactionType } from '../lib/types';
@@ -17,7 +17,24 @@ import {
   TrendingUp,
   Pencil,
   Trash2,
+  Calendar,
+  X,
 } from 'lucide-react';
+
+const MONTHS = [
+  { value: '01', nameHe: 'ינואר', nameEn: 'January' },
+  { value: '02', nameHe: 'פברואר', nameEn: 'February' },
+  { value: '03', nameHe: 'מרץ', nameEn: 'March' },
+  { value: '04', nameHe: 'אפריל', nameEn: 'April' },
+  { value: '05', nameHe: 'מאי', nameEn: 'May' },
+  { value: '06', nameHe: 'יוני', nameEn: 'June' },
+  { value: '07', nameHe: 'יולי', nameEn: 'July' },
+  { value: '08', nameHe: 'אוגוסט', nameEn: 'August' },
+  { value: '09', nameHe: 'ספטמבר', nameEn: 'September' },
+  { value: '10', nameHe: 'אוקטובר', nameEn: 'October' },
+  { value: '11', nameHe: 'נובמבר', nameEn: 'November' },
+  { value: '12', nameHe: 'דצמבר', nameEn: 'December' },
+];
 
 export const TransactionsView: React.FC = () => {
   const {
@@ -45,6 +62,8 @@ export const TransactionsView: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | 'expense' | 'income'>('all');
+  const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [showHidden, setShowHidden] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
@@ -205,10 +224,53 @@ export const TransactionsView: React.FC = () => {
     }
   };
 
+  // Dynamic list of years available in transactions
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    transactions.forEach((tx) => {
+      if (tx.date && tx.date.length >= 4) {
+        const yr = tx.date.split('-')[0];
+        if (yr && !isNaN(Number(yr)) && yr.length === 4) {
+          years.add(yr);
+        }
+      }
+    });
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [transactions]);
+
+  // Transaction counts per month for the selected year
+  const monthCounts = useMemo(() => {
+    if (selectedYear === 'all') return {};
+    const counts: { [month: string]: number } = {};
+    transactions.forEach((tx) => {
+      if (!tx.date) return;
+      const parts = tx.date.split('-');
+      const txYear = parts[0];
+      if (txYear !== selectedYear) return;
+      if (!showHidden && tx.is_hidden) return;
+      if (selectedTypeFilter !== 'all' && tx.transaction_type !== selectedTypeFilter) return;
+      const txMonth = parts[1] ? parts[1].padStart(2, '0') : '';
+      if (txMonth) {
+        counts[txMonth] = (counts[txMonth] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [transactions, selectedYear, showHidden, selectedTypeFilter]);
+
   // Filter transactions
   const filteredTransactions = transactions.filter((t) => {
     if (!showHidden && t.is_hidden) return false;
     if (selectedTypeFilter !== 'all' && t.transaction_type !== selectedTypeFilter) return false;
+
+    // Filter by Year and Month
+    if (selectedYear !== 'all' || selectedMonth !== 'all') {
+      if (!t.date) return false;
+      const parts = t.date.split('-');
+      const txYear = parts[0];
+      const txMonth = parts[1] ? parts[1].padStart(2, '0') : '';
+      if (selectedYear !== 'all' && txYear !== selectedYear) return false;
+      if (selectedMonth !== 'all' && txMonth !== selectedMonth) return false;
+    }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -221,6 +283,26 @@ export const TransactionsView: React.FC = () => {
 
     return true;
   });
+
+  // Calculate statistics for the active filtered period
+  const periodStats = useMemo(() => {
+    let income = 0;
+    let expense = 0;
+    filteredTransactions.forEach((tx) => {
+      const amt = Number(tx.amount) || 0;
+      if (tx.transaction_type === 'income') {
+        income += amt;
+      } else {
+        expense += amt;
+      }
+    });
+    return {
+      count: filteredTransactions.length,
+      income,
+      expense,
+      balance: income - expense,
+    };
+  }, [filteredTransactions]);
 
   return (
     <div style={styles.container}>
@@ -312,6 +394,149 @@ export const TransactionsView: React.FC = () => {
               <span>{language === 'he' ? '+ הוסף תנועה' : 'Add Transaction'}</span>
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Period Filter Card (Year & Month Selector + Statistics) */}
+      <div style={styles.periodFilterCard}>
+        <div style={styles.periodFilterControls}>
+          {/* Year Dropdown */}
+          <div style={styles.selectGroup}>
+            <label style={styles.selectLabel}>
+              <Calendar size={15} color="var(--primary)" />
+              <span>{language === 'he' ? 'שנה:' : 'Year:'}</span>
+            </label>
+            <select
+              style={styles.periodSelect}
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+              }}
+            >
+              <option value="all">{language === 'he' ? '📅 כל השנים' : '📅 All Years'}</option>
+              {availableYears.map((yr) => (
+                <option key={yr} value={yr}>
+                  {yr}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Month Dropdown */}
+          <div style={styles.selectGroup}>
+            <label style={styles.selectLabel}>
+              <span>{language === 'he' ? 'חודש:' : 'Month:'}</span>
+            </label>
+            <select
+              style={styles.periodSelect}
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+            >
+              <option value="all">{language === 'he' ? '🗓️ כל החודשים' : '🗓️ All Months'}</option>
+              {MONTHS.map((m) => {
+                const count = selectedYear !== 'all' ? monthCounts[m.value] : null;
+                const countStr = count !== null && count !== undefined ? ` (${count})` : '';
+                return (
+                  <option key={m.value} value={m.value}>
+                    {m.value} - {language === 'he' ? m.nameHe : m.nameEn}{countStr}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Reset Filters Button */}
+          {(selectedYear !== 'all' || selectedMonth !== 'all' || searchQuery.trim() !== '' || selectedTypeFilter !== 'all') && (
+            <button
+              style={styles.clearFiltersBtn}
+              onClick={() => {
+                setSelectedYear('all');
+                setSelectedMonth('all');
+                setSearchQuery('');
+                setSelectedTypeFilter('all');
+              }}
+              title={language === 'he' ? 'איפוס סינונים' : 'Reset Filters'}
+            >
+              <X size={14} />
+              <span>{language === 'he' ? 'איפוס סינון' : 'Clear Filters'}</span>
+            </button>
+          )}
+        </div>
+
+        {/* Quick Month Chips when a Year is selected */}
+        {selectedYear !== 'all' && (
+          <div style={styles.monthChipsScroll}>
+            <button
+              style={{
+                ...styles.monthChip,
+                ...(selectedMonth === 'all' ? styles.monthChipActive : {}),
+              }}
+              onClick={() => setSelectedMonth('all')}
+            >
+              {language === 'he' ? `כל שנת ${selectedYear}` : `All ${selectedYear}`}
+            </button>
+            {MONTHS.map((m) => {
+              const count = monthCounts[m.value] || 0;
+              const isSelected = selectedMonth === m.value;
+              return (
+                <button
+                  key={m.value}
+                  style={{
+                    ...styles.monthChip,
+                    ...(isSelected ? styles.monthChipActive : {}),
+                    ...(count === 0 && !isSelected ? styles.monthChipEmpty : {}),
+                  }}
+                  onClick={() => setSelectedMonth(isSelected ? 'all' : m.value)}
+                >
+                  <span>{language === 'he' ? m.nameHe : m.nameEn}</span>
+                  {count > 0 && <span style={styles.monthChipBadge}>{count}</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Summary Strip for the Active Period */}
+        <div style={styles.periodSummaryStrip}>
+          <div style={styles.summaryItem}>
+            <span style={styles.summaryLabel}>
+              {language === 'he' ? 'תנועות' : 'Transactions'}:
+            </span>
+            <strong style={styles.summaryValue}>{periodStats.count.toLocaleString()}</strong>
+          </div>
+
+          <div style={styles.summaryItem}>
+            <span style={styles.summaryLabel}>
+              {language === 'he' ? 'הכנסות' : 'Income'}:
+            </span>
+            <strong style={{ ...styles.summaryValue, color: 'var(--success)' }}>
+              +{currencySymbol}{periodStats.income.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </strong>
+          </div>
+
+          <div style={styles.summaryItem}>
+            <span style={styles.summaryLabel}>
+              {language === 'he' ? 'הוצאות' : 'Expenses'}:
+            </span>
+            <strong style={{ ...styles.summaryValue, color: 'var(--danger)' }}>
+              -{currencySymbol}{periodStats.expense.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </strong>
+          </div>
+
+          <div style={styles.summaryItem}>
+            <span style={styles.summaryLabel}>
+              {language === 'he' ? 'מאזן' : 'Net Cashflow'}:
+            </span>
+            <strong
+              style={{
+                ...styles.summaryValue,
+                color: periodStats.balance >= 0 ? 'var(--success)' : 'var(--danger)',
+              }}
+            >
+              {periodStats.balance >= 0 ? '+' : ''}
+              {currencySymbol}{periodStats.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </strong>
+          </div>
         </div>
       </div>
 
@@ -1202,6 +1427,119 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: '12px',
     marginBottom: '16px',
     flexWrap: 'wrap',
+  },
+  periodFilterCard: {
+    backgroundColor: 'var(--bg-surface)',
+    borderRadius: 'var(--radius-lg)',
+    border: '1px solid var(--border-main)',
+    padding: '14px 18px',
+    marginBottom: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  periodFilterControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+    flexWrap: 'wrap',
+  },
+  selectGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  selectLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    color: 'var(--text-secondary)',
+  },
+  periodSelect: {
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    borderRadius: 'var(--radius-md)',
+    padding: '7px 12px',
+    fontSize: '0.8125rem',
+    color: 'var(--text-primary)',
+    fontWeight: '600',
+    outline: 'none',
+    cursor: 'pointer',
+  },
+  clearFiltersBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 12px',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: 'var(--radius-md)',
+    fontSize: '0.75rem',
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  monthChipsScroll: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    overflowX: 'auto',
+    paddingBottom: '4px',
+  },
+  monthChip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '5px 12px',
+    borderRadius: '20px',
+    border: '1px solid var(--border-main)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    color: 'var(--text-secondary)',
+    fontSize: '0.75rem',
+    fontWeight: '500',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  monthChipActive: {
+    backgroundColor: 'var(--primary)',
+    borderColor: 'var(--primary)',
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  monthChipEmpty: {
+    opacity: 0.5,
+  },
+  monthChipBadge: {
+    fontSize: '0.6875rem',
+    padding: '1px 5px',
+    borderRadius: '10px',
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+  },
+  periodSummaryStrip: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '12px',
+    paddingTop: '10px',
+    borderTop: '1px solid var(--border-subtle)',
+    flexWrap: 'wrap',
+  },
+  summaryItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '0.8125rem',
+  },
+  summaryLabel: {
+    color: 'var(--text-secondary)',
+  },
+  summaryValue: {
+    color: 'var(--text-primary)',
+    fontWeight: '700',
   },
   searchWrapper: {
     display: 'flex',
