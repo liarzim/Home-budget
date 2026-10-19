@@ -516,39 +516,6 @@ export const TransactionsView: React.FC = () => {
           )}
         </div>
 
-        {/* Quick Month Chips when a Year is selected */}
-        {selectedYear !== 'all' && (
-          <div style={styles.monthChipsScroll}>
-            <button
-              style={{
-                ...styles.monthChip,
-                ...(selectedMonth === 'all' ? styles.monthChipActive : {}),
-              }}
-              onClick={() => setSelectedMonth('all')}
-            >
-              {language === 'he' ? `כל שנת ${selectedYear}` : `All ${selectedYear}`}
-            </button>
-            {MONTHS.map((m) => {
-              const count = monthCounts[m.value] || 0;
-              const isSelected = selectedMonth === m.value;
-              return (
-                <button
-                  key={m.value}
-                  style={{
-                    ...styles.monthChip,
-                    ...(isSelected ? styles.monthChipActive : {}),
-                    ...(count === 0 && !isSelected ? styles.monthChipEmpty : {}),
-                  }}
-                  onClick={() => setSelectedMonth(isSelected ? 'all' : m.value)}
-                >
-                  <span>{language === 'he' ? m.nameHe : m.nameEn}</span>
-                  {count > 0 && <span style={styles.monthChipBadge}>{count}</span>}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
         {/* Summary Strip for the Active Period */}
         <div style={styles.periodSummaryStrip}>
           <div style={styles.summaryItem}>
