@@ -35,8 +35,9 @@ android/.gradle
 android/build
 android/app/build
 
-# Local NAS config and scratch
+# Local NAS config, backups and scratch
 nas-setup/
 scratch/
+backups/
 generate_cmd.js
 

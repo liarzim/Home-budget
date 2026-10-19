@@ -100,6 +100,35 @@ export async function fetchMonthlyDashboardData(
       } else {
         rawBudgets = budgetData || [];
       }
+
+      // Always fetch fresh categories from Supabase to prevent stale context state
+      const { data: catData } = await supabase
+        .from('categories')
+        .select('*')
+        .eq('household_id', householdId);
+
+      if (catData && catData.length > 0) {
+        categories = catData;
+      }
+
+      // Fetch fresh macro categories if available
+      const { data: mcData } = await supabase
+        .from('macro_categories')
+        .select('*')
+        .eq('household_id', householdId)
+        .order('display_order', { ascending: true });
+
+      if (mcData && mcData.length > 0) {
+        macroCategories = mcData;
+      } else if (macroCategories.length === 0) {
+        macroCategories = [
+          { id: '4e455730-3ae8-4228-9374-d36b10807b03', household_id: householdId, name: 'הוצאות קבועות', type: 'expense', color: '#4F46E5', icon: 'Lock', display_order: 1, created_at: '', updated_at: '' },
+          { id: '1814a98e-5ac1-4a92-8fb0-f415d0422bcc', household_id: householdId, name: 'הוצאות משתנות', type: 'expense', color: '#F59E0B', icon: 'ShoppingBag', display_order: 2, created_at: '', updated_at: '' },
+          { id: 'f29d04cb-80bd-49a9-9a1d-3fe64afbdfa5', household_id: householdId, name: 'הוצאות עונתיות ומשפחה', type: 'expense', color: '#EC4899', icon: 'Calendar', display_order: 3, created_at: '', updated_at: '' },
+          { id: '7f291932-0257-4da3-8e36-32519db187ab', household_id: householdId, name: 'חיסכון והשקעות', type: 'expense', color: '#06B6D4', icon: 'PiggyBank', display_order: 4, created_at: '', updated_at: '' },
+          { id: 'c08b0bb3-4a1f-45ee-9b33-8a3b77383478', household_id: householdId, name: 'משכורות והכנסות', type: 'income', color: '#10B981', icon: 'TrendingUp', display_order: 5, created_at: '', updated_at: '' },
+        ];
+      }
     } catch (err) {
       console.error('Exception fetching dashboard data:', err);
     }
@@ -216,8 +245,14 @@ function buildMacroGroups(
       }
     });
 
-    // Handle uncategorized transactions
-    const uncategorizedTxs = txByCategory.get(null) || [];
+    // Handle uncategorized or unmapped transactions
+    const knownCatIds = new Set(categories.map((c) => c.id));
+    const uncategorizedTxs: Transaction[] = [];
+    txByCategory.forEach((txList, catId) => {
+      if (!catId || !knownCatIds.has(catId)) {
+        uncategorizedTxs.push(...txList);
+      }
+    });
     if (uncategorizedTxs.length > 0) {
       const uncatExpenses = uncategorizedTxs.filter((tx) => tx.transaction_type === 'expense');
       const uncatIncomes = uncategorizedTxs.filter((tx) => tx.transaction_type === 'income');
@@ -373,7 +408,14 @@ function buildMacroGroups(
     }
   });
 
-  const uncategorizedTxs = txByCategory.get(null) || [];
+  // Handle uncategorized or unmapped transactions
+  const knownCatIds = new Set(categories.map((c) => c.id));
+  const uncategorizedTxs: Transaction[] = [];
+  txByCategory.forEach((txList, catId) => {
+    if (!catId || !knownCatIds.has(catId)) {
+      uncategorizedTxs.push(...txList);
+    }
+  });
   if (uncategorizedTxs.length > 0) {
     const uncatExpenses = uncategorizedTxs.filter((tx) => tx.transaction_type === 'expense');
     const uncatIncomes = uncategorizedTxs.filter((tx) => tx.transaction_type === 'income');

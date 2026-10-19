@@ -55,11 +55,7 @@ const MainScreen: React.FC = () => {
         </div>
         {activeTab === 'schema' && <SchemaViewer />}
       </main>
-      {/* Desktop Floating Action Button */}
-      <div className="desktop-only">
-        <FloatingActionButton />
-      </div>
-      {/* Mobile Bottom Tab Navigation */}
+      {/* Bottom Tab Navigation */}
       <MobileBottomNav />
     </div>
   );
@@ -100,7 +96,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     maxWidth: '1200px',
     width: '100%',
     margin: '0 auto',
-    padding: '28px 24px 60px',
+    padding: '28px 24px 88px',
     flex: 1,
   },
 };

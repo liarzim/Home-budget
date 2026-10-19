@@ -887,15 +887,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Fetch Macro Categories (handle table not found gracefully)
+      // Fetch Macro Categories (handle table not found or RLS gracefully)
       try {
         const { data: mcs, error: mcErr } = await supabase
           .from('macro_categories')
           .select('*')
           .eq('household_id', householdId)
           .order('display_order', { ascending: true });
-        if (!mcErr && mcs) {
+        if (!mcErr && mcs && mcs.length > 0) {
           setMacroCategories(mcs);
+        } else {
+          setMacroCategories([
+            { id: '4e455730-3ae8-4228-9374-d36b10807b03', household_id: householdId, name: 'הוצאות קבועות', type: 'expense', color: '#4F46E5', icon: 'Lock', display_order: 1, created_at: '', updated_at: '' },
+            { id: '1814a98e-5ac1-4a92-8fb0-f415d0422bcc', household_id: householdId, name: 'הוצאות משתנות', type: 'expense', color: '#F59E0B', icon: 'ShoppingBag', display_order: 2, created_at: '', updated_at: '' },
+            { id: 'f29d04cb-80bd-49a9-9a1d-3fe64afbdfa5', household_id: householdId, name: 'הוצאות עונתיות ומשפחה', type: 'expense', color: '#EC4899', icon: 'Calendar', display_order: 3, created_at: '', updated_at: '' },
+            { id: '7f291932-0257-4da3-8e36-32519db187ab', household_id: householdId, name: 'חיסכון והשקעות', type: 'expense', color: '#06B6D4', icon: 'PiggyBank', display_order: 4, created_at: '', updated_at: '' },
+            { id: 'c08b0bb3-4a1f-45ee-9b33-8a3b77383478', household_id: householdId, name: 'משכורות והכנסות', type: 'income', color: '#10B981', icon: 'TrendingUp', display_order: 5, created_at: '', updated_at: '' },
+          ]);
         }
       } catch (e) {
         console.warn('macro_categories table not queryable yet');

@@ -14,15 +14,16 @@ export const MobileBottomNav: React.FC = () => {
   const { activeTab, setActiveTab, language } = useAuth();
 
   return (
-    <nav style={styles.bottomNavContainer} className="mobile-only">
-      {/* 1. Overview */}
-      <button
-        style={{
-          ...styles.navTab,
-          ...(activeTab === 'dashboard' ? styles.navTabActive : {}),
-        }}
-        onClick={() => setActiveTab('dashboard')}
-      >
+    <nav style={styles.bottomNavContainer} aria-label="Bottom Navigation">
+      <div style={styles.innerNavContent}>
+        {/* 1. Overview */}
+        <button
+          style={{
+            ...styles.navTab,
+            ...(activeTab === 'dashboard' ? styles.navTabActive : {}),
+          }}
+          onClick={() => setActiveTab('dashboard')}
+        >
         <Home
           size={20}
           color={activeTab === 'dashboard' ? 'var(--primary)' : 'var(--text-muted)'}
@@ -120,6 +121,7 @@ export const MobileBottomNav: React.FC = () => {
           {t('tabBudgets', language)}
         </span>
       </button>
+      </div>
     </nav>
   );
 };
@@ -131,15 +133,25 @@ const styles: { [key: string]: React.CSSProperties } = {
     left: 0,
     right: 0,
     height: '64px',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    backdropFilter: 'blur(12px)',
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    backdropFilter: 'blur(16px)',
     borderTop: '1px solid var(--border-main)',
-    boxShadow: '0 -4px 16px rgba(0, 0, 0, 0.04)',
+    boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.05)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 990,
+    paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+  },
+  innerNavContent: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-around',
-    zIndex: 990,
-    paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+    width: '100%',
+    maxWidth: '680px',
+    height: '100%',
+    margin: '0 auto',
+    padding: '0 8px',
   },
   navTab: {
     display: 'flex',
