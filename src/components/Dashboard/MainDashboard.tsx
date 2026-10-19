@@ -118,44 +118,64 @@ export const MainDashboard: React.FC = () => {
     };
   }, [investments]);
 
-  // Month navigation helpers
-  const handlePrevMonth = () => {
-    const currentIndex = availableMonths.indexOf(selectedMonth);
-    if (currentIndex < availableMonths.length - 1) {
-      setSelectedMonth(availableMonths[currentIndex + 1]);
-    } else {
-      // Calculate previous calendar month
-      const [y, m] = selectedMonth.split('-').map(Number);
-      const prevDate = new Date(y, m - 2, 1);
-      const prevStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
-      setSelectedMonth(prevStr);
+  // Dynamic list of available years
+  const availableYears = useMemo(() => {
+    const yearsSet = new Set<string>();
+    availableMonths.forEach((m) => {
+      const yr = m.split('-')[0];
+      if (yr) yearsSet.add(yr);
+    });
+    contextTransactions.forEach((tx) => {
+      if (tx.date && tx.date.length >= 4) {
+        const yr = tx.date.split('-')[0];
+        if (yr && !isNaN(Number(yr)) && yr.length === 4) {
+          yearsSet.add(yr);
+        }
+      }
+    });
+    if (yearsSet.size === 0) {
+      yearsSet.add(new Date().getFullYear().toString());
     }
+    return Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
+  }, [availableMonths, contextTransactions]);
+
+  const currentYear = selectedMonth ? selectedMonth.split('-')[0] : (availableYears[0] || new Date().getFullYear().toString());
+  const currentMonthNum = selectedMonth ? selectedMonth.split('-')[1] : String(new Date().getMonth() + 1).padStart(2, '0');
+
+  const monthsInSelectedYear = useMemo(() => {
+    return Array.from({ length: 12 }, (_, i) => {
+      const numStr = String(i + 1).padStart(2, '0');
+      const fullStr = `${currentYear}-${numStr}`;
+      const name = language === 'he' ? HEBREW_MONTHS_LIST[i] : new Date(Number(currentYear), i, 1).toLocaleString('en-US', { month: 'long' });
+      return {
+        value: numStr,
+        fullStr,
+        label: name,
+      };
+    });
+  }, [currentYear, language]);
+
+  const handleYearChange = (newYear: string) => {
+    setSelectedMonth(`${newYear}-${currentMonthNum}`);
+  };
+
+  const handleMonthChange = (newMonthNum: string) => {
+    setSelectedMonth(`${currentYear}-${newMonthNum}`);
+  };
+
+  // Month navigation helpers (step prev/next month)
+  const handlePrevMonth = () => {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const prevDate = new Date(y, m - 2, 1);
+    const prevStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+    setSelectedMonth(prevStr);
   };
 
   const handleNextMonth = () => {
-    const currentIndex = availableMonths.indexOf(selectedMonth);
-    if (currentIndex > 0) {
-      setSelectedMonth(availableMonths[currentIndex - 1]);
-    } else {
-      // Calculate next calendar month
-      const [y, m] = selectedMonth.split('-').map(Number);
-      const nextDate = new Date(y, m, 1);
-      const nextStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
-      setSelectedMonth(nextStr);
-    }
-  };
-
-  const formatMonthLabel = (mStr: string) => {
-    try {
-      const [y, m] = mStr.split('-').map(Number);
-      if (language === 'he') {
-        return `${HEBREW_MONTHS_LIST[m - 1] || m} ${y}`;
-      }
-      const date = new Date(y, m - 1, 1);
-      return date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-    } catch {
-      return mStr;
-    }
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const nextDate = new Date(y, m, 1);
+    const nextStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
+    setSelectedMonth(nextStr);
   };
 
   // Transaction hide / update handlers from drill-down
@@ -181,7 +201,7 @@ export const MainDashboard: React.FC = () => {
         <div style={styles.navLeft}>
           <Calendar size={18} color="var(--primary)" />
           <span style={styles.navTitle}>
-            {language === 'he' ? 'חודש נבחר:' : 'Statement Period:'}
+            {language === 'he' ? 'תקופה נבחרת:' : 'Statement Period:'}
           </span>
 
           <div style={styles.monthSwitcherWrap}>
@@ -193,14 +213,32 @@ export const MainDashboard: React.FC = () => {
               <ChevronRight size={16} color="var(--text-secondary)" />
             </button>
 
+            {/* Year Selector */}
             <select
-              style={styles.monthSelect}
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
+              style={styles.periodYearSelect}
+              value={currentYear}
+              onChange={(e) => handleYearChange(e.target.value)}
+              title={language === 'he' ? 'בחר שנה' : 'Select Year'}
             >
-              {availableMonths.map((m) => (
-                <option key={m} value={m}>
-                  {formatMonthLabel(m)}
+              {availableYears.map((yr) => (
+                <option key={yr} value={yr}>
+                  {yr}
+                </option>
+              ))}
+            </select>
+
+            <span style={styles.periodDivider}>|</span>
+
+            {/* Month Selector */}
+            <select
+              style={styles.periodMonthSelect}
+              value={currentMonthNum}
+              onChange={(e) => handleMonthChange(e.target.value)}
+              title={language === 'he' ? 'בחר חודש' : 'Select Month'}
+            >
+              {monthsInSelectedYear.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
                 </option>
               ))}
             </select>
@@ -474,15 +512,42 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'var(--bg-surface-subtle)',
     borderRadius: 'var(--radius-sm)',
     border: '1px solid var(--border-main)',
-    padding: '2px',
+    padding: '2px 4px',
+    gap: '2px',
   },
   monthNavBtn: {
     background: 'none',
     border: 'none',
-    padding: '6px 8px',
+    padding: '6px 6px',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
+  },
+  periodYearSelect: {
+    background: 'transparent',
+    border: 'none',
+    fontSize: '0.875rem',
+    fontWeight: '800',
+    color: 'var(--primary)',
+    padding: '4px 6px',
+    cursor: 'pointer',
+    outline: 'none',
+  },
+  periodDivider: {
+    color: 'var(--border-strong, #CBD5E1)',
+    fontSize: '0.8125rem',
+    userSelect: 'none',
+    padding: '0 2px',
+  },
+  periodMonthSelect: {
+    background: 'transparent',
+    border: 'none',
+    fontSize: '0.875rem',
+    fontWeight: '700',
+    color: 'var(--text-primary)',
+    padding: '4px 6px',
+    cursor: 'pointer',
+    outline: 'none',
   },
   monthSelect: {
     background: 'transparent',
