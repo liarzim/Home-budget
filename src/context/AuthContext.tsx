@@ -154,6 +154,19 @@ interface AuthContextType {
   isDemoDataCleared: boolean;
 }
 
+const DEFAULT_CARD_MAPPINGS: CardMapping[] = [
+  { id: '8015215f-4b55-4d4e-81aa-0872dad64ca0', household_id: 'a65b65b2-1fd7-4711-b531-9ea20137c09e', raw_pattern: 'מיכאל 7520', display_name: 'אשראי מיכה', card_last_digits: '7520', payment_type: 'credit_card', color: '#4F46E5', created_at: '', updated_at: '' },
+  { id: 'f1be7362-2a50-4998-a46d-99925cff8399', household_id: 'a65b65b2-1fd7-4711-b531-9ea20137c09e', raw_pattern: 'אורנה 2 0450', display_name: 'אשראי אורנה', card_last_digits: '0450', payment_type: 'credit_card', color: '#EC4899', created_at: '', updated_at: '' },
+  { id: '3ff7c730-ad9c-4f9d-a879-83bdca2575c0', household_id: 'a65b65b2-1fd7-4711-b531-9ea20137c09e', raw_pattern: 'ויזה פלטינום', display_name: 'שופרסל', card_last_digits: null, payment_type: 'credit_card', color: '#10B981', created_at: '', updated_at: '' },
+  { id: 'd90ff4ef-21b3-4527-a636-153caa052bfe', household_id: 'a65b65b2-1fd7-4711-b531-9ea20137c09e', raw_pattern: 'מקס איט פי', display_name: 'בהצדעה', card_last_digits: null, payment_type: 'credit_card', color: '#F59E0B', created_at: '', updated_at: '' },
+  { id: '2e168ad0-6f2a-4911-9cf6-4743104adf60', household_id: 'a65b65b2-1fd7-4711-b531-9ea20137c09e', raw_pattern: 'ישראכרט', display_name: 'טוב', card_last_digits: null, payment_type: 'credit_card', color: '#06B6D4', created_at: '', updated_at: '' },
+  { id: 'db83a1c2-7b63-4ba4-a0a2-5465da24faf2', household_id: 'a65b65b2-1fd7-4711-b531-9ea20137c09e', raw_pattern: 'ויזה 3669', display_name: 'אשראי אורנה', card_last_digits: '3669', payment_type: 'credit_card', color: '#EC4899', created_at: '', updated_at: '' },
+  { id: '4f928356-9f1f-4f01-937e-156ebafaf4a7', household_id: 'a65b65b2-1fd7-4711-b531-9ea20137c09e', raw_pattern: 'אורנה 3 3669', display_name: 'אשראי אורנה', card_last_digits: '3669', payment_type: 'credit_card', color: '#EC4899', created_at: '', updated_at: '' },
+  { id: '220fa7f2-2c22-4dac-bef9-b5daec5d3483', household_id: 'a65b65b2-1fd7-4711-b531-9ea20137c09e', raw_pattern: 'פלטינה מסטרקארד', display_name: 'טוב', card_last_digits: null, payment_type: 'credit_card', color: '#06B6D4', created_at: '', updated_at: '' },
+  { id: 'd68a6428-2ee3-4ed8-a352-f92878958d58', household_id: 'a65b65b2-1fd7-4711-b531-9ea20137c09e', raw_pattern: 'ויזה 1618', display_name: 'הסתדרות', card_last_digits: '1618', payment_type: 'credit_card', color: '#8B5CF6', created_at: '', updated_at: '' },
+  { id: 'a58ee6ee-acdc-4d95-b894-c04d62401600', household_id: 'a65b65b2-1fd7-4711-b531-9ea20137c09e', raw_pattern: 'ויזה 7520', display_name: 'אשראי מיכה', card_last_digits: '7520', payment_type: 'credit_card', color: '#4F46E5', created_at: '', updated_at: '' },
+];
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -169,7 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [macroCategories, setMacroCategories] = useState<MacroCategory[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [businessMappings, setBusinessMappings] = useState<BusinessMapping[]>([]);
-  const [cardMappings, setCardMappings] = useState<CardMapping[]>([]);
+  const [cardMappings, setCardMappings] = useState<CardMapping[]>(DEFAULT_CARD_MAPPINGS);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [savings, setSavings] = useState<Savings[]>([]);
@@ -929,11 +942,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .from('payment_method_mappings')
           .select('*')
           .eq('household_id', householdId);
-        if (!pmErr && pms) {
+        if (!pmErr && pms && pms.length > 0) {
           setCardMappings(pms);
+        } else {
+          setCardMappings(DEFAULT_CARD_MAPPINGS.map((c) => ({ ...c, household_id: householdId })));
         }
       } catch (e) {
         console.warn('payment_method_mappings table not queryable yet');
+        setCardMappings(DEFAULT_CARD_MAPPINGS.map((c) => ({ ...c, household_id: householdId })));
       }
 
       // Fetch Transactions
