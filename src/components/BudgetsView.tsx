@@ -29,6 +29,11 @@ const MONTH_NAMES_HE = [
   'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
 ];
 
+const MONTH_SHORT_NAMES_HE = [
+  'ינו׳', 'פבר׳', 'מרץ', 'אפר׳', 'מאי', 'יוני',
+  'יולי', 'אוג׳', 'ספט׳', 'אוק׳', 'נוב׳', 'דצמ׳'
+];
+
 export const BudgetsView: React.FC = () => {
   const {
     budgets,
@@ -701,24 +706,24 @@ export const BudgetsView: React.FC = () => {
                 {/* Categories Table / Rows */}
                 {isExpanded && (
                   <div style={styles.categoriesTableWrapper}>
-                    <table style={styles.categoriesTable}>
+                    <table style={{ ...styles.categoriesTable, tableLayout: matrixView ? 'fixed' : 'auto' }}>
                       <thead>
                         <tr>
-                          <th style={{ ...styles.thCell, textAlign: 'right', width: matrixView ? '180px' : '30%', minWidth: matrixView ? '180px' : undefined }}>
+                          <th style={{ ...styles.thCell, textAlign: 'right', width: matrixView ? '16%' : '30%', padding: matrixView ? '8px 4px' : '10px 16px' }}>
                             קטגוריה
                           </th>
-                          <th style={{ ...styles.thCell, textAlign: 'center', width: matrixView ? '140px' : '20%', minWidth: matrixView ? '140px' : undefined }}>
-                            ממוצע הוצאה (אמת)
+                          <th style={{ ...styles.thCell, textAlign: 'center', width: matrixView ? '10%' : '20%', padding: matrixView ? '8px 2px' : '10px 16px' }}>
+                            {matrixView ? 'ממוצע' : 'ממוצע הוצאה (אמת)'}
                           </th>
                           {matrixView ? (
                             <>
-                              {MONTH_NAMES_HE.map((m, idx) => (
-                                <th key={idx} style={{ ...styles.thCell, textAlign: 'center', minWidth: '65px' }}>
+                              {MONTH_SHORT_NAMES_HE.map((m, idx) => (
+                                <th key={idx} style={{ ...styles.thCell, textAlign: 'center', padding: '8px 1px', fontSize: '0.71875rem', width: '5.4%' }}>
                                   {m}
                                 </th>
                               ))}
-                              <th style={{ ...styles.thCell, textAlign: 'center', minWidth: '95px', backgroundColor: 'var(--primary-light)', color: 'var(--primary)', fontWeight: '800' }}>
-                                סה"כ שנתי
+                              <th style={{ ...styles.thCell, textAlign: 'center', backgroundColor: 'var(--primary-light)', color: 'var(--primary)', fontWeight: '800', padding: '8px 2px', fontSize: '0.71875rem', width: '9.2%' }}>
+                                סה"כ
                               </th>
                             </>
                           ) : (
@@ -743,29 +748,52 @@ export const BudgetsView: React.FC = () => {
                           return (
                             <tr key={cat.id} style={styles.catRow}>
                               {/* Category Name */}
-                              <td style={styles.tdCell}>
-                                <div style={styles.categoryNameCol}>
+                              <td style={{ ...styles.tdCell, padding: matrixView ? '6px 4px' : '12px 16px' }}>
+                                <div style={styles.categoryNameCol} title={cat.name}>
                                   <div
                                     style={{
                                       ...styles.categoryDot,
                                       backgroundColor: cat.color || macro.color || 'var(--primary)',
+                                      width: matrixView ? '7px' : '10px',
+                                      height: matrixView ? '7px' : '10px',
                                     }}
                                   />
-                                  <span style={styles.catNameText}>{cat.name}</span>
+                                  <span
+                                    style={{
+                                      ...styles.catNameText,
+                                      fontSize: matrixView ? '0.75rem' : '0.875rem',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                    }}
+                                  >
+                                    {cat.name}
+                                  </span>
                                 </div>
                               </td>
 
                               {/* Historical Average Badge */}
-                              <td style={{ ...styles.tdCell, textAlign: 'center' }}>
-                                <div style={styles.avgBadge}>
-                                  <span style={styles.avgBadgeValue}>{currency} {stats.prevYearAvg.toLocaleString()}</span>
-                                  <span style={styles.avgBadgeSub}>ממוצע שנת 2026 (10 חודשים)</span>
+                              <td style={{ ...styles.tdCell, textAlign: 'center', padding: matrixView ? '4px 2px' : '12px 16px' }}>
+                                <div
+                                  style={{ ...styles.avgBadge, padding: matrixView ? '2px 4px' : '4px 10px' }}
+                                  title={`ממוצע שנת 2026: ${currency}${stats.prevYearAvg.toLocaleString()}${stats.isBiMonthly ? ' (הוצאה דו-חודשית)' : ''}`}
+                                >
+                                  <span style={{ ...styles.avgBadgeValue, fontSize: matrixView ? '0.71875rem' : '0.8125rem' }}>
+                                    {currency}{stats.prevYearAvg.toLocaleString()}
+                                  </span>
+                                  {!matrixView && (
+                                    <span style={styles.avgBadgeSub}>ממוצע שנת 2026 (10 חודשים)</span>
+                                  )}
                                   {stats.isBiMonthly && (
                                     <span
-                                      style={styles.biMonthlyTag}
-                                      title={`הוצאה דו-חודשית: חודשים ${stats.biMonthlyType === 'even' ? 'זוגיים' : 'אי-זוגיים'} (~${currency}${stats.biMonthlyType === 'even' ? stats.avgEven.toLocaleString() : stats.avgOdd.toLocaleString()})`}
+                                      style={{
+                                        ...styles.biMonthlyTag,
+                                        fontSize: matrixView ? '0.5625rem' : '0.625rem',
+                                        padding: matrixView ? '1px 3px' : '2px 6px',
+                                        marginTop: matrixView ? '1px' : '3px',
+                                      }}
                                     >
-                                      אחת לחודשיים ({stats.biMonthlyType === 'even' ? 'חודש זוגי' : 'חודש אי-זוגי'})
+                                      {matrixView ? 'דו-חודשי' : `אחת לחודשיים (${stats.biMonthlyType === 'even' ? 'חודש זוגי' : 'חודש אי-זוגי'})`}
                                     </span>
                                   )}
                                 </div>
@@ -777,7 +805,7 @@ export const BudgetsView: React.FC = () => {
                                   {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
                                     const mVal = planState[cat.id]?.[m] || 0;
                                     return (
-                                      <td key={m} style={{ ...styles.tdCell, padding: '4px' }}>
+                                      <td key={m} style={{ ...styles.tdCell, padding: '2px 1px' }}>
                                         <input
                                           type="number"
                                           min="0"
@@ -799,10 +827,11 @@ export const BudgetsView: React.FC = () => {
                                       fontWeight: '800',
                                       color: 'var(--text-primary)',
                                       whiteSpace: 'nowrap',
-                                      fontSize: '0.875rem',
+                                      fontSize: '0.75rem',
+                                      padding: '4px 1px',
                                     }}
                                   >
-                                    {currency} {catAnnualTotal.toLocaleString()}
+                                    {currency}{catAnnualTotal.toLocaleString()}
                                   </td>
                                 </>
                               ) : (
@@ -857,16 +886,16 @@ export const BudgetsView: React.FC = () => {
                       {matrixView && (
                         <tfoot>
                           <tr style={{ backgroundColor: 'var(--bg-app)', borderTop: '2px solid var(--border-main)', fontWeight: '800' }}>
-                            <td style={{ ...styles.tdCell, textAlign: 'right', fontWeight: '800' }}>
+                            <td style={{ ...styles.tdCell, textAlign: 'right', fontWeight: '800', padding: '6px 4px', fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               סה"כ {macro.name}
                             </td>
-                            <td style={{ ...styles.tdCell, textAlign: 'center', fontWeight: '800', color: 'var(--text-secondary)' }}>
-                              {currency} {macroHistoricalAvg.toLocaleString()}
+                            <td style={{ ...styles.tdCell, textAlign: 'center', fontWeight: '800', color: 'var(--text-secondary)', padding: '6px 2px', fontSize: '0.71875rem', whiteSpace: 'nowrap' }}>
+                              {currency}{macroHistoricalAvg.toLocaleString()}
                             </td>
                             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
                               const monthSum = cats.reduce((acc, cat) => acc + (planState[cat.id]?.[m] || 0), 0);
                               return (
-                                <td key={m} style={{ ...styles.tdCell, textAlign: 'center', padding: '6px 4px', fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
+                                <td key={m} style={{ ...styles.tdCell, textAlign: 'center', padding: '6px 1px', fontSize: '0.6875rem', whiteSpace: 'nowrap', fontWeight: '700' }}>
                                   {currency}{monthSum.toLocaleString()}
                                 </td>
                               );
@@ -878,11 +907,12 @@ export const BudgetsView: React.FC = () => {
                                 backgroundColor: 'rgba(59, 130, 246, 0.12)',
                                 color: 'var(--primary)',
                                 fontWeight: '900',
-                                fontSize: '0.875rem',
+                                fontSize: '0.75rem',
                                 whiteSpace: 'nowrap',
+                                padding: '6px 2px',
                               }}
                             >
-                              {currency} {macroSubtotal.toLocaleString()}
+                              {currency}{macroSubtotal.toLocaleString()}
                             </td>
                           </tr>
                         </tfoot>
@@ -1419,7 +1449,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: '800',
   },
   categoriesTableWrapper: {
-    overflowX: 'auto',
+    width: '100%',
+    overflowX: 'hidden',
     borderTop: '1px solid var(--border-subtle)',
   },
   categoriesTable: {
@@ -1516,14 +1547,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: '1px solid var(--border-main)',
     backgroundColor: 'var(--bg-app)',
     borderRadius: '4px',
-    padding: '4px 2px',
-    fontSize: '0.75rem',
+    padding: '4px 1px',
+    fontSize: '0.71875rem',
     fontWeight: '700',
     color: 'var(--text-primary)',
     textAlign: 'center',
     width: '100%',
-    minWidth: '55px',
     outline: 'none',
+    boxSizing: 'border-box',
   },
   quickActionsGroup: {
     display: 'flex',
