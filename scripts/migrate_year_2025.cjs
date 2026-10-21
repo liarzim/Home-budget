@@ -364,6 +364,18 @@ async function runMigration() {
   console.log(`סה"כ הוצאות (אשראי + ידני): ₪${totalExpense.toLocaleString('he-IL', { minimumFractionDigits: 2 })}`);
   console.log(`=============================================\n`);
 
+  // 4.5 Clean existing 2025 transactions for household to prevent duplicates
+  console.log(`בודק ומנקה תנועות קיימות לשנת 2025 כדי למנוע כפילויות...`);
+  const { error: delExistingErr } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('household_id', HOUSEHOLD_ID)
+    .gte('date', '2025-01-01')
+    .lte('date', '2025-12-31');
+  if (delExistingErr) {
+    console.warn(`הערה בניקוי תנועות קודמות:`, delExistingErr.message);
+  }
+
   // 5. Batch insert into database
   console.log(`מבצע הזרקה לבסיס הנתונים בקבוצות של 100...`);
   const CHUNK_SIZE = 100;
