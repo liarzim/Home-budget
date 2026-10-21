@@ -74,6 +74,8 @@ interface AuthContextType {
   updateInvestmentTranche: (assetId: string, trancheId: string, updates: Partial<InvestmentTranche>, newCurrentPrice?: number, trancheIndex?: number) => void;
   deleteInvestmentTranche: (assetId: string, trancheId: string, trancheIndex?: number) => void;
   saveInvestments: (newList: InvestmentAsset[]) => void;
+  saveYearlyBudgetPlan: (year: number, planBudgets: Budget[]) => Promise<{ success: boolean; error?: string }>;
+  saveBudgets: (newBudgets: Budget[]) => Promise<{ success: boolean; error?: string }>;
   isLoading: boolean;
   isDemoMode: boolean;
   isSupabaseReady: boolean;
@@ -279,6 +281,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('Supabase investments upsert warning:', err);
       }
     }
+  };
+
+  const saveYearlyBudgetPlan = async (year: number, planBudgets: Budget[]): Promise<{ success: boolean; error?: string }> => {
+    setBudgets((prev) => {
+      const filtered = prev.filter((b) => b.year !== year);
+      return [...filtered, ...planBudgets];
+    });
+
+    try {
+      localStorage.setItem('demo_budgets', JSON.stringify(planBudgets));
+    } catch (e) {
+      console.error(e);
+    }
+
+    if (isSupabaseConfigured && !isDemoMode && activeHousehold) {
+      try {
+        await supabase
+          .from('budgets')
+          .delete()
+          .eq('household_id', activeHousehold.id)
+          .eq('year', year);
+
+        if (planBudgets.length > 0) {
+          const payload = planBudgets.map((b) => ({
+            id: b.id || generateUUID(),
+            household_id: activeHousehold.id,
+            category_id: b.category_id,
+            period_type: b.period_type,
+            year: b.year,
+            month: b.month ?? null,
+            limit_amount: b.limit_amount,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }));
+
+          const { error: insErr } = await supabase.from('budgets').insert(payload);
+          if (insErr) {
+            console.error('Error inserting yearly budget plan:', insErr);
+            return { success: false, error: insErr.message };
+          }
+        }
+        return { success: true };
+      } catch (err: any) {
+        console.error('Error in saveYearlyBudgetPlan:', err);
+        return { success: false, error: err.message || 'שגיאה בשמירת התקציב' };
+      }
+    }
+    return { success: true };
+  };
+
+  const saveBudgets = async (newBudgets: Budget[]): Promise<{ success: boolean; error?: string }> => {
+    setBudgets(newBudgets);
+    try {
+      localStorage.setItem('demo_budgets', JSON.stringify(newBudgets));
+    } catch (e) {
+      console.error(e);
+    }
+    return { success: true };
   };
 
   const addInvestmentAsset = async (assetData: Omit<InvestmentAsset, 'id' | 'created_at' | 'updated_at'>) => {
@@ -2267,6 +2327,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateInvestmentTranche,
         deleteInvestmentTranche,
         saveInvestments,
+        saveYearlyBudgetPlan,
+        saveBudgets,
         clearDemoData,
         restoreDemoData,
         isDemoDataCleared,

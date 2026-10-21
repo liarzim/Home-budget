@@ -256,7 +256,8 @@ async function migrateSingleYear(year) {
       }
     } else {
       // 2022-2026 Vertical format: Months are in rows 4..15 (rowIdx = m + 4), columns are income types
-      for (let m = 0; m < 12; m++) {
+      const maxIncomeMonth = year === '2026' ? 10 : 12;
+      for (let m = 0; m < maxIncomeMonth; m++) {
         const monthNum = m + 1;
         const rowIdx = m + 4;
         const salaryCell = incSheet[XLSX.utils.encode_cell({ r: rowIdx, c: 1 })];
@@ -374,7 +375,8 @@ async function migrateSingleYear(year) {
         break;
       }
 
-      for (let m = 1; m <= 12; m++) {
+      const maxManMonth = year === '2026' ? 10 : 12;
+      for (let m = 1; m <= maxManMonth; m++) {
         const cell = manSheet[XLSX.utils.encode_cell({ r, c: m })];
         if (cell && cell.v !== undefined && Number(cell.v) > 0) {
           const parsed = parseManualCell(year, catName, m, cell);
@@ -431,7 +433,8 @@ async function migrateSingleYear(year) {
         if (t === 'תאריך עסקה' || (t.includes('תאריך') && !t.includes('חיוב'))) cols.date = c;
         else if (t.includes('בית עסק')) cols.payee = c;
         else if (t.includes('כרטיס') && !t.includes('סוג כרטיס')) cols.card = c;
-        else if (t === 'סכום העסקה' || (t.includes('סכום') && !t.includes('הוצאה') && cols.amount === undefined)) cols.amount = c;
+        else if (t === 'סכום לחיוב' || t === 'סכום החיוב') cols.amount = c;
+        else if (t === 'סכום העסקה' && cols.amount === undefined) cols.dealAmount = c;
         else if (t.includes('סוג הוצאה')) cols.category = c;
         else if (t.includes('פירוט') && !t.includes('נוסף')) cols.details = c;
       }
@@ -439,13 +442,16 @@ async function migrateSingleYear(year) {
 
     // Fallbacks if row 0 didn't have standard headers
     if (cols.payee === undefined) cols.payee = 1;
-    if (cols.amount === undefined) cols.amount = 3;
+    if (cols.amount === undefined) cols.amount = cols.dealAmount !== undefined ? cols.dealAmount : 3;
     if (cols.card === undefined) cols.card = 0;
     if (cols.date === undefined) cols.date = 2;
 
     for (let r = 1; r <= range.e.r; r++) {
       const payeeCell = s[XLSX.utils.encode_cell({ r, c: cols.payee })];
-      const amountCell = s[XLSX.utils.encode_cell({ r, c: cols.amount })];
+      let amountCell = s[XLSX.utils.encode_cell({ r, c: cols.amount })];
+      if ((!amountCell || amountCell.v === undefined) && cols.dealAmount !== undefined) {
+        amountCell = s[XLSX.utils.encode_cell({ r, c: cols.dealAmount })];
+      }
       if (!payeeCell || !amountCell || amountCell.v === undefined) continue;
 
       const payeeRaw = String(payeeCell.v).trim();
@@ -572,7 +578,7 @@ async function migrateSingleYear(year) {
 async function run() {
   const targetYear = process.argv[2] || '2019';
   if (targetYear === 'all') {
-    const years = ['2024', '2023', '2022', '2021', '2020', '2019'];
+    const years = ['2024', '2023', '2022', '2021', '2020', '2019', '2018', '2017', '2016'];
     const summary = [];
     for (const y of years) {
       const res = await migrateSingleYear(y);
