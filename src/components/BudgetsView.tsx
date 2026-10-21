@@ -71,15 +71,123 @@ export const BudgetsView: React.FC = () => {
     }
   }, [macroCategories]);
 
+  // Calculate Historical Monthly Averages per Category from real 2026 transactions (10 months)
+  const categoryStats = useMemo(() => {
+    const stats: Record<
+      string,
+      {
+        last6MonthsAvg: number;
+        last3MonthsAvg: number;
+        prevYearAvg: number;
+        isBiMonthly: boolean;
+        biMonthlyType: 'even' | 'odd' | null;
+        avgOdd: number;
+        avgEven: number;
+        monthlyDefault: Record<number, number>;
+      }
+    > = {};
+
+    const roundVal = (v: number) => {
+      if (v <= 0) return 0;
+      if (v <= 100) return Math.round(v / 5) * 5;
+      return Math.round(v / 50) * 50;
+    };
+
+    categories.forEach((cat) => {
+      const catTxs = transactions.filter((t) => !t.is_hidden && t.category_id === cat.id);
+
+      // Last 6 months (May 2026 - Oct 2026)
+      const last6MonthsTxs = catTxs.filter((t) => t.date >= '2026-05-01' && t.date <= '2026-10-31');
+      const sum6 = last6MonthsTxs.reduce((acc, t) => acc + Number(t.amount), 0);
+      const avg6 = Math.round(sum6 / 6);
+
+      // Last 3 months (Aug 2026 - Oct 2026)
+      const last3MonthsTxs = catTxs.filter((t) => t.date >= '2026-08-01' && t.date <= '2026-10-31');
+      const sum3 = last3MonthsTxs.reduce((acc, t) => acc + Number(t.amount), 0);
+      const avg3 = Math.round(sum3 / 3);
+
+      // 2026 data across existing 10 months (Jan 2026 - Oct 2026)
+      const year2026Txs = catTxs.filter((t) => t.date >= '2026-01-01' && t.date <= '2026-10-31');
+
+      const monthSums: Record<number, number> = {};
+      for (let m = 1; m <= 10; m++) monthSums[m] = 0;
+      year2026Txs.forEach((t) => {
+        const m = parseInt(t.date.substring(5, 7), 10);
+        if (m >= 1 && m <= 10) {
+          monthSums[m] = (monthSums[m] || 0) + Number(t.amount);
+        }
+      });
+
+      const total2026 = Object.values(monthSums).reduce((a, b) => a + b, 0);
+      let avg2026 = Math.round(total2026 / 10);
+
+      // Special category rules
+      if (cat.name === 'דמי חבר ואירגונים') {
+        avg2026 = 30; // 30 ₪ monthly union membership
+      }
+
+      // Bi-monthly evaluation (comparing even months: 2, 4, 6, 8, 10 vs odd months: 1, 3, 5, 7, 9)
+      const oddSums = [1, 3, 5, 7, 9].map((m) => monthSums[m] || 0);
+      const evenSums = [2, 4, 6, 8, 10].map((m) => monthSums[m] || 0);
+      const avgOdd = Math.round(oddSums.reduce((a, b) => a + b, 0) / 5);
+      const avgEven = Math.round(evenSums.reduce((a, b) => a + b, 0) / 5);
+
+      const evenHighCount = evenSums.filter((v) => v > 800).length;
+      const oddHighCount = oddSums.filter((v) => v > 800).length;
+
+      let isBiMonthly = false;
+      let biMonthlyType: 'even' | 'odd' | null = null;
+
+      // Category is bi-monthly if alternating months consistently have the large majority of expenses
+      if (evenHighCount >= 3 && oddHighCount <= 1 && avgEven >= avgOdd * 2 && (avgEven - avgOdd) > 500) {
+        isBiMonthly = true;
+        biMonthlyType = 'even';
+      } else if (oddHighCount >= 3 && evenHighCount <= 1 && avgOdd >= avgEven * 2 && (avgOdd - avgEven) > 500) {
+        isBiMonthly = true;
+        biMonthlyType = 'odd';
+      }
+
+      // 12 months estimated allocation
+      const monthlyDefault: Record<number, number> = {};
+      for (let m = 1; m <= 12; m++) {
+        if (isBiMonthly) {
+          if (biMonthlyType === 'even') {
+            monthlyDefault[m] = m % 2 === 0 ? roundVal(avgEven) : roundVal(avgOdd);
+          } else {
+            monthlyDefault[m] = m % 2 !== 0 ? roundVal(avgOdd) : roundVal(avgEven);
+          }
+        } else {
+          monthlyDefault[m] = roundVal(avg2026);
+        }
+      }
+
+      stats[cat.id] = {
+        last6MonthsAvg: avg6,
+        last3MonthsAvg: avg3,
+        prevYearAvg: avg2026,
+        isBiMonthly,
+        biMonthlyType,
+        avgOdd,
+        avgEven,
+        monthlyDefault,
+      };
+    });
+
+    return stats;
+  }, [categories, transactions]);
+
   // Load existing budgets into local state when selectedYear or budgets change
+  // If no saved budget exists yet for selectedYear, pre-populate with the 2026 baseline estimates
   useEffect(() => {
     const yearBudgets = budgets.filter((b) => b.year === selectedYear);
     const newState: Record<string, Record<number, number>> = {};
 
     categories.forEach((cat) => {
       newState[cat.id] = {};
+      const stat = categoryStats[cat.id];
       for (let m = 1; m <= 12; m++) {
-        newState[cat.id][m] = 0;
+        // If year has saved budgets in DB, initialize to 0; else pre-fill with smart baseline
+        newState[cat.id][m] = yearBudgets.length > 0 ? 0 : (stat?.monthlyDefault[m] || 0);
       }
     });
 
@@ -99,7 +207,7 @@ export const BudgetsView: React.FC = () => {
     });
 
     setPlanState(newState);
-  }, [selectedYear, budgets, categories]);
+  }, [selectedYear, budgets, categories, categoryStats]);
 
   // Toggle macro expansion
   const toggleMacro = (macroId: string) => {
@@ -135,39 +243,6 @@ export const BudgetsView: React.FC = () => {
     setSaveSuccess(false);
   };
 
-  // Calculate Historical Monthly Averages per Category from real transactions
-  const categoryStats = useMemo(() => {
-    const stats: Record<string, { last6MonthsAvg: number; prevYearAvg: number; last3MonthsAvg: number }> = {};
-    const now = new Date();
-
-    categories.forEach((cat) => {
-      const catTxs = transactions.filter((t) => !t.is_hidden && t.category_id === cat.id);
-
-      // Last 6 months (May 2026 - Oct 2026)
-      const last6MonthsTxs = catTxs.filter((t) => t.date >= '2026-04-01' && t.date <= '2026-09-30');
-      const sum6 = last6MonthsTxs.reduce((acc, t) => acc + Number(t.amount), 0);
-      const avg6 = Math.round(sum6 / 6);
-
-      // Last 3 months (Jul 2026 - Sep 2026)
-      const last3MonthsTxs = catTxs.filter((t) => t.date >= '2026-07-01' && t.date <= '2026-09-30');
-      const sum3 = last3MonthsTxs.reduce((acc, t) => acc + Number(t.amount), 0);
-      const avg3 = Math.round(sum3 / 3);
-
-      // Previous Year (2026 data across active months)
-      const year2026Txs = catTxs.filter((t) => t.date >= '2026-01-01' && t.date <= '2026-10-31');
-      const sum2026 = year2026Txs.reduce((acc, t) => acc + Number(t.amount), 0);
-      const avgPrev = Math.round(sum2026 / 10);
-
-      stats[cat.id] = {
-        last6MonthsAvg: avg6,
-        last3MonthsAvg: avg3,
-        prevYearAvg: avgPrev,
-      };
-    });
-
-    return stats;
-  }, [categories, transactions]);
-
   // Apply Smart Suggestions
   const handleApplySmartSuggestions = () => {
     const factor = 1 + smartAdjustment / 100;
@@ -175,18 +250,17 @@ export const BudgetsView: React.FC = () => {
       const nextState: Record<string, Record<number, number>> = { ...prev };
 
       categories.forEach((cat) => {
-        let suggestedAvg = 0;
         const st = categoryStats[cat.id];
-        if (st) {
-          if (smartSource === 'last_6_months') suggestedAvg = st.last6MonthsAvg;
-          else if (smartSource === 'last_3_months') suggestedAvg = st.last3MonthsAvg;
-          else suggestedAvg = st.prevYearAvg;
-        }
+        if (!st) return;
 
-        const calculatedVal = Math.round(suggestedAvg * factor);
-        if (calculatedVal > 0) {
-          nextState[cat.id] = nextState[cat.id] || {};
-          for (let m = 1; m <= 12; m++) {
+        nextState[cat.id] = nextState[cat.id] || {};
+        for (let m = 1; m <= 12; m++) {
+          let baseVal = st.monthlyDefault[m];
+          if (smartSource === 'last_6_months') baseVal = st.last6MonthsAvg;
+          else if (smartSource === 'last_3_months') baseVal = st.last3MonthsAvg;
+
+          const calculatedVal = Math.round(baseVal * factor);
+          if (calculatedVal > 0) {
             nextState[cat.id][m] = calculatedVal;
           }
         }
@@ -581,7 +655,7 @@ export const BudgetsView: React.FC = () => {
               } else {
                 macroSubtotal += planState[cat.id]?.[selectedMonth] || 0;
               }
-              macroHistoricalAvg += categoryStats[cat.id]?.last6MonthsAvg || 0;
+              macroHistoricalAvg += categoryStats[cat.id]?.prevYearAvg || 0;
             });
 
             return (
@@ -607,7 +681,7 @@ export const BudgetsView: React.FC = () => {
                         <span style={styles.categoryCountBadge}>{cats.length} קטגוריות</span>
                       </div>
                       <span style={styles.macroSub}>
-                        ממוצע ביצוע חודשי: {currency}{macroHistoricalAvg.toLocaleString()}
+                        ממוצע שנת 2026: {currency}{macroHistoricalAvg.toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -671,8 +745,16 @@ export const BudgetsView: React.FC = () => {
                               {/* Historical Average Badge */}
                               <td style={{ ...styles.tdCell, textAlign: 'center' }}>
                                 <div style={styles.avgBadge}>
-                                  <span>{currency} {stats.last6MonthsAvg.toLocaleString()}</span>
-                                  <span style={styles.avgBadgeSub}>ממוצע חצי-שנתי</span>
+                                  <span style={styles.avgBadgeValue}>{currency} {stats.prevYearAvg.toLocaleString()}</span>
+                                  <span style={styles.avgBadgeSub}>ממוצע שנת 2026 (10 חודשים)</span>
+                                  {stats.isBiMonthly && (
+                                    <span
+                                      style={styles.biMonthlyTag}
+                                      title={`הוצאה דו-חודשית: חודשים ${stats.biMonthlyType === 'even' ? 'זוגיים' : 'אי-זוגיים'} (~${currency}${stats.biMonthlyType === 'even' ? stats.avgEven.toLocaleString() : stats.avgOdd.toLocaleString()})`}
+                                    >
+                                      אחת לחודשיים ({stats.biMonthlyType === 'even' ? 'חודש זוגי' : 'חודש אי-זוגי'})
+                                    </span>
+                                  )}
                                 </div>
                               </td>
 
@@ -723,15 +805,15 @@ export const BudgetsView: React.FC = () => {
                                         <Copy size={13} />
                                         <span>החל על כל השנה</span>
                                       </button>
-                                      {stats.last6MonthsAvg > 0 && (
+                                      {stats.monthlyDefault?.[selectedMonth] > 0 && (
                                         <button
                                           onClick={() =>
-                                            handleAmountChange(cat.id, selectedMonth, String(stats.last6MonthsAvg))
+                                            handleAmountChange(cat.id, selectedMonth, String(stats.monthlyDefault[selectedMonth]))
                                           }
                                           style={styles.quickActionSubBtn}
-                                          title="קבע לפי הממוצע בפועל"
+                                          title="קבע לפי הערכת מודל האמת (כולל התחשבות בדו-חודשי)"
                                         >
-                                          <span>לפי ממוצע</span>
+                                          <span>הערכה: {currency}{stats.monthlyDefault[selectedMonth]}</span>
                                         </button>
                                       )}
                                     </div>
@@ -1319,7 +1401,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'var(--bg-app)',
     padding: '4px 10px',
     borderRadius: '6px',
-    fontWeight: '700',
+    fontSize: '0.8125rem',
+  },
+  avgBadgeValue: {
+    fontWeight: '800',
     color: 'var(--text-primary)',
     fontSize: '0.8125rem',
   },
@@ -1327,6 +1412,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.625rem',
     fontWeight: '500',
     color: 'var(--text-muted)',
+    marginTop: '1px',
+  },
+  biMonthlyTag: {
+    fontSize: '0.625rem',
+    fontWeight: '700',
+    color: '#B45309',
+    backgroundColor: '#FEF3C7',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    marginTop: '3px',
+    display: 'inline-block',
   },
   inputWrapper: {
     display: 'inline-flex',
