@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Plus,
   TrendingUp,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { t } from '../../lib/i18n';
@@ -111,6 +112,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
       : []),
     { id: 'bank-accounts', label: t('navBankSync', language), icon: Landmark, badge: 'Open Banking' },
     { id: 'migration', label: t('navMigration', language), icon: FileSpreadsheet, badge: language === 'he' ? 'שנתי' : 'Yearly' },
+    { id: 'data-audit', label: language === 'he' ? 'בקרת נתונים ופערים' : 'Data Audit & Gaps', icon: AlertTriangle, badge: language === 'he' ? 'פערים' : 'Gaps' },
   ];
 
   const navGroups = [

@@ -93,7 +93,8 @@ interface AuthContextType {
     | 'migration'
     | 'bank-accounts'
     | 'system-tables'
-    | 'users';
+    | 'users'
+    | 'data-audit';
   setActiveTab: (
     tab:
       | 'dashboard'
@@ -109,6 +110,7 @@ interface AuthContextType {
       | 'bank-accounts'
       | 'system-tables'
       | 'users'
+      | 'data-audit'
   ) => void;
   loginWithOAuth: (provider: OAuthProvider) => Promise<{ success: boolean; error?: string }>;
   loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;

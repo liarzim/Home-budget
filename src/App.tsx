@@ -17,6 +17,7 @@ import { ConnectedAccountsScreen } from './components/Settings/ConnectedAccounts
 import { SystemTablesScreen } from './components/Settings/SystemTablesScreen';
 import { HouseholdUsersScreen } from './components/Users/HouseholdUsersScreen';
 import { InvestmentsView } from './components/Investments/InvestmentsView';
+import { DataAuditScreen } from './components/Admin/DataAuditScreen';
 import { InviteAcceptanceModal } from './components/Auth/InviteAcceptanceModal';
 
 const MainScreen: React.FC = () => {
@@ -48,6 +49,7 @@ const MainScreen: React.FC = () => {
         {(activeTab === 'system-tables' || activeTab === 'mappings') && <SystemTablesScreen />}
         {activeTab === 'bank-accounts' && <ConnectedAccountsScreen />}
         {activeTab === 'migration' && <HistoricalMigrationScreen />}
+        {activeTab === 'data-audit' && <DataAuditScreen />}
         {activeTab === 'budgets' && <BudgetsView />}
         {activeTab === 'savings' && <SavingsView />}
         <div style={{ display: activeTab === 'investments' ? 'block' : 'none' }}>
