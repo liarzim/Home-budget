@@ -44,8 +44,8 @@ export const BudgetsView: React.FC = () => {
 
   // Navigation & Mode States
   const [viewMode, setViewMode] = useState<'planner' | 'tracking'>('planner');
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
-  const [selectedMonth, setSelectedMonth] = useState<number>(10); // Default to current month Oct (10)
+  const [selectedYear, setSelectedYear] = useState<number>(2027);
+  const [selectedMonth, setSelectedMonth] = useState<number>(1); // Default to January for 2027 planning
   const [matrixView, setMatrixView] = useState<boolean>(false);
 
   // Expanded Macro Categories
@@ -153,10 +153,10 @@ export const BudgetsView: React.FC = () => {
       const sum3 = last3MonthsTxs.reduce((acc, t) => acc + Number(t.amount), 0);
       const avg3 = Math.round(sum3 / 3);
 
-      // Previous Year (2025)
-      const prevYearTxs = catTxs.filter((t) => t.date >= '2025-01-01' && t.date <= '2025-12-31');
-      const sumPrev = prevYearTxs.reduce((acc, t) => acc + Number(t.amount), 0);
-      const avgPrev = Math.round(sumPrev / 12);
+      // Previous Year (2026 data across active months)
+      const year2026Txs = catTxs.filter((t) => t.date >= '2026-01-01' && t.date <= '2026-10-31');
+      const sum2026 = year2026Txs.reduce((acc, t) => acc + Number(t.amount), 0);
+      const avgPrev = Math.round(sum2026 / 10);
 
       stats[cat.id] = {
         last6MonthsAvg: avg6,
@@ -365,20 +365,11 @@ export const BudgetsView: React.FC = () => {
         </div>
 
         <div style={styles.actionButtonGroup}>
-          {/* Year Selector */}
+          {/* Year Display - 2027 */}
           <div style={styles.yearPicker}>
-            {[2025, 2026, 2027].map((yr) => (
-              <button
-                key={yr}
-                onClick={() => setSelectedYear(yr)}
-                style={{
-                  ...styles.yearBtn,
-                  ...(selectedYear === yr ? styles.yearBtnActive : {}),
-                }}
-              >
-                {yr}
-              </button>
-            ))}
+            <span style={{ ...styles.yearBtn, ...styles.yearBtnActive }}>
+              תקציב 2027
+            </span>
           </div>
 
           {/* Mode Switcher: Planner vs Tracking */}
@@ -900,8 +891,8 @@ export const BudgetsView: React.FC = () => {
                     ...(smartSource === 'prev_year' ? styles.modalOptionBtnActive : {}),
                   }}
                 >
-                  <span style={styles.optTitle}>ממוצע שנת 2025 המלאה</span>
-                  <span style={styles.optSub}>מנטרל עונתיות נקודתית על בסיס שנה קודמת</span>
+                  <span style={styles.optTitle}>ממוצע שנת 2026 (ביצוע שנה אחרונה)</span>
+                  <span style={styles.optSub}>מבוסס על נתוני האמת של שנת 2026</span>
                 </button>
               </div>
             </div>
