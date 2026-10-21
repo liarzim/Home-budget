@@ -155,7 +155,10 @@ export const BudgetsView: React.FC = () => {
       // 12 months estimated allocation
       const monthlyDefault: Record<number, number> = {};
       for (let m = 1; m <= 12; m++) {
-        if (isBiMonthly) {
+        if (m <= 10 && monthSums[m] > 0) {
+          // Match the exact historical month's spend for high accuracy
+          monthlyDefault[m] = roundVal(monthSums[m]);
+        } else if (isBiMonthly) {
           if (biMonthlyType === 'even') {
             monthlyDefault[m] = m % 2 === 0 ? roundVal(avgEven) : roundVal(avgOdd);
           } else {
@@ -251,6 +254,8 @@ export const BudgetsView: React.FC = () => {
   // Floating Tooltip State for hover on amounts
   const [hoveredTooltip, setHoveredTooltip] = useState<{
     title: string;
+    plannedAmount?: number;
+    actualAmount?: number;
     items: { name: string; amount: number }[];
     extraCount: number;
     x: number;
@@ -323,8 +328,13 @@ export const BudgetsView: React.FC = () => {
   const showMonthTooltip = (e: React.MouseEvent, catId: string, catName: string, month: number) => {
     const payees = categoryPayeesMap[catId]?.byMonth[month] || [];
     if (payees.length === 0) return;
+    const actualSum = payees.reduce((acc, p) => acc + p.amount, 0);
+    const planned = planState[catId]?.[month] || 0;
+
     setHoveredTooltip({
-      title: `בתי עסק - ${catName} (${MONTH_NAMES_HE[month - 1]})`,
+      title: `${catName} (${MONTH_NAMES_HE[month - 1]})`,
+      plannedAmount: planned,
+      actualAmount: actualSum,
       items: payees.slice(0, 5),
       extraCount: Math.max(0, payees.length - 5),
       x: e.clientX,
@@ -335,8 +345,11 @@ export const BudgetsView: React.FC = () => {
   const showAverageTooltip = (e: React.MouseEvent, catId: string, catName: string) => {
     const payees = categoryPayeesMap[catId]?.overall || [];
     if (payees.length === 0) return;
+    const avg = categoryStats[catId]?.prevYearAvg || 0;
+
     setHoveredTooltip({
-      title: `בתי עסק מובילים ב-2026 - ${catName}`,
+      title: `ממוצע שנת 2026 - ${catName}`,
+      plannedAmount: avg,
       items: payees.slice(0, 6),
       extraCount: Math.max(0, payees.length - 6),
       x: e.clientX,
@@ -347,20 +360,19 @@ export const BudgetsView: React.FC = () => {
   const showTotalTooltip = (e: React.MouseEvent, catId: string, catName: string) => {
     const payees = categoryPayeesMap[catId]?.overall || [];
     if (payees.length === 0) return;
+    const catAnnualTotal = Array.from({ length: 12 }, (_, i) => i + 1).reduce(
+      (sum, m) => sum + (planState[catId]?.[m] || 0),
+      0
+    );
+
     setHoveredTooltip({
-      title: `מקורות הוצאה שנתית - ${catName}`,
+      title: `סה"כ שנתי 2027 - ${catName}`,
+      plannedAmount: catAnnualTotal,
       items: payees.slice(0, 6),
       extraCount: Math.max(0, payees.length - 6),
       x: e.clientX,
       y: e.clientY,
     });
-  };
-
-  const getNativeTooltipText = (title: string, items: { name: string; amount: number }[], extraCount: number) => {
-    if (!items || items.length === 0) return '';
-    const lines = items.map((it) => `• ${it.name}: ₪${it.amount.toLocaleString()}`);
-    if (extraCount > 0) lines.push(`+ עוד ${extraCount} בתי עסק`);
-    return `${title}\n${lines.join('\n')}`;
   };
 
   // Apply Smart Suggestions
@@ -896,11 +908,6 @@ export const BudgetsView: React.FC = () => {
                                     if (hoveredTooltip) setHoveredTooltip((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : null));
                                   }}
                                   onMouseLeave={() => setHoveredTooltip(null)}
-                                  title={getNativeTooltipText(
-                                    `בתי עסק מובילים ב-2026 (${cat.name}):`,
-                                    categoryPayeesMap[cat.id]?.overall?.slice(0, 6) || [],
-                                    Math.max(0, (categoryPayeesMap[cat.id]?.overall?.length || 0) - 6)
-                                  )}
                                 >
                                   <span style={{ ...styles.avgBadgeValue, fontSize: matrixView ? '0.71875rem' : '0.8125rem' }}>
                                     {currency}{stats.prevYearAvg.toLocaleString()}
@@ -943,11 +950,6 @@ export const BudgetsView: React.FC = () => {
                                           onMouseLeave={() => setHoveredTooltip(null)}
                                           placeholder="0"
                                           style={styles.matrixInput}
-                                          title={getNativeTooltipText(
-                                            `בתי עסק (${cat.name} - ${MONTH_NAMES_HE[m - 1]}):`,
-                                            categoryPayeesMap[cat.id]?.byMonth[m]?.slice(0, 5) || [],
-                                            Math.max(0, (categoryPayeesMap[cat.id]?.byMonth[m]?.length || 0) - 5)
-                                          )}
                                         />
                                       </td>
                                     );
@@ -970,11 +972,6 @@ export const BudgetsView: React.FC = () => {
                                       padding: '4px 1px',
                                       cursor: 'pointer',
                                     }}
-                                    title={getNativeTooltipText(
-                                      `פירוט שנתי לפי בתי עסק (${cat.name}):`,
-                                      categoryPayeesMap[cat.id]?.overall?.slice(0, 6) || [],
-                                      Math.max(0, (categoryPayeesMap[cat.id]?.overall?.length || 0) - 6)
-                                    )}
                                   >
                                     {currency}{catAnnualTotal.toLocaleString()}
                                   </td>
@@ -998,11 +995,6 @@ export const BudgetsView: React.FC = () => {
                                         onMouseLeave={() => setHoveredTooltip(null)}
                                         placeholder="0"
                                         style={styles.amountInput}
-                                        title={getNativeTooltipText(
-                                          `בתי עסק (${cat.name} - ${MONTH_NAMES_HE[selectedMonth - 1]}):`,
-                                          categoryPayeesMap[cat.id]?.byMonth[selectedMonth]?.slice(0, 5) || [],
-                                          Math.max(0, (categoryPayeesMap[cat.id]?.byMonth[selectedMonth]?.length || 0) - 5)
-                                        )}
                                       />
                                     </div>
                                   </td>
@@ -1270,40 +1262,78 @@ export const BudgetsView: React.FC = () => {
         <div
           style={{
             position: 'fixed',
-            top: Math.min(window.innerHeight - 240, hoveredTooltip.y + 14),
-            left: Math.max(16, Math.min(window.innerWidth - 300, hoveredTooltip.x - 140)),
-            backgroundColor: 'rgba(15, 23, 42, 0.96)',
+            top: Math.min(window.innerHeight - 260, hoveredTooltip.y + 14),
+            left: Math.max(16, Math.min(window.innerWidth - 320, hoveredTooltip.x - 140)),
+            backgroundColor: 'rgba(15, 23, 42, 0.97)',
             color: '#FFFFFF',
-            padding: '10px 14px',
-            borderRadius: '8px',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            boxShadow: '0 12px 28px -4px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
             zIndex: 99999,
             pointerEvents: 'none',
             fontSize: '0.75rem',
-            minWidth: '220px',
-            maxWidth: '300px',
+            minWidth: '240px',
+            maxWidth: '320px',
             lineHeight: '1.4',
             direction: 'rtl',
             textAlign: 'right',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
             backdropFilter: 'blur(8px)',
           }}
         >
+          {/* Header */}
           <div
             style={{
               fontWeight: '800',
               color: '#93C5FD',
               marginBottom: '6px',
-              fontSize: '0.78125rem',
+              fontSize: '0.8125rem',
               borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
               paddingBottom: '4px',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'space-between',
               gap: '6px',
             }}
           >
-            <ShoppingBag size={13} color="#93C5FD" />
-            <span>{hoveredTooltip.title}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <ShoppingBag size={14} color="#93C5FD" />
+              <span>{hoveredTooltip.title}</span>
+            </div>
+          </div>
+
+          {/* Planned vs Actual Comparison Box */}
+          {hoveredTooltip.plannedAmount !== undefined && hoveredTooltip.actualAmount !== undefined && (
+            <div
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                padding: '6px 10px',
+                borderRadius: '6px',
+                marginBottom: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '3px',
+                fontSize: '0.6875rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#94A3B8' }}>סכום בתא (יעד 2027):</span>
+                <span style={{ color: '#60A5FA', fontWeight: '800' }}>
+                  {currency} {hoveredTooltip.plannedAmount.toLocaleString()}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#94A3B8' }}>ביצוע בפועל ב-2026:</span>
+                <span style={{ color: '#FCD34D', fontWeight: '800' }}>
+                  {currency} {hoveredTooltip.actualAmount.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Business Breakdown */}
+          <div style={{ fontSize: '0.6875rem', color: '#CBD5E1', marginBottom: '4px', fontWeight: '700' }}>
+            מקורות ההוצאה לפי בתי עסק:
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {hoveredTooltip.items.map((item, idx) => (
@@ -1322,7 +1352,7 @@ export const BudgetsView: React.FC = () => {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
-                    maxWidth: '180px',
+                    maxWidth: '190px',
                   }}
                   title={item.name}
                 >
