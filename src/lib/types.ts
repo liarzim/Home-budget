@@ -399,16 +399,42 @@ export interface InvestmentTranche {
   ignore_agorot_fix?: boolean; // אם סומן כ-true, המשתמש בחר לא לתקן פעימה זו והיא לא תוצג שוב לתיקון
 }
 
+export type ManagementPillar = 'meitav' | 'bank_securities' | 'bank_deposits' | 'pension_provident';
+
 export interface InvestmentAsset {
   id: string;
   household_id: string;
-  ticker: string; // סימול נייר (AAPL, VOO, TEVA...)
+  management_pillar?: ManagementPillar; // ברירת מחדל: 'meitav'
+  institution?: string; // e.g. 'מיטב טרייד', 'בנק הפועלים', 'הראל', 'אלטשולר שחם'
+  ticker: string; // סימול נייר (AAPL, VOO, TEVA...) או מזהה קופה/פקדון
   security_number?: string; // מספר נייר בבורסה (למשל 1159250 או ISIN)
-  name: string; // שם הנייר / החברה
+  name: string; // שם הנייר / החברה / הפקדון / הקרן
   currency: 'USD' | 'ILS';
-  current_price: number; // שער מניה נוכחי בשוק (ערך נוכחי)
+  current_price: number; // שער מניה נוכחי בשוק (או שווי נוכחי)
   asset_type: SecurityType; // סוג נייר
   target_allocation_pct?: number;
+
+  // שדות ייעודיים לעוגן 2 (מניות ומדדים בבנק)
+  bank_custody_fee_pct?: number; // דמי משמרת / ניהול פקדון ני"ע (%)
+
+  // שדות ייעודיים לעוגן 3 (פקדונות וחסכונות בבנק)
+  original_principal?: number; // סכום הקרן המקורית (₪)
+  interest_rate?: number; // % ריבית שנתית (למשל 4.25%)
+  interest_type?: 'fixed' | 'prime' | 'cpi_linked'; // סוג הריבית
+  maturity_date?: string; // תאריך פירעון סופי
+  next_exit_date?: string; // תחנת יציאה קרובה
+  deposit_start_date?: string; // תאריך הפקדה
+
+  // שדות ייעודיים לעוגן 4 (פנסיה, השתלמות וגמל - רב-חברתי)
+  member_name?: 'מיכאל' | 'אורנה' | 'משותף' | string; // עמית
+  investment_track?: string; // מסלול השקעה (S&P 500, מניות, כללי...)
+  monthly_deposit?: number; // סך הפקדה חודשית שוטפת (עובד + מעביד)
+  management_fee_accumulation?: number; // דמי ניהול מצבירה (%)
+  management_fee_deposit?: number; // דמי ניהול מהפקדה (%)
+  liquidity_year?: string; // שנת נזילות (למשל '2027' או 'נזיל כעת')
+  is_liquid?: boolean; // האם נזיל כעת
+
+  details?: Record<string, any>; // גמישות להרחבות נוספות
   tranches: InvestmentTranche[];
   created_at: string;
   updated_at: string;

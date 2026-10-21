@@ -1,6 +1,14 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { InvestmentAsset, InvestmentTranche, SecurityType, InvestmentPeriodicSnapshot, InvestmentSnapshotItem, SecurityDailyPrice } from '../../lib/types';
+import {
+  InvestmentAsset,
+  InvestmentTranche,
+  SecurityType,
+  InvestmentPeriodicSnapshot,
+  InvestmentSnapshotItem,
+  SecurityDailyPrice,
+  ManagementPillar,
+} from '../../lib/types';
 import { supabase } from '../../lib/supabase';
 import {
   TrendingUp,
@@ -32,6 +40,8 @@ import {
   Search,
   ExternalLink,
   RotateCcw,
+  Landmark,
+  PieChart,
 } from 'lucide-react';
 import { fetchAssetQuote, fetchBatchAssetQuotes, fetchUsdIlsRate, MarketQuoteResult } from '../../lib/quotesService';
 import { formatDate, normalizeToISODate, healSnapshotDate, isDuplicateTranche, sortTranchesByDateDesc } from '../../lib/i18n';
@@ -39,6 +49,9 @@ import { IsraeliDateInput } from '../common/IsraeliDateInput';
 import { InvestmentsCharts } from './InvestmentsCharts';
 import { InvestmentsSnapshotsTree } from './InvestmentsSnapshotsTree';
 import { TranchesImportModal } from './TranchesImportModal';
+import { BankDepositsView } from './BankDepositsView';
+import { PensionFundsView } from './PensionFundsView';
+import { InvestmentsOverview } from './InvestmentsOverview';
 import * as XLSX from 'xlsx';
 
 const HEBREW_MONTH_NAMES = [
@@ -119,8 +132,32 @@ export const InvestmentsView: React.FC = () => {
   // Active view tab: 'portfolio' (תיק שוטף) | 'snapshots' (סגירות תקופה ודוחות) | 'charts' (גרפים וניתוח תשואות) | 'daily_prices' (שערי סוף יום)
   const [activeSubTab, setActiveSubTab] = useState<'portfolio' | 'snapshots' | 'charts' | 'daily_prices'>('portfolio');
 
+  // Active Management Pillar ('overview' | 'meitav' | 'bank_securities' | 'bank_deposits' | 'pension_provident')
+  const [activePillar, setActivePillar] = useState<'overview' | ManagementPillar>('meitav');
+
+  // Filtered lists for each pillar
+  const currentSecurities = useMemo(() => {
+    if (activePillar === 'bank_securities') {
+      return investments.filter((a) => a.management_pillar === 'bank_securities');
+    }
+    // Default / Pillar 1 (meitav): all assets that are 'meitav' or unspecified
+    return investments.filter((a) => !a.management_pillar || a.management_pillar === 'meitav');
+  }, [investments, activePillar]);
+
+  const bankDeposits = useMemo(() => {
+    return investments.filter((a) => a.management_pillar === 'bank_deposits');
+  }, [investments]);
+
+  const pensionFunds = useMemo(() => {
+    return investments.filter((a) => a.management_pillar === 'pension_provident');
+  }, [investments]);
+
   // Expanded asset rows (to view purchase tranches)
   const [expandedAssetIds, setExpandedAssetIds] = useState<Record<string, boolean>>({});
+
+  // Additional form state for bank securities
+  const [formBankInstitution, setFormBankInstitution] = useState<string>('בנק הפועלים');
+  const [formBankCustodyFee, setFormBankCustodyFee] = useState<string>('0.1');
 
   // Load modal draft synchronously on initial render if user was in the middle of filling
   const initialModalDraft = useMemo(() => {
@@ -607,7 +644,7 @@ export const InvestmentsView: React.FC = () => {
     let totalInvestedILS = 0;
     let currentValueILS = 0;
 
-    investments.forEach((asset) => {
+    currentSecurities.forEach((asset) => {
       const { totalCost, currentValue } = calculateAssetMetrics(asset);
       const mult = asset.currency === 'USD' ? usdRate : 1;
       totalInvestedILS += totalCost * mult;
@@ -627,7 +664,7 @@ export const InvestmentsView: React.FC = () => {
       estimatedTaxILS,
       netProfitILS,
     };
-  }, [investments, usdRate]);
+  }, [currentSecurities, usdRate]);
 
   // Format currency value based on mode
   const formatVal = (amount: number, assetCurrency: 'USD' | 'ILS', forceCurrency?: 'ILS' | 'USD') => {
@@ -884,6 +921,9 @@ export const InvestmentsView: React.FC = () => {
       const resolvedNewSecNum = formSecurityNumber.trim() || (/^\d+$/.test(formTicker.trim()) ? formTicker.trim() : undefined);
       addInvestmentAsset({
         household_id: activeHousehold?.id || 'hh-main',
+        management_pillar: activePillar === 'bank_securities' ? 'bank_securities' : 'meitav',
+        institution: activePillar === 'bank_securities' ? formBankInstitution : 'מיטב טרייד',
+        bank_custody_fee_pct: activePillar === 'bank_securities' ? parseFloat(formBankCustodyFee) || 0 : undefined,
         ticker: formTicker.trim().toUpperCase(),
         security_number: resolvedNewSecNum,
         name: formName.trim() || formTicker.trim().toUpperCase(),
@@ -2210,7 +2250,11 @@ export const InvestmentsView: React.FC = () => {
             </div>
           </div>
           <h1 style={styles.title}>
-            {isHe ? 'ביצועי תיק השקעות' : 'Investment Portfolio & Yield'}
+            {activePillar === 'overview' && (isHe ? 'סקירת עושר והון משפחתי כולל' : 'Total Family Wealth Overview')}
+            {activePillar === 'meitav' && (isHe ? 'מניות ומדדים — מיטב טרייד' : 'Meitav Trade Equities & ETFs')}
+            {activePillar === 'bank_securities' && (isHe ? 'מניות ומדדים — חשבון בנק' : 'Bank Equities & ETFs')}
+            {activePillar === 'bank_deposits' && (isHe ? 'פקדונות וחסכונות — מנוהל בבנק' : 'Bank Deposits & Savings')}
+            {activePillar === 'pension_provident' && (isHe ? 'קרנות השתלמות ופנסיה' : 'Pensions & Study Funds')}
           </h1>
           <p style={styles.subtitle}>
             {isHe
@@ -2369,6 +2413,139 @@ export const InvestmentsView: React.FC = () => {
         </div>
       </div>
 
+      {/* 4-Pillars Navigation Bar */}
+      <div style={styles.pillarsNavBar}>
+        <button
+          style={{
+            ...styles.pillarTabBtn,
+            ...(activePillar === 'overview' ? styles.pillarTabBtnActiveOverview : {}),
+          }}
+          onClick={() => setActivePillar('overview')}
+        >
+          <PieChart size={17} />
+          <span>{isHe ? '🌐 סקירה משולבת' : 'Combined Overview'}</span>
+        </button>
+
+        <button
+          style={{
+            ...styles.pillarTabBtn,
+            ...(activePillar === 'meitav' ? styles.pillarTabBtnActiveMeitav : {}),
+          }}
+          onClick={() => setActivePillar('meitav')}
+        >
+          <TrendingUp size={17} />
+          <span>{isHe ? '📊 1. מיטב טרייד' : '1. Meitav Trade'}</span>
+          <span
+            style={{
+              ...styles.pillarCountBadge,
+              backgroundColor: activePillar === 'meitav' ? 'rgba(255,255,255,0.3)' : '#E2E8F0',
+              color: activePillar === 'meitav' ? '#FFFFFF' : '#475569',
+            }}
+          >
+            {investments.filter((a) => !a.management_pillar || a.management_pillar === 'meitav').length}
+          </span>
+        </button>
+
+        <button
+          style={{
+            ...styles.pillarTabBtn,
+            ...(activePillar === 'bank_securities' ? styles.pillarTabBtnActiveBank : {}),
+          }}
+          onClick={() => setActivePillar('bank_securities')}
+        >
+          <Landmark size={17} />
+          <span>{isHe ? '🏦 2. מניות בנק' : '2. Bank Securities'}</span>
+          <span
+            style={{
+              ...styles.pillarCountBadge,
+              backgroundColor: activePillar === 'bank_securities' ? 'rgba(255,255,255,0.3)' : '#E2E8F0',
+              color: activePillar === 'bank_securities' ? '#FFFFFF' : '#475569',
+            }}
+          >
+            {investments.filter((a) => a.management_pillar === 'bank_securities').length}
+          </span>
+        </button>
+
+        <button
+          style={{
+            ...styles.pillarTabBtn,
+            ...(activePillar === 'bank_deposits' ? styles.pillarTabBtnActiveDeposits : {}),
+          }}
+          onClick={() => setActivePillar('bank_deposits')}
+        >
+          <Coins size={17} />
+          <span>{isHe ? '💰 3. פקדונות בנק' : '3. Bank Deposits'}</span>
+          <span
+            style={{
+              ...styles.pillarCountBadge,
+              backgroundColor: activePillar === 'bank_deposits' ? 'rgba(255,255,255,0.3)' : '#E2E8F0',
+              color: activePillar === 'bank_deposits' ? '#FFFFFF' : '#475569',
+            }}
+          >
+            {bankDeposits.length}
+          </span>
+        </button>
+
+        <button
+          style={{
+            ...styles.pillarTabBtn,
+            ...(activePillar === 'pension_provident' ? styles.pillarTabBtnActivePension : {}),
+          }}
+          onClick={() => setActivePillar('pension_provident')}
+        >
+          <ShieldCheck size={17} />
+          <span>{isHe ? '🛡️ 4. פנסיה והשתלמות' : '4. Pensions & Study'}</span>
+          <span
+            style={{
+              ...styles.pillarCountBadge,
+              backgroundColor: activePillar === 'pension_provident' ? 'rgba(255,255,255,0.3)' : '#E2E8F0',
+              color: activePillar === 'pension_provident' ? '#FFFFFF' : '#475569',
+            }}
+          >
+            {pensionFunds.length}
+          </span>
+        </button>
+      </div>
+
+      {/* Render Overview */}
+      {activePillar === 'overview' && (
+        <InvestmentsOverview
+          investments={investments}
+          usdRate={usdRate}
+          onSelectPillar={(p) => setActivePillar(p)}
+          isHe={isHe}
+          dir={dir}
+        />
+      )}
+
+      {/* Render Bank Deposits */}
+      {activePillar === 'bank_deposits' && (
+        <BankDepositsView
+          deposits={bankDeposits}
+          onAddDeposit={addInvestmentAsset}
+          onUpdateDeposit={updateInvestmentAsset}
+          onDeleteDeposit={deleteInvestmentAsset}
+          isHe={isHe}
+          dir={dir}
+        />
+      )}
+
+      {/* Render Pension & Study Funds */}
+      {activePillar === 'pension_provident' && (
+        <PensionFundsView
+          funds={pensionFunds}
+          onAddFund={addInvestmentAsset}
+          onUpdateFund={updateInvestmentAsset}
+          onDeleteFund={deleteInvestmentAsset}
+          isHe={isHe}
+          dir={dir}
+        />
+      )}
+
+      {/* Render Securities Portfolio (Pillar 1: Meitav OR Pillar 2: Bank Securities) */}
+      {(activePillar === 'meitav' || activePillar === 'bank_securities') && (
+        <>
+
       {/* Live Refresh Status Banner */}
       {quotesRefreshMessage && (
         <div style={styles.quotesBanner} className="animate-fade-in">
@@ -2497,7 +2674,7 @@ export const InvestmentsView: React.FC = () => {
         >
           <Layers size={16} />
           <span>{isHe ? 'ניירות ערך ופוזיציות פעילות' : 'Active Holdings & Tranches'}</span>
-          <span style={styles.subTabCountPill}>{investments.length}</span>
+          <span style={styles.subTabCountPill}>{currentSecurities.length}</span>
         </button>
 
         <button
@@ -2589,7 +2766,7 @@ export const InvestmentsView: React.FC = () => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {activeSubTab === 'portfolio' && (
-              <span style={styles.subTabCountPill}>{investments.length}</span>
+              <span style={styles.subTabCountPill}>{currentSecurities.length}</span>
             )}
             {activeSubTab === 'snapshots' && (
               <span style={styles.subTabCountPill}>{snapshots.length}</span>
@@ -3066,18 +3243,24 @@ export const InvestmentsView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {investments.length === 0 ? (
+                  {currentSecurities.length === 0 ? (
                     <tr>
                       <td colSpan={12} style={styles.emptyTd}>
                         <div style={styles.emptyBox}>
                           <Coins size={36} color="var(--text-muted)" />
                           <div style={styles.emptyTitle}>
-                            {isHe ? 'אין עדיין ניירות ערך בתיק' : 'No investment holdings yet'}
+                            {activePillar === 'bank_securities'
+                              ? isHe ? 'אין עדיין ניירות ערך בחשבון הבנק' : 'No bank securities yet'
+                              : isHe ? 'אין עדיין ניירות ערך בתיק' : 'No investment holdings yet'}
                           </div>
                           <p style={styles.emptySub}>
-                            {isHe
-                              ? 'לחץ על "+ הוסף נייר ערך" כדי להתחיל לעקוב אחרי המניות, קרנות הסל והמדדים שלך.'
-                              : 'Click "+ Add Asset" to track stocks, ETFs, indices and tranches.'}
+                            {activePillar === 'bank_securities'
+                              ? isHe
+                                ? 'לחץ על "+ הוסף נייר ערך" כדי להתחיל לעקוב אחרי קרנות נאמנות, אג"ח ומניות בחשבון הבנק.'
+                                : 'Click "+ Add Asset" to add mutual funds and stocks in your bank account.'
+                              : isHe
+                                ? 'לחץ על "+ הוסף נייר ערך" כדי להתחיל לעקוב אחרי המניות, קרנות הסל והמדדים שלך.'
+                                : 'Click "+ Add Asset" to track stocks, ETFs, indices and tranches.'}
                           </p>
                           <button
                             style={styles.addAssetBtn}
@@ -3090,7 +3273,7 @@ export const InvestmentsView: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    investments.map((asset) => {
+                    currentSecurities.map((asset) => {
                       const metrics = calculateAssetMetrics(asset);
                       const isExpanded = Boolean(expandedAssetIds[asset.id]);
                       const isProfit = metrics.profit >= 0;
@@ -4554,6 +4737,8 @@ export const InvestmentsView: React.FC = () => {
           </div>
         </div>
       )}
+        </>
+      )}
 
       {/* MODAL: ADD / EDIT ASSET / TRANCHE */}
       {isModalOpen && (
@@ -5115,6 +5300,63 @@ const styles: { [key: string]: React.CSSProperties } = {
     flexDirection: 'column',
     gap: '24px',
     paddingBottom: '40px',
+  },
+  pillarsNavBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '6px',
+    backgroundColor: 'var(--bg-surface-subtle, #F1F5F9)',
+    borderRadius: '14px',
+    border: '1px solid var(--border-subtle, #E2E8F0)',
+    overflowX: 'auto',
+    width: '100%',
+  },
+  pillarTabBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '9px 16px',
+    borderRadius: '10px',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: 'var(--text-secondary, #64748B)',
+    fontSize: '0.875rem',
+    fontWeight: '700',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    transition: 'all 0.2s ease',
+  },
+  pillarTabBtnActiveOverview: {
+    backgroundColor: '#0F172A',
+    color: '#FFFFFF',
+    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)',
+  },
+  pillarTabBtnActiveMeitav: {
+    backgroundColor: '#2563EB',
+    color: '#FFFFFF',
+    boxShadow: '0 2px 8px rgba(37, 99, 235, 0.25)',
+  },
+  pillarTabBtnActiveBank: {
+    backgroundColor: '#059669',
+    color: '#FFFFFF',
+    boxShadow: '0 2px 8px rgba(5, 150, 105, 0.25)',
+  },
+  pillarTabBtnActiveDeposits: {
+    backgroundColor: '#D97706',
+    color: '#FFFFFF',
+    boxShadow: '0 2px 8px rgba(217, 119, 6, 0.25)',
+  },
+  pillarTabBtnActivePension: {
+    backgroundColor: '#DB2777',
+    color: '#FFFFFF',
+    boxShadow: '0 2px 8px rgba(219, 39, 119, 0.25)',
+  },
+  pillarCountBadge: {
+    fontSize: '0.75rem',
+    padding: '2px 7px',
+    borderRadius: '10px',
+    fontWeight: '800',
   },
   headerRow: {
     display: 'flex',

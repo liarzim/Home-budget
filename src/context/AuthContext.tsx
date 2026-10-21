@@ -302,6 +302,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured && !isDemoMode && activeHousehold) {
       try {
+        const details = {
+          interest_rate: newAsset.interest_rate,
+          interest_type: newAsset.interest_type,
+          maturity_date: newAsset.maturity_date,
+          next_exit_date: newAsset.next_exit_date,
+          original_principal: newAsset.original_principal,
+          deposit_start_date: newAsset.deposit_start_date,
+          member_name: newAsset.member_name,
+          investment_track: newAsset.investment_track,
+          monthly_deposit: newAsset.monthly_deposit,
+          management_fee_accumulation: newAsset.management_fee_accumulation,
+          management_fee_deposit: newAsset.management_fee_deposit,
+          liquidity_year: newAsset.liquidity_year,
+          is_liquid: newAsset.is_liquid,
+          bank_custody_fee_pct: newAsset.bank_custody_fee_pct,
+          ...(newAsset.details || {}),
+        };
         await supabase.from('investments').insert({
           id: newAsset.id,
           household_id: activeHousehold.id,
@@ -311,6 +328,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           currency: newAsset.currency,
           current_price: newAsset.current_price,
           asset_type: newAsset.asset_type,
+          management_pillar: newAsset.management_pillar || 'meitav',
+          institution: newAsset.institution || (newAsset.management_pillar === 'meitav' ? 'מיטב טרייד' : null),
+          details,
           tranches: newAsset.tranches,
           created_at: newAsset.created_at,
           updated_at: newAsset.updated_at,
@@ -339,6 +359,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const payload: any = { ...updates, updated_at: new Date().toISOString() };
         delete payload.id;
         delete payload.household_id;
+
+        if (
+          updates.interest_rate !== undefined ||
+          updates.interest_type !== undefined ||
+          updates.maturity_date !== undefined ||
+          updates.next_exit_date !== undefined ||
+          updates.original_principal !== undefined ||
+          updates.deposit_start_date !== undefined ||
+          updates.member_name !== undefined ||
+          updates.investment_track !== undefined ||
+          updates.monthly_deposit !== undefined ||
+          updates.management_fee_accumulation !== undefined ||
+          updates.management_fee_deposit !== undefined ||
+          updates.liquidity_year !== undefined ||
+          updates.is_liquid !== undefined ||
+          updates.bank_custody_fee_pct !== undefined
+        ) {
+          payload.details = {
+            ...(payload.details || {}),
+            ...(updates.interest_rate !== undefined ? { interest_rate: updates.interest_rate } : {}),
+            ...(updates.interest_type !== undefined ? { interest_type: updates.interest_type } : {}),
+            ...(updates.maturity_date !== undefined ? { maturity_date: updates.maturity_date } : {}),
+            ...(updates.next_exit_date !== undefined ? { next_exit_date: updates.next_exit_date } : {}),
+            ...(updates.original_principal !== undefined ? { original_principal: updates.original_principal } : {}),
+            ...(updates.deposit_start_date !== undefined ? { deposit_start_date: updates.deposit_start_date } : {}),
+            ...(updates.member_name !== undefined ? { member_name: updates.member_name } : {}),
+            ...(updates.investment_track !== undefined ? { investment_track: updates.investment_track } : {}),
+            ...(updates.monthly_deposit !== undefined ? { monthly_deposit: updates.monthly_deposit } : {}),
+            ...(updates.management_fee_accumulation !== undefined ? { management_fee_accumulation: updates.management_fee_accumulation } : {}),
+            ...(updates.management_fee_deposit !== undefined ? { management_fee_deposit: updates.management_fee_deposit } : {}),
+            ...(updates.liquidity_year !== undefined ? { liquidity_year: updates.liquidity_year } : {}),
+            ...(updates.is_liquid !== undefined ? { is_liquid: updates.is_liquid } : {}),
+            ...(updates.bank_custody_fee_pct !== undefined ? { bank_custody_fee_pct: updates.bank_custody_fee_pct } : {}),
+          };
+        }
+
         await supabase.from('investments').update(payload).eq('id', id);
       } catch (err) {
         console.warn('Supabase investments update warning:', err);
@@ -987,8 +1043,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const formattedInvs: InvestmentAsset[] = invs.map((inv: any) => {
               const ticker = String(inv.ticker || '').trim();
               const secNum = inv.security_number || (/^\d+$/.test(ticker) ? ticker : null);
+              const pillar = inv.management_pillar || (inv.details && inv.details.management_pillar) || 'meitav';
               return {
                 ...inv,
+                management_pillar: pillar,
+                institution: inv.institution || (inv.details && inv.details.institution) || (pillar === 'meitav' ? 'מיטב טרייד' : undefined),
+                ...(inv.details || {}),
                 security_number: secNum,
                 tranches: inv.tranches ? sortTranchesByDateDesc(inv.tranches) : [],
               };
