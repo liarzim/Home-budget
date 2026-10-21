@@ -257,9 +257,22 @@ export const DataAuditScreen: React.FC = () => {
     };
   }, [allTransactions, auditedItems]);
 
+  const resolveInitialCardDigits = (cardLastDigits?: string | null, notes?: string | null): string => {
+    if (cardLastDigits && cardLastDigits.trim()) return cardLastDigits.trim();
+    if (!notes) return '';
+    if (notes.includes('2285') || notes.includes('שופרסל') || notes.includes('פלטינום')) return '2285';
+    if (notes.includes('7520')) return '7520';
+    if (notes.includes('0450')) return '0450';
+    if (notes.includes('3669')) return '3669';
+    if (notes.includes('1618')) return '1618';
+    const match = notes.match(/\b(\d{4})\b/);
+    return match ? match[1] : '';
+  };
+
   // Open modal for single transaction
   const handleOpenSingleEdit = (item: AuditItem) => {
     const isApproved = item.notes?.includes('[סכום מאושר]') || item.notes?.includes('[אושר]') || false;
+    const initialDigits = resolveInitialCardDigits(item.card_last_digits, item.notes);
     setEditModal({
       isOpen: true,
       isBulk: false,
@@ -267,7 +280,7 @@ export const DataAuditScreen: React.FC = () => {
       payeeName: item.payee_name,
       categoryId: item.category_id || '',
       paymentMethod: item.payment_method || 'credit_card',
-      cardLastDigits: item.card_last_digits || '',
+      cardLastDigits: initialDigits,
       amount: item.amount,
       date: item.date,
       transactionType: item.transaction_type,
@@ -280,13 +293,14 @@ export const DataAuditScreen: React.FC = () => {
   // Open modal for bulk payee
   const handleOpenBulkEdit = (grp: { payee: string; items: AuditItem[] }) => {
     const first = grp.items[0];
+    const initialDigits = resolveInitialCardDigits(first?.card_last_digits, first?.notes);
     setEditModal({
       isOpen: true,
       isBulk: true,
       payeeName: grp.payee,
       categoryId: first?.category_id || '',
       paymentMethod: first?.payment_method || 'credit_card',
-      cardLastDigits: first?.card_last_digits || '',
+      cardLastDigits: initialDigits,
       amount: grp.items.reduce((s, i) => s + i.amount, 0),
       date: first?.date || '',
       transactionType: first?.transaction_type || 'expense',
@@ -1093,12 +1107,15 @@ export const DataAuditScreen: React.FC = () => {
                   </label>
                   <select
                     value={
-                      cardMappings?.find((cm) => cm.card_last_digits === editModal.cardLastDigits)?.id ||
-                      editModal.paymentMethod
+                      cardMappings?.find((cm) => cm.card_last_digits && cm.card_last_digits === editModal.cardLastDigits)?.id ||
+                      (editModal.paymentMethod === 'credit_card' ? '' : editModal.paymentMethod)
                     }
                     onChange={(e) => handleCardSelection(e.target.value)}
                     style={inputStyle}
                   >
+                    <option value="" disabled>
+                      {isHe ? '-- בחר כרטיס או אמצעי תשלום --' : '-- Select Card or Method --'}
+                    </option>
                     <optgroup label={isHe ? '💳 כרטיסי אשראי של המשפחה' : '💳 Family Credit Cards'}>
                       {cardMappings?.map((cm) => (
                         <option key={cm.id} value={cm.id}>
@@ -1122,9 +1139,17 @@ export const DataAuditScreen: React.FC = () => {
                   <input
                     type="text"
                     maxLength={4}
-                    placeholder="7520"
+                    placeholder={isHe ? '4 ספרות' : 'Last 4'}
                     value={editModal.cardLastDigits}
-                    onChange={(e) => setEditModal((prev) => ({ ...prev, cardLastDigits: e.target.value }))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const matched = cardMappings?.find((cm) => cm.card_last_digits === val);
+                      setEditModal((prev) => ({
+                        ...prev,
+                        cardLastDigits: val,
+                        paymentMethod: matched ? matched.payment_type || 'credit_card' : prev.paymentMethod,
+                      }));
+                    }}
                     style={inputStyle}
                   />
                 </div>
