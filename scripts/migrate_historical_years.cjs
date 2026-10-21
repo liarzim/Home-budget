@@ -100,11 +100,14 @@ async function migrateSingleYear(year) {
     }
   });
 
-  // Ensure default/fallback category exists
-  let fallbackCatId = catMap.get('שונות') || catMap.get('אחר');
-  if (!fallbackCatId && dbCategories.length > 0) {
-    fallbackCatId = dbCategories[0].id;
-  }
+  const catMichaelSal = catMap.get('משכורת מיכאל');
+  const catOrnaSal = catMap.get('משכורת אורנה');
+  const catArmy = catMap.get('צבא');
+  const catBtl = catMap.get('ביטוח לאומי');
+  const catTeeth = catMap.get('החזר ביטוח שיניים');
+  const catOtherIncome = catMap.get('אחר');
+
+  let fallbackExpenseCatId = catMap.get('שונות') || dbCategories[0].id;
 
   // Fetch Business Mappings
   const { data: dbMappings } = await supabase.from('business_mapping').select('*');
@@ -150,29 +153,32 @@ async function migrateSingleYear(year) {
         const titleCell = incSheet[XLSX.utils.encode_cell({ r, c: 0 })];
         if (!titleCell || !titleCell.v) continue;
         const incType = String(titleCell.v).trim();
-        if (incType.includes('סה"כ') || incType.includes('סיכום') || incType.includes('סוג הכנסה')) continue;
+        // IMPORTANT: Stop at the total row of Table 1! Do NOT read Table 2 or 3!
+        if (incType.includes('סה"כ') || incType.includes('סיכום')) {
+          break;
+        }
 
         for (let m = 1; m <= 12; m++) {
           const valCell = incSheet[XLSX.utils.encode_cell({ r, c: m })];
           if (!valCell || valCell.v === undefined) continue;
           const val = Number(valCell.v);
           if (isNaN(val) || val <= 0) continue;
+
           const f = valCell.f || '';
           const date = `${year}-${String(m).padStart(2, '0')}-01`;
 
-          if (incType.includes('משכורת')) {
+          if (incType.includes('משכור')) {
             if (f.includes('+')) {
               const parts = f.replace('=', '').split('+').map(p => parseFloat(p)).filter(p => !isNaN(p));
               if (parts.length >= 2) {
-                const michaelVal = Math.max(...parts);
-                const ornaVal = Math.min(...parts);
+                parts.sort((a, b) => b - a); // descending: [michael, orna, bonus...]
 
                 transactionsToInsert.push({
                   id: crypto.randomUUID(),
                   household_id: HOUSEHOLD_ID,
                   date,
-                  amount: michaelVal,
-                  category_id: catMap.get('משכורת') || fallbackCatId,
+                  amount: parts[0],
+                  category_id: catMichaelSal || catOtherIncome,
                   transaction_type: 'income',
                   payee_name: 'משכורת מיכאל',
                   original_description: `משכורת מיכאל ${MONTHS_NAMES[m - 1]} ${year}`,
@@ -185,8 +191,8 @@ async function migrateSingleYear(year) {
                   id: crypto.randomUUID(),
                   household_id: HOUSEHOLD_ID,
                   date,
-                  amount: ornaVal,
-                  category_id: catMap.get('משכורת') || fallbackCatId,
+                  amount: parts[1],
+                  category_id: catOrnaSal || catOtherIncome,
                   transaction_type: 'income',
                   payee_name: 'משכורת אורנה',
                   original_description: `משכורת אורנה ${MONTHS_NAMES[m - 1]} ${year}`,
@@ -194,6 +200,22 @@ async function migrateSingleYear(year) {
                   notes: `נוסחה מקורית: ${f}`,
                   is_hidden: false
                 });
+
+                if (parts[2]) {
+                  transactionsToInsert.push({
+                    id: crypto.randomUUID(),
+                    household_id: HOUSEHOLD_ID,
+                    date,
+                    amount: parts[2],
+                    category_id: catOtherIncome,
+                    transaction_type: 'income',
+                    payee_name: 'תוספת משכורת',
+                    original_description: `תוספת משכורת ${MONTHS_NAMES[m - 1]} ${year}`,
+                    payment_method: 'bank_transfer',
+                    notes: `נוסחה מקורית: ${f}`,
+                    is_hidden: false
+                  });
+                }
                 continue;
               }
             }
@@ -203,7 +225,7 @@ async function migrateSingleYear(year) {
               household_id: HOUSEHOLD_ID,
               date,
               amount: val,
-              category_id: catMap.get('משכורת') || fallbackCatId,
+              category_id: catMichaelSal || catOtherIncome,
               transaction_type: 'income',
               payee_name: 'משכורת',
               original_description: `משכורת ${MONTHS_NAMES[m - 1]} ${year}`,
@@ -212,16 +234,17 @@ async function migrateSingleYear(year) {
             });
           } else {
             // Other income types
-            let catName = 'הכנסות שונות';
-            if (incType.includes('צבא')) catName = 'צבא';
-            else if (incType.includes('ביטוח לאומי')) catName = 'קצבאות';
+            let catId = catOtherIncome;
+            if (incType.includes('צבא')) catId = catArmy || catOtherIncome;
+            else if (incType.includes('ביטוח לאומי')) catId = catBtl || catOtherIncome;
+            else if (incType.includes('שיניים')) catId = catTeeth || catOtherIncome;
 
             transactionsToInsert.push({
               id: crypto.randomUUID(),
               household_id: HOUSEHOLD_ID,
               date,
               amount: val,
-              category_id: catMap.get(catName.toLowerCase()) || fallbackCatId,
+              category_id: catId,
               transaction_type: 'income',
               payee_name: incType,
               original_description: `${incType} ${MONTHS_NAMES[m - 1]} ${year}`,
@@ -244,17 +267,16 @@ async function migrateSingleYear(year) {
           const date = `${year}-${String(monthNum).padStart(2, '0')}-01`;
 
           if (f.includes('+')) {
-            const parts = f.split('+').map(p => parseFloat(p)).filter(p => !isNaN(p));
+            const parts = f.replace('=', '').split('+').map(p => parseFloat(p)).filter(p => !isNaN(p));
             if (parts.length >= 2) {
-              const michaelVal = Math.max(...parts);
-              const ornaVal = Math.min(...parts);
+              parts.sort((a, b) => b - a);
 
               transactionsToInsert.push({
                 id: crypto.randomUUID(),
                 household_id: HOUSEHOLD_ID,
                 date,
-                amount: michaelVal,
-                category_id: catMap.get('משכורת') || fallbackCatId,
+                amount: parts[0],
+                category_id: catMichaelSal || catOtherIncome,
                 transaction_type: 'income',
                 payee_name: 'משכורת מיכאל',
                 original_description: `משכורת מיכאל ${MONTHS_NAMES[m]} ${year}`,
@@ -267,8 +289,8 @@ async function migrateSingleYear(year) {
                 id: crypto.randomUUID(),
                 household_id: HOUSEHOLD_ID,
                 date,
-                amount: ornaVal,
-                category_id: catMap.get('משכורת') || fallbackCatId,
+                amount: parts[1],
+                category_id: catOrnaSal || catOtherIncome,
                 transaction_type: 'income',
                 payee_name: 'משכורת אורנה',
                 original_description: `משכורת אורנה ${MONTHS_NAMES[m]} ${year}`,
@@ -282,10 +304,10 @@ async function migrateSingleYear(year) {
                 household_id: HOUSEHOLD_ID,
                 date,
                 amount: val,
-                category_id: catMap.get('משכורת') || fallbackCatId,
+                category_id: catMichaelSal || catOtherIncome,
                 transaction_type: 'income',
-                payee_name: 'משכורת משולבת',
-                original_description: `משכורות ${MONTHS_NAMES[m]} ${year}`,
+                payee_name: 'משכורת',
+                original_description: `משכורת ${MONTHS_NAMES[m]} ${year}`,
                 payment_method: 'bank_transfer',
                 is_hidden: false
               });
@@ -296,7 +318,7 @@ async function migrateSingleYear(year) {
               household_id: HOUSEHOLD_ID,
               date,
               amount: val,
-              category_id: catMap.get('משכורת') || fallbackCatId,
+              category_id: catMichaelSal || catOtherIncome,
               transaction_type: 'income',
               payee_name: 'משכורת',
               original_description: `משכורת ${MONTHS_NAMES[m]} ${year}`,
@@ -315,16 +337,16 @@ async function migrateSingleYear(year) {
             const amount = Number(valCell.v);
             const date = `${year}-${String(monthNum).padStart(2, '0')}-01`;
 
-            let catName = 'הכנסות שונות';
-            if (colName.includes('צבא')) catName = 'צבא';
-            else if (colName.includes('ביטוח לאומי')) catName = 'קצבאות';
+            let catId = catOtherIncome;
+            if (colName.includes('צבא')) catId = catArmy || catOtherIncome;
+            else if (colName.includes('ביטוח לאומי')) catId = catBtl || catOtherIncome;
 
             transactionsToInsert.push({
               id: crypto.randomUUID(),
               household_id: HOUSEHOLD_ID,
               date,
               amount,
-              category_id: catMap.get(catName.toLowerCase()) || fallbackCatId,
+              category_id: catId,
               transaction_type: 'income',
               payee_name: colName,
               original_description: `${colName} ${MONTHS_NAMES[m]} ${year}`,
@@ -347,7 +369,10 @@ async function migrateSingleYear(year) {
       const catCell = manSheet[XLSX.utils.encode_cell({ r, c: 0 })];
       if (!catCell || !catCell.v) continue;
       const catName = String(catCell.v).trim();
-      if (catName.includes('סה"כ') || catName.includes('סיכום')) continue;
+      // STOP at summary row!
+      if (catName.includes('סה"כ') || catName.includes('סיכום')) {
+        break;
+      }
 
       for (let m = 1; m <= 12; m++) {
         const cell = manSheet[XLSX.utils.encode_cell({ r, c: m })];
@@ -357,9 +382,9 @@ async function migrateSingleYear(year) {
             let catId = catMap.get(item.category.toLowerCase());
             if (!catId) {
               if (item.category.includes('חיסכון') || item.category.includes('השקעות')) {
-                catId = catMap.get('חיסכון והשקעות') || fallbackCatId;
+                catId = catMap.get('חיסכון (בנק)') || catMap.get('חיסכון (מיטב)') || fallbackExpenseCatId;
               } else {
-                catId = fallbackCatId;
+                catId = fallbackExpenseCatId;
               }
             }
 
@@ -465,7 +490,7 @@ async function migrateSingleYear(year) {
 
       const isUncategorized = !catId;
       if (!catId) {
-        catId = fallbackCatId;
+        catId = fallbackExpenseCatId;
         const detailsCell = cols.details !== undefined ? s[XLSX.utils.encode_cell({ r, c: cols.details })] : null;
         uncategorizedItems.push({
           year,
@@ -538,7 +563,7 @@ async function migrateSingleYear(year) {
 
   return {
     year,
-    totalCount: transactionsToInsert.length,
+    totalCount: validTransactions.length,
     uncategorizedCount: uncategorizedItems.length,
     uncategorizedItems
   };
@@ -547,7 +572,7 @@ async function migrateSingleYear(year) {
 async function run() {
   const targetYear = process.argv[2] || '2019';
   if (targetYear === 'all') {
-    const years = ['2024', '2023', '2022', '2021', '2020', '2019', '2018', '2017', '2016'];
+    const years = ['2024', '2023', '2022', '2021', '2020', '2019'];
     const summary = [];
     for (const y of years) {
       const res = await migrateSingleYear(y);
