@@ -26,6 +26,12 @@ import {
   Filter,
   RotateCcw,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CornerDownLeft,
+  FolderPlus,
+  GripVertical,
+  Unlink,
   Home,
   Lock,
   ShieldCheck,
@@ -112,6 +118,107 @@ export const SystemTablesScreen: React.FC = () => {
   const expenseCategories = categories.filter((c) => c.type === 'expense');
   const incomeCategories = categories.filter((c) => c.type === 'income');
 
+  // Hierarchy & Drag-and-Drop state
+  const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({});
+  const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
+  const [dropTargetCategoryId, setDropTargetCategoryId] = useState<string | null>(null);
+  const [isDropTargetRoot, setIsDropTargetRoot] = useState(false);
+  const [movingCategory, setMovingCategory] = useState<Category | null>(null);
+
+  const toggleParent = (parentId: string) => {
+    setExpandedParents((prev) => ({
+      ...prev,
+      [parentId]: prev[parentId] === undefined ? false : !prev[parentId],
+    }));
+  };
+
+  const handleOpenAddChildModal = (parentCat: Category) => {
+    setEditingItem(null);
+    setFormName('');
+    setFormColor(parentCat.color || '#4F46E5');
+    setFormIcon(parentCat.icon || 'tag');
+    setFormMacroId(parentCat.macro_category_id || '');
+    setFormParentId(parentCat.id);
+    setExpandedParents((prev) => ({ ...prev, [parentCat.id]: true }));
+    setIsAddModalOpen(true);
+  };
+
+  const handleDropOnParent = (targetParentId: string) => {
+    if (!draggedCategoryId) return;
+    if (draggedCategoryId === targetParentId) return;
+
+    const draggedCat = categories.find((c) => c.id === draggedCategoryId);
+    if (!draggedCat) return;
+
+    // Check if target is a descendant of draggedCat (prevent cycles)
+    const isTargetDescendant = categories.some(
+      (c) => c.id === targetParentId && c.parent_id === draggedCat.id
+    );
+    if (isTargetDescendant) return;
+
+    updateCategory(
+      draggedCat.id,
+      draggedCat.name,
+      draggedCat.color,
+      draggedCat.icon,
+      draggedCat.macro_category_id,
+      targetParentId
+    );
+
+    setExpandedParents((prev) => ({ ...prev, [targetParentId]: true }));
+    setDraggedCategoryId(null);
+    setDropTargetCategoryId(null);
+  };
+
+  const handleDropToRoot = () => {
+    if (!draggedCategoryId) return;
+    const draggedCat = categories.find((c) => c.id === draggedCategoryId);
+    if (!draggedCat) return;
+
+    if (draggedCat.parent_id) {
+      updateCategory(
+        draggedCat.id,
+        draggedCat.name,
+        draggedCat.color,
+        draggedCat.icon,
+        draggedCat.macro_category_id,
+        null
+      );
+    }
+    setDraggedCategoryId(null);
+    setIsDropTargetRoot(false);
+  };
+
+  const handleDetachFromParent = (cat: Category) => {
+    updateCategory(
+      cat.id,
+      cat.name,
+      cat.color,
+      cat.icon,
+      cat.macro_category_id,
+      null
+    );
+  };
+
+  const handleMoveCategoryToParent = (catId: string, newParentId: string | null) => {
+    const cat = categories.find((c) => c.id === catId);
+    if (!cat) return;
+
+    updateCategory(
+      cat.id,
+      cat.name,
+      cat.color,
+      cat.icon,
+      cat.macro_category_id,
+      newParentId
+    );
+
+    if (newParentId) {
+      setExpandedParents((prev) => ({ ...prev, [newParentId]: true }));
+    }
+    setMovingCategory(null);
+  };
+
   // Reset all filters & sorting
   const handleResetFilters = () => {
     setSearchQuery('');
@@ -165,23 +272,30 @@ export const SystemTablesScreen: React.FC = () => {
     });
   }
 
-  // 2. EXPENSES (Filtered & Sorted)
-  let processedExpenses = expenseCategories.filter((c) => {
-    const matchesSearch =
-      !searchQuery ||
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.macro_category_id &&
-        macroCategories
-          .find((m) => m.id === c.macro_category_id)
-          ?.name.toLowerCase()
-          .includes(searchQuery.toLowerCase()));
-    const matchesMacro = macroFilter === 'all' || c.macro_category_id === macroFilter;
-    return matchesSearch && matchesMacro;
-  });
+  // Helper to build hierarchical tree of categories (parents with nested children)
+  const buildCategoryTree = (type: 'expense' | 'income') => {
+    const list = type === 'expense' ? expenseCategories : incomeCategories;
 
-  if (sortField) {
-    processedExpenses = [...processedExpenses].sort((a, b) => {
+    const matchesFilter = (c: Category) => {
+      const matchesSearch =
+        !searchQuery ||
+        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (c.macro_category_id &&
+          macroCategories
+            .find((m) => m.id === c.macro_category_id)
+            ?.name.toLowerCase()
+            .includes(searchQuery.toLowerCase()));
+      const matchesMacro = macroFilter === 'all' || c.macro_category_id === macroFilter;
+      return matchesSearch && matchesMacro;
+    };
+
+    // Root categories: no parent_id or parent doesn't exist in this list
+    const rootCats = list.filter((c) => !c.parent_id || !list.some((p) => p.id === c.parent_id));
+
+    // Sort function
+    const sortFn = (a: Category, b: Category) => {
+      if (!sortField) return 0;
       let cmp = 0;
       if (sortField === 'name') {
         const aName = formatCategoryName(a.name, language);
@@ -193,39 +307,36 @@ export const SystemTablesScreen: React.FC = () => {
         cmp = aMacro.localeCompare(bMacro, 'he');
       }
       return sortDirection === 'asc' ? cmp : -cmp;
-    });
-  }
+    };
 
-  // 3. INCOMES (Filtered & Sorted)
-  let processedIncomes = incomeCategories.filter((c) => {
-    const matchesSearch =
-      !searchQuery ||
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      formatCategoryName(c.name, language).toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.macro_category_id &&
-        macroCategories
-          .find((m) => m.id === c.macro_category_id)
-          ?.name.toLowerCase()
-          .includes(searchQuery.toLowerCase()));
-    const matchesMacro = macroFilter === 'all' || c.macro_category_id === macroFilter;
-    return matchesSearch && matchesMacro;
-  });
+    const tree: { parent: Category; children: Category[]; isParent: boolean }[] = [];
 
-  if (sortField) {
-    processedIncomes = [...processedIncomes].sort((a, b) => {
-      let cmp = 0;
-      if (sortField === 'name') {
-        const aName = formatCategoryName(a.name, language);
-        const bName = formatCategoryName(b.name, language);
-        cmp = aName.localeCompare(bName, 'he');
-      } else if (sortField === 'macro') {
-        const aMacro = macroCategories.find((m) => m.id === a.macro_category_id)?.name || '';
-        const bMacro = macroCategories.find((m) => m.id === b.macro_category_id)?.name || '';
-        cmp = aMacro.localeCompare(bMacro, 'he');
+    rootCats.forEach((root) => {
+      const allChildren = list.filter((c) => c.parent_id === root.id);
+      const isParent = allChildren.length > 0;
+
+      const rootMatches = matchesFilter(root);
+      const matchingChildren = allChildren.filter(matchesFilter);
+
+      if (rootMatches || matchingChildren.length > 0) {
+        const visibleChildren = searchQuery ? (rootMatches ? allChildren : matchingChildren) : allChildren;
+        const sortedChildren = [...visibleChildren].sort(sortFn);
+        tree.push({
+          parent: root,
+          children: sortedChildren,
+          isParent,
+        });
       }
-      return sortDirection === 'asc' ? cmp : -cmp;
     });
-  }
+
+    tree.sort((a, b) => sortFn(a.parent, b.parent));
+    return tree;
+  };
+
+  const expenseTree = buildCategoryTree('expense');
+  const incomeTree = buildCategoryTree('income');
+  const visibleExpenseCount = expenseTree.reduce((acc, n) => acc + 1 + n.children.length, 0);
+  const visibleIncomeCount = incomeTree.reduce((acc, n) => acc + 1 + n.children.length, 0);
 
   // 4. MERCHANTS (Filtered & Sorted)
   let processedMerchants = businessMappings.filter((m) => {
@@ -543,6 +654,14 @@ export const SystemTablesScreen: React.FC = () => {
       if (activeSubTab === 'macros') {
         deleteMacroCategory(item.id);
       } else if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
+        const childCats = categories.filter((c) => c.parent_id === item.id);
+        if (childCats.length > 0) {
+          const warningPrompt =
+            language === 'he'
+              ? `לתחום "${item.name}" משויכות ${childCats.length} תת-קטגוריות. מחיקתו תהפוך אותן לקטגוריות עצמאיות ראשיות. האם להמשיך?`
+              : `Domain "${item.name}" has ${childCats.length} sub-categories. Deleting it will detach them into standalone root categories. Proceed?`;
+          if (!confirm(warningPrompt)) return;
+        }
         deleteCategory(item.id);
       } else if (activeSubTab === 'merchants') {
         deleteBusinessMapping(item.id);
@@ -583,6 +702,379 @@ export const SystemTablesScreen: React.FC = () => {
         </div>
       </th>
     );
+  };
+
+  // Helper to render hierarchical tree rows with expand/collapse, drag & drop, and sub-items
+  const renderCategoryTreeRows = (
+    tree: { parent: Category; children: Category[]; isParent: boolean }[],
+    isIncome = false
+  ) => {
+    if (tree.length === 0) {
+      return (
+        <tr>
+          <td colSpan={5} style={styles.emptyTableTd}>
+            {language === 'he'
+              ? isIncome
+                ? 'לא נמצאו סוגי הכנסות תואמים לחיפוש או הסינון'
+                : 'לא נמצאו סוגי הוצאות תואמים לחיפוש או הסינון'
+              : 'No categories found matching search/filter'}
+          </td>
+        </tr>
+      );
+    }
+
+    return tree.map((node) => {
+      const parent = node.parent;
+      const linkedMacro = macroCategories.find((m) => m.id === parent.macro_category_id);
+      const isExpanded = searchQuery ? true : expandedParents[parent.id] !== false;
+      const isDraggingThis = draggedCategoryId === parent.id;
+      const isTarget = dropTargetCategoryId === parent.id;
+
+      return (
+        <React.Fragment key={parent.id}>
+          {/* Top-Level / Parent Category Row */}
+          <tr
+            style={{
+              ...styles.tr,
+              backgroundColor: isTarget
+                ? 'rgba(79, 70, 229, 0.08)'
+                : node.isParent
+                ? 'var(--bg-surface)'
+                : undefined,
+              outline: isTarget ? '2px dashed var(--primary)' : undefined,
+              opacity: isDraggingThis ? 0.35 : 1,
+              transition: 'background-color 0.15s ease, outline 0.15s ease',
+            }}
+            onDragOver={(e) => {
+              if (draggedCategoryId && draggedCategoryId !== parent.id) {
+                e.preventDefault();
+                setDropTargetCategoryId(parent.id);
+              }
+            }}
+            onDragLeave={() => {
+              if (dropTargetCategoryId === parent.id) setDropTargetCategoryId(null);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleDropOnParent(parent.id);
+            }}
+          >
+            {/* Category Name Column */}
+            <td style={styles.td}>
+              <div style={styles.catCell}>
+                {/* Drag Handle */}
+                <div
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/plain', parent.id);
+                    setDraggedCategoryId(parent.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedCategoryId(null);
+                    setDropTargetCategoryId(null);
+                    setIsDropTargetRoot(false);
+                  }}
+                  style={{
+                    cursor: 'grab',
+                    color: 'var(--text-tertiary)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '2px',
+                    borderRadius: '3px',
+                  }}
+                  title={language === 'he' ? 'גרור כדי לשייך כתת-קטגוריה' : 'Drag to nest'}
+                >
+                  <GripVertical size={14} />
+                </div>
+
+                {/* Expand / Collapse Chevron */}
+                {node.isParent ? (
+                  <button
+                    type="button"
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      color: 'var(--primary)',
+                      borderRadius: '4px',
+                      transition: 'transform 0.15s ease',
+                    }}
+                    onClick={() => toggleParent(parent.id)}
+                    title={
+                      isExpanded
+                        ? language === 'he' ? 'כווץ רשימת תת-קטגוריות' : 'Collapse sub-categories'
+                        : language === 'he' ? 'פתח רשימת תת-קטגוריות' : 'Expand sub-categories'
+                    }
+                  >
+                    {isExpanded ? (
+                      <ChevronDown size={16} />
+                    ) : language === 'he' ? (
+                      <ChevronLeft size={16} />
+                    ) : (
+                      <ChevronRight size={16} />
+                    )}
+                  </button>
+                ) : (
+                  <div style={{ width: '22px' }} />
+                )}
+
+                {/* Color Dot */}
+                <span style={{ ...styles.colorPreviewDot, backgroundColor: parent.color }} />
+
+                {/* Name */}
+                <span style={styles.cellBold}>
+                  {formatCategoryName(parent.name, language)}
+                </span>
+
+                {/* Parent Domain Badge */}
+                {node.isParent && (
+                  <span style={styles.parentBadge}>
+                    {language === 'he' ? 'תחום ראשי' : 'Parent Domain'}
+                  </span>
+                )}
+
+                {/* Sub-count Badge */}
+                {node.isParent && (
+                  <span style={styles.subCountBadge}>
+                    {language === 'he' ? `${node.children.length} תת-קטגוריות` : `${node.children.length} sub-items`}
+                  </span>
+                )}
+
+                {parent.is_system && <span style={styles.systemTag}>מערכת</span>}
+              </div>
+            </td>
+
+            {/* Macro Category Column */}
+            <td style={styles.td}>
+              {linkedMacro ? (
+                <span
+                  style={{
+                    ...styles.macroPill,
+                    backgroundColor: `${linkedMacro.color}15`,
+                    borderColor: `${linkedMacro.color}40`,
+                    color: linkedMacro.color,
+                  }}
+                >
+                  <span style={{ ...styles.colorPreviewDot, backgroundColor: linkedMacro.color }} />
+                  {linkedMacro.name}
+                </span>
+              ) : (
+                <span style={styles.unassignedMacro}>
+                  {language === 'he'
+                    ? isIncome ? 'ללא שיוך' : 'ללא שיוך (ברירת מחדל: משתנות)'
+                    : 'Unassigned'}
+                </span>
+              )}
+            </td>
+
+            {/* Type Column */}
+            <td style={styles.td}>
+              <span style={isIncome ? styles.incomeTag : styles.expenseTag}>
+                {isIncome ? (language === 'he' ? 'הכנסה' : 'Income') : (language === 'he' ? 'הוצאה' : 'Expense')}
+              </span>
+            </td>
+
+            {/* Color Column */}
+            <td style={styles.td}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{parent.color}</span>
+            </td>
+
+            {/* Actions Column */}
+            <td style={{ ...styles.td, textAlign: 'center' }}>
+              <div style={styles.actionButtons}>
+                {/* Add Child Category Button */}
+                <button
+                  style={styles.addChildBtn}
+                  onClick={() => handleOpenAddChildModal(parent)}
+                  title={language === 'he' ? `הוסף תת-קטגוריה תחת "${parent.name}"` : `Add child under "${parent.name}"`}
+                >
+                  <Plus size={13} />
+                  <span>{language === 'he' ? 'הוסף בן' : 'Add Child'}</span>
+                </button>
+
+                {/* Quick Move Button */}
+                <button
+                  style={styles.moveBtn}
+                  onClick={() => setMovingCategory(parent)}
+                  title={language === 'he' ? 'העבר לתחום אחר...' : 'Move to domain...'}
+                >
+                  <FolderTree size={14} color="var(--text-secondary)" />
+                </button>
+
+                {/* Edit Button */}
+                <button
+                  style={styles.editBtn}
+                  onClick={() => handleOpenEditModal(parent)}
+                  title="ערוך"
+                >
+                  <Edit3 size={14} color="var(--primary)" />
+                </button>
+
+                {/* Delete Button */}
+                <button
+                  style={styles.deleteBtn}
+                  onClick={() => handleDeleteItem(parent)}
+                  title="מחק"
+                >
+                  <Trash2 size={14} color="var(--danger)" />
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          {/* Children Rows (when parent is expanded) */}
+          {node.isParent && isExpanded && node.children.map((child) => {
+            const childLinkedMacro = macroCategories.find((m) => m.id === child.macro_category_id);
+            const isChildDragging = draggedCategoryId === child.id;
+
+            return (
+              <tr
+                key={child.id}
+                style={{
+                  ...styles.tr,
+                  backgroundColor: 'var(--bg-surface-subtle)',
+                  opacity: isChildDragging ? 0.35 : 1,
+                  borderBottom: '1px dashed var(--border-subtle)',
+                }}
+              >
+                {/* Child Name Column */}
+                <td style={{ ...styles.td, paddingRight: language === 'he' ? '42px' : '18px', paddingLeft: language === 'he' ? '18px' : '42px' }}>
+                  <div style={styles.catCell}>
+                    {/* Drag Handle */}
+                    <div
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', child.id);
+                        setDraggedCategoryId(child.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedCategoryId(null);
+                        setDropTargetCategoryId(null);
+                        setIsDropTargetRoot(false);
+                      }}
+                      style={{
+                        cursor: 'grab',
+                        color: 'var(--text-tertiary)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '2px',
+                        borderRadius: '3px',
+                      }}
+                      title={language === 'he' ? 'גרור לתחום אחר או לשחרור בראש הטבלה' : 'Drag to reassign'}
+                    >
+                      <GripVertical size={14} />
+                    </div>
+
+                    {/* Tree Connector */}
+                    <span
+                      style={{
+                        color: '#8B5CF6',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        opacity: 0.85,
+                      }}
+                    >
+                      <CornerDownLeft size={14} />
+                    </span>
+
+                    {/* Color Dot */}
+                    <span style={{ ...styles.colorPreviewDot, backgroundColor: child.color }} />
+
+                    {/* Child Name */}
+                    <span>{formatCategoryName(child.name, language)}</span>
+
+                    {/* Sub-tag */}
+                    <span style={styles.childBadge}>
+                      {language === 'he' ? 'תת-קטגוריה' : 'Sub-category'}
+                    </span>
+
+                    {child.is_system && <span style={styles.systemTag}>מערכת</span>}
+                  </div>
+                </td>
+
+                {/* Macro Column */}
+                <td style={styles.td}>
+                  {childLinkedMacro ? (
+                    <span
+                      style={{
+                        ...styles.macroPill,
+                        backgroundColor: `${childLinkedMacro.color}15`,
+                        borderColor: `${childLinkedMacro.color}40`,
+                        color: childLinkedMacro.color,
+                      }}
+                    >
+                      <span style={{ ...styles.colorPreviewDot, backgroundColor: childLinkedMacro.color }} />
+                      {childLinkedMacro.name}
+                    </span>
+                  ) : (
+                    <span style={styles.unassignedMacro}>
+                      {language === 'he' ? 'ללא שיוך' : 'Unassigned'}
+                    </span>
+                  )}
+                </td>
+
+                {/* Type Column */}
+                <td style={styles.td}>
+                  <span style={isIncome ? styles.incomeTag : styles.expenseTag}>
+                    {isIncome ? (language === 'he' ? 'הכנסה' : 'Income') : (language === 'he' ? 'הוצאה' : 'Expense')}
+                  </span>
+                </td>
+
+                {/* Color Column */}
+                <td style={styles.td}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{child.color}</span>
+                </td>
+
+                {/* Actions Column */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  <div style={styles.actionButtons}>
+                    {/* Detach from Parent Button */}
+                    <button
+                      style={styles.unlinkBtn}
+                      onClick={() => handleDetachFromParent(child)}
+                      title={language === 'he' ? 'נתק מתחום אב (הפוך לקטגוריה עצמאית ראשית)' : 'Detach from parent'}
+                    >
+                      <Unlink size={13} />
+                      <span>{language === 'he' ? 'נתק' : 'Detach'}</span>
+                    </button>
+
+                    {/* Quick Move Button */}
+                    <button
+                      style={styles.moveBtn}
+                      onClick={() => setMovingCategory(child)}
+                      title={language === 'he' ? 'העבר לתחום אחר...' : 'Move to domain...'}
+                    >
+                      <FolderTree size={14} color="var(--text-secondary)" />
+                    </button>
+
+                    {/* Edit Button */}
+                    <button
+                      style={styles.editBtn}
+                      onClick={() => handleOpenEditModal(child)}
+                      title="ערוך"
+                    >
+                      <Edit3 size={14} color="var(--primary)" />
+                    </button>
+
+                    {/* Delete Button */}
+                    <button
+                      style={styles.deleteBtn}
+                      onClick={() => handleDeleteItem(child)}
+                      title="מחק"
+                    >
+                      <Trash2 size={14} color="var(--danger)" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </React.Fragment>
+      );
+    });
   };
 
   return (
@@ -1256,12 +1748,12 @@ CREATE POLICY "Users can delete payment mappings in their households"
                   : `Showing ${processedMacros.length} of ${macroCategories.length}`
                 : activeSubTab === 'expenses'
                 ? language === 'he'
-                  ? `מציג ${processedExpenses.length} מתוך ${expenseCategories.length}`
-                  : `Showing ${processedExpenses.length} of ${expenseCategories.length}`
+                  ? `מציג ${visibleExpenseCount} מתוך ${expenseCategories.length}`
+                  : `Showing ${visibleExpenseCount} of ${expenseCategories.length}`
                 : activeSubTab === 'incomes'
                 ? language === 'he'
-                  ? `מציג ${processedIncomes.length} מתוך ${incomeCategories.length}`
-                  : `Showing ${processedIncomes.length} of ${incomeCategories.length}`
+                  ? `מציג ${visibleIncomeCount} מתוך ${incomeCategories.length}`
+                  : `Showing ${visibleIncomeCount} of ${incomeCategories.length}`
                 : activeSubTab === 'merchants'
                 ? language === 'he'
                   ? `מציג ${processedMerchants.length} מתוך ${businessMappings.length}`
@@ -1287,6 +1779,45 @@ CREATE POLICY "Users can delete payment mappings in their households"
             </span>
           </button>
         </div>
+
+        {/* Drag & Drop Notice or Root Drop Zone for Categories */}
+        {(activeSubTab === 'expenses' || activeSubTab === 'incomes') && draggedCategoryId && (
+          <div
+            style={{
+              marginBottom: '12px',
+              padding: '14px 18px',
+              border: isDropTargetRoot ? '2px dashed #10B981' : '2px dashed var(--primary)',
+              backgroundColor: isDropTargetRoot ? 'rgba(16, 185, 129, 0.12)' : 'rgba(79, 70, 229, 0.08)',
+              borderRadius: '8px',
+              textAlign: 'center',
+              fontSize: '0.875rem',
+              color: isDropTargetRoot ? '#10B981' : 'var(--primary)',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.15s ease',
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDropTargetRoot(true);
+            }}
+            onDragLeave={() => setIsDropTargetRoot(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleDropToRoot();
+            }}
+          >
+            <Unlink size={16} />
+            <span>
+              {language === 'he'
+                ? 'שחרר כאן כדי להפוך לקטגוריה עצמאית ראשית (ללא תחום אב)'
+                : 'Drop here to make a standalone root category'}
+            </span>
+          </div>
+        )}
 
         {/* Dynamic Table Body */}
         <div style={styles.tableResponsive}>
@@ -1389,171 +1920,11 @@ CREATE POLICY "Users can delete payment mappings in their households"
                   })
                 ))}
 
-              {/* 2. EXPENSE CATEGORIES TABLE */}
-              {activeSubTab === 'expenses' &&
-                (processedExpenses.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={styles.emptyTableTd}>
-                      {language === 'he'
-                        ? 'לא נמצאו סוגי הוצאות תואמים לחיפוש או הסינון'
-                        : 'No expense categories found matching search/filter'}
-                    </td>
-                  </tr>
-                ) : (
-                  processedExpenses.map((cat) => {
-                    const linkedMacro = macroCategories.find((m) => m.id === cat.macro_category_id);
-                    return (
-                      <tr key={cat.id} style={styles.tr}>
-                        <td style={styles.td}>
-                          <div style={styles.catCell}>
-                            <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
-                            {cat.parent_id && (() => {
-                              const p = categories.find((c) => c.id === cat.parent_id);
-                              return p ? (
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px' }}>
-                                  {p.name} ›
-                                </span>
-                              ) : null;
-                            })()}
-                            <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
-                            {categories.some((c) => c.parent_id === cat.id) && (
-                              <span style={{ fontSize: '0.7rem', color: '#8B5CF6', backgroundColor: '#8B5CF615', border: '1px solid #8B5CF630', padding: '1px 5px', borderRadius: '4px' }}>
-                                תחום אב
-                              </span>
-                            )}
-                            {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
-                          </div>
-                        </td>
-                        <td style={styles.td}>
-                          {linkedMacro ? (
-                            <span
-                              style={{
-                                ...styles.macroPill,
-                                backgroundColor: `${linkedMacro.color}15`,
-                                borderColor: `${linkedMacro.color}40`,
-                                color: linkedMacro.color,
-                              }}
-                            >
-                              <span style={{ ...styles.colorPreviewDot, backgroundColor: linkedMacro.color }} />
-                              {linkedMacro.name}
-                            </span>
-                          ) : (
-                            <span style={styles.unassignedMacro}>
-                              {language === 'he' ? 'ללא שיוך (ברירת מחדל: משתנות)' : 'Unassigned (Variable)'}
-                            </span>
-                          )}
-                        </td>
-                        <td style={styles.td}>
-                          <span style={styles.expenseTag}>הוצאה</span>
-                        </td>
-                        <td style={styles.td}>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{cat.color}</span>
-                        </td>
-                        <td style={{ ...styles.td, textAlign: 'center' }}>
-                          <div style={styles.actionButtons}>
-                            <button
-                              style={styles.editBtn}
-                              onClick={() => handleOpenEditModal(cat)}
-                              title="ערוך"
-                            >
-                              <Edit3 size={14} color="var(--primary)" />
-                            </button>
-                            <button
-                              style={styles.deleteBtn}
-                              onClick={() => handleDeleteItem(cat)}
-                              title="מחק"
-                            >
-                              <Trash2 size={14} color="var(--danger)" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ))}
+              {/* 2. EXPENSE CATEGORIES HIERARCHICAL TREE TABLE */}
+              {activeSubTab === 'expenses' && renderCategoryTreeRows(expenseTree, false)}
 
-              {/* 3. INCOME CATEGORIES TABLE */}
-              {activeSubTab === 'incomes' &&
-                (processedIncomes.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={styles.emptyTableTd}>
-                      {language === 'he'
-                        ? 'לא נמצאו סוגי הכנסות תואמים לחיפוש או הסינון'
-                        : 'No income categories found matching search/filter'}
-                    </td>
-                  </tr>
-                ) : (
-                  processedIncomes.map((cat) => {
-                    const linkedMacro = macroCategories.find((m) => m.id === cat.macro_category_id);
-                    return (
-                      <tr key={cat.id} style={styles.tr}>
-                        <td style={styles.td}>
-                          <div style={styles.catCell}>
-                            <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
-                            {cat.parent_id && (() => {
-                              const p = categories.find((c) => c.id === cat.parent_id);
-                              return p ? (
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px' }}>
-                                  {p.name} ›
-                                </span>
-                              ) : null;
-                            })()}
-                            <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
-                            {categories.some((c) => c.parent_id === cat.id) && (
-                              <span style={{ fontSize: '0.7rem', color: '#8B5CF6', backgroundColor: '#8B5CF615', border: '1px solid #8B5CF630', padding: '1px 5px', borderRadius: '4px' }}>
-                                תחום אב
-                              </span>
-                            )}
-                            {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
-                          </div>
-                        </td>
-                        <td style={styles.td}>
-                          {linkedMacro ? (
-                            <span
-                              style={{
-                                ...styles.macroPill,
-                                backgroundColor: `${linkedMacro.color}15`,
-                                borderColor: `${linkedMacro.color}40`,
-                                color: linkedMacro.color,
-                              }}
-                            >
-                              <span style={{ ...styles.colorPreviewDot, backgroundColor: linkedMacro.color }} />
-                              {linkedMacro.name}
-                            </span>
-                          ) : (
-                            <span style={styles.unassignedMacro}>
-                              {language === 'he' ? 'ללא שיוך' : 'Unassigned'}
-                            </span>
-                          )}
-                        </td>
-                        <td style={styles.td}>
-                          <span style={styles.incomeTag}>הכנסה</span>
-                        </td>
-                        <td style={styles.td}>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{cat.color}</span>
-                        </td>
-                        <td style={{ ...styles.td, textAlign: 'center' }}>
-                          <div style={styles.actionButtons}>
-                            <button
-                              style={styles.editBtn}
-                              onClick={() => handleOpenEditModal(cat)}
-                              title="ערוך"
-                            >
-                              <Edit3 size={14} color="var(--primary)" />
-                            </button>
-                            <button
-                              style={styles.deleteBtn}
-                              onClick={() => handleDeleteItem(cat)}
-                              title="מחק"
-                            >
-                              <Trash2 size={14} color="var(--danger)" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ))}
+              {/* 3. INCOME CATEGORIES HIERARCHICAL TREE TABLE */}
+              {activeSubTab === 'incomes' && renderCategoryTreeRows(incomeTree, true)}
 
               {/* 4. MERCHANT MAPPING RULES TABLE */}
               {activeSubTab === 'merchants' &&
@@ -1677,7 +2048,13 @@ CREATE POLICY "Users can delete payment mappings in their households"
           <div style={styles.modalCard}>
             <div style={styles.modalHeader}>
               <h3 style={styles.modalTitle}>
-                {editingItem ? t('editItemTitle', language) : t('newItemTitle', language)}
+                {editingItem
+                  ? t('editItemTitle', language)
+                  : formParentId
+                  ? (language === 'he'
+                      ? `הוספת תת-קטגוריה תחת "${categories.find((c) => c.id === formParentId)?.name || ''}"`
+                      : `Add Sub-Category under "${categories.find((c) => c.id === formParentId)?.name || ''}"`)
+                  : t('newItemTitle', language)}
               </h3>
               <button style={styles.closeBtn} onClick={() => setIsAddModalOpen(false)}>
                 <X size={18} />
@@ -1900,6 +2277,127 @@ CREATE POLICY "Users can delete payment mappings in their households"
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile / Quick Move Modal */}
+      {movingCategory && (
+        <div style={styles.modalOverlay} className="animate-fade-in" onClick={() => setMovingCategory(null)}>
+          <div
+            style={{ ...styles.modalCard, maxWidth: '440px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={styles.modalHeader}>
+              <div>
+                <h3 style={styles.modalTitle}>
+                  {language === 'he' ? 'שיוך והעברת קטגוריה' : 'Move Category'}
+                </h3>
+                <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  {movingCategory.name}
+                </div>
+              </div>
+              <button style={styles.closeBtn} onClick={() => setMovingCategory(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                {language === 'he' ? 'בחר לאיזה תחום אב לשייך קטגוריה זו:' : 'Select parent domain to assign to:'}
+              </div>
+
+              {/* Option 1: Standalone Root */}
+              <button
+                type="button"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px 14px',
+                  borderRadius: '8px',
+                  border: !movingCategory.parent_id ? '2px solid var(--primary)' : '1px solid var(--border-main)',
+                  backgroundColor: !movingCategory.parent_id ? 'rgba(79, 70, 229, 0.08)' : 'var(--bg-surface-subtle)',
+                  cursor: 'pointer',
+                  textAlign: 'right',
+                  width: '100%',
+                }}
+                onClick={() => handleMoveCategoryToParent(movingCategory.id, null)}
+              >
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10B981' }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>
+                    {language === 'he' ? 'קטגוריה ראשית עצמאית (ללא תחום אב)' : 'Standalone Root Category'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                    {language === 'he' ? 'מופיעה בראש הרשימה כעצמאית' : 'Top-level independent category'}
+                  </div>
+                </div>
+                {!movingCategory.parent_id && <CheckCircle2 size={16} color="var(--primary)" />}
+              </button>
+
+              {/* List of potential parents */}
+              {categories
+                .filter(
+                  (c) =>
+                    c.type === movingCategory.type &&
+                    c.id !== movingCategory.id &&
+                    c.parent_id !== movingCategory.id
+                )
+                .map((parent) => {
+                  const isCurrent = movingCategory.parent_id === parent.id;
+                  const isAlreadyParent = categories.some((c) => c.parent_id === parent.id);
+                  return (
+                    <button
+                      key={parent.id}
+                      type="button"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '12px 14px',
+                        borderRadius: '8px',
+                        border: isCurrent ? '2px solid var(--primary)' : '1px solid var(--border-main)',
+                        backgroundColor: isCurrent ? 'rgba(79, 70, 229, 0.08)' : 'var(--bg-surface-subtle)',
+                        cursor: 'pointer',
+                        textAlign: 'right',
+                        width: '100%',
+                      }}
+                      onClick={() => handleMoveCategoryToParent(movingCategory.id, parent.id)}
+                    >
+                      <div
+                        style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          backgroundColor: parent.color || 'var(--primary)',
+                        }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>
+                          {parent.name}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                          {isAlreadyParent
+                            ? (language === 'he' ? 'תחום ראשי קיים' : 'Existing parent domain')
+                            : (language === 'he' ? 'הפוך לתחום ראשי' : 'Make parent domain')}
+                        </div>
+                      </div>
+                      {isCurrent && <CheckCircle2 size={16} color="var(--primary)" />}
+                    </button>
+                  );
+                })}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 20px', borderTop: '1px solid var(--border-subtle)' }}>
+              <button
+                type="button"
+                style={styles.modalCancelBtn}
+                onClick={() => setMovingCategory(null)}
+              >
+                {t('cancel', language)}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2544,6 +3042,65 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'var(--danger-light)',
     border: 'none',
     cursor: 'pointer',
+  },
+  moveBtn: {
+    padding: '6px',
+    borderRadius: '4px',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addChildBtn: {
+    padding: '4px 8px',
+    borderRadius: '4px',
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    color: '#8B5CF6',
+    border: '1px solid rgba(139, 92, 246, 0.25)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '0.75rem',
+    fontWeight: '600',
+  },
+  unlinkBtn: {
+    padding: '4px 8px',
+    borderRadius: '4px',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    color: 'var(--text-secondary)',
+    border: '1px solid var(--border-main)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '0.75rem',
+  },
+  parentBadge: {
+    fontSize: '0.7rem',
+    color: '#8B5CF6',
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    border: '1px solid rgba(139, 92, 246, 0.25)',
+    padding: '1px 6px',
+    borderRadius: '4px',
+    fontWeight: '600',
+  },
+  subCountBadge: {
+    fontSize: '0.6875rem',
+    color: 'var(--text-secondary)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    border: '1px solid var(--border-main)',
+    padding: '1px 6px',
+    borderRadius: '10px',
+  },
+  childBadge: {
+    fontSize: '0.7rem',
+    color: 'var(--text-secondary)',
+    backgroundColor: 'var(--bg-surface-subtle)',
+    padding: '1px 5px',
+    borderRadius: '4px',
   },
   moreRowsText: {
     padding: '10px',
