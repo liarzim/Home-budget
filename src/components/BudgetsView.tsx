@@ -414,15 +414,19 @@ export const BudgetsView: React.FC = () => {
     // Sort order for macros: Income first or standard order
     const sortedMacros = [...macroCategories].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
 
+    // A category that has children serves as a parent domain folder, not a direct line item
+    const parentCategoryIds = new Set(categories.map((c) => c.parent_id).filter(Boolean));
+    const budgetableCategories = categories.filter((c) => !parentCategoryIds.has(c.id));
+
     sortedMacros.forEach((macro) => {
-      const cats = categories.filter((c) => c.macro_category_id === macro.id);
+      const cats = budgetableCategories.filter((c) => c.macro_category_id === macro.id);
       if (cats.length > 0) {
         groups.push({ macro, categories: cats });
       }
     });
 
     // Unassigned categories (if any)
-    const unassigned = categories.filter(
+    const unassigned = budgetableCategories.filter(
       (c) => !c.macro_category_id || !macroMap.has(c.macro_category_id)
     );
     if (unassigned.length > 0) {
@@ -883,19 +887,38 @@ export const BudgetsView: React.FC = () => {
                                       backgroundColor: cat.color || macro.color || 'var(--primary)',
                                       width: matrixView ? '7px' : '10px',
                                       height: matrixView ? '7px' : '10px',
+                                      flexShrink: 0,
                                     }}
                                   />
-                                  <span
-                                    style={{
-                                      ...styles.catNameText,
-                                      fontSize: matrixView ? '0.75rem' : '0.875rem',
-                                      whiteSpace: 'nowrap',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                    }}
-                                  >
-                                    {cat.name}
-                                  </span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                    {cat.parent_id && (() => {
+                                      const parentCat = categories.find((c) => c.id === cat.parent_id);
+                                      return parentCat ? (
+                                        <span
+                                          style={{
+                                            fontSize: matrixView ? '0.65rem' : '0.75rem',
+                                            color: 'var(--text-tertiary)',
+                                            backgroundColor: 'var(--bg-tertiary)',
+                                            padding: '1px 4px',
+                                            borderRadius: '3px',
+                                            flexShrink: 0,
+                                          }}
+                                        >
+                                          {parentCat.name} ›
+                                        </span>
+                                      ) : null;
+                                    })()}
+                                    <span
+                                      style={{
+                                        ...styles.catNameText,
+                                        fontSize: matrixView ? '0.75rem' : '0.875rem',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                      }}
+                                    >
+                                      {cat.name}
+                                    </span>
+                                  </div>
                                 </div>
                               </td>
 
@@ -1110,6 +1133,23 @@ export const BudgetsView: React.FC = () => {
                         <div style={styles.trackCardHeader}>
                           <div style={styles.trackCatNameWrap}>
                             <div style={{ ...styles.categoryDot, backgroundColor: cat.color || macro.color }} />
+                            {cat.parent_id && (() => {
+                              const parentCat = categories.find((c) => c.id === cat.parent_id);
+                              return parentCat ? (
+                                <span
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    color: 'var(--text-tertiary)',
+                                    backgroundColor: 'var(--bg-tertiary)',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {parentCat.name} ›
+                                </span>
+                              ) : null;
+                            })()}
                             <span style={styles.trackCatName}>{cat.name}</span>
                           </div>
                           {isOver ? (

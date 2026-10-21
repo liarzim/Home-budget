@@ -95,6 +95,7 @@ export const SystemTablesScreen: React.FC = () => {
   const [formMacroType, setFormMacroType] = useState<'expense' | 'income'>('expense');
   const [formDisplayOrder, setFormDisplayOrder] = useState(1);
   const [formMacroId, setFormMacroId] = useState<string>('');
+  const [formParentId, setFormParentId] = useState<string>('');
   const [formPattern, setFormPattern] = useState('');
   const [formTargetCatId, setFormTargetCatId] = useState('');
   const [formRawCard, setFormRawCard] = useState('');
@@ -462,6 +463,7 @@ export const SystemTablesScreen: React.FC = () => {
       activeSubTab === 'incomes' ? m.type === 'income' : m.type === 'expense'
     );
     setFormMacroId(defaultMacro?.id || '');
+    setFormParentId('');
 
     setFormPattern('');
     setFormTargetCatId(categories[0]?.id || '');
@@ -485,6 +487,7 @@ export const SystemTablesScreen: React.FC = () => {
       setFormColor(item.color || '#4F46E5');
       setFormIcon(item.icon || 'tag');
       setFormMacroId(item.macro_category_id || '');
+      setFormParentId(item.parent_id || '');
     } else if (activeSubTab === 'merchants') {
       setFormPattern(item.pattern);
       setFormTargetCatId(item.category_id);
@@ -505,7 +508,7 @@ export const SystemTablesScreen: React.FC = () => {
       if (activeSubTab === 'macros') {
         updateMacroCategory(editingItem.id, formName, formColor, formIcon, formDisplayOrder);
       } else if (activeSubTab === 'expenses' || activeSubTab === 'incomes') {
-        updateCategory(editingItem.id, formName, formColor, formIcon, formMacroId || null);
+        updateCategory(editingItem.id, formName, formColor, formIcon, formMacroId || null, formParentId || null);
       } else if (activeSubTab === 'merchants') {
         updateBusinessMapping(editingItem.id, formPattern, formTargetCatId);
       } else if (activeSubTab === 'cards') {
@@ -516,9 +519,9 @@ export const SystemTablesScreen: React.FC = () => {
       if (activeSubTab === 'macros') {
         addMacroCategory(formName, formMacroType, formColor, formIcon, formDisplayOrder);
       } else if (activeSubTab === 'expenses') {
-        addCategory(formName, 'expense', formColor, formIcon, formMacroId || null);
+        addCategory(formName, 'expense', formColor, formIcon, formMacroId || null, formParentId || null);
       } else if (activeSubTab === 'incomes') {
-        addCategory(formName, 'income', formColor, formIcon, formMacroId || null);
+        addCategory(formName, 'income', formColor, formIcon, formMacroId || null, formParentId || null);
       } else if (activeSubTab === 'merchants') {
         addBusinessMapping(formPattern, formTargetCatId);
       } else if (activeSubTab === 'cards') {
@@ -1404,7 +1407,20 @@ CREATE POLICY "Users can delete payment mappings in their households"
                         <td style={styles.td}>
                           <div style={styles.catCell}>
                             <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
+                            {cat.parent_id && (() => {
+                              const p = categories.find((c) => c.id === cat.parent_id);
+                              return p ? (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px' }}>
+                                  {p.name} ›
+                                </span>
+                              ) : null;
+                            })()}
                             <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
+                            {categories.some((c) => c.parent_id === cat.id) && (
+                              <span style={{ fontSize: '0.7rem', color: '#8B5CF6', backgroundColor: '#8B5CF615', border: '1px solid #8B5CF630', padding: '1px 5px', borderRadius: '4px' }}>
+                                תחום אב
+                              </span>
+                            )}
                             {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
                           </div>
                         </td>
@@ -1474,7 +1490,20 @@ CREATE POLICY "Users can delete payment mappings in their households"
                         <td style={styles.td}>
                           <div style={styles.catCell}>
                             <span style={{ ...styles.colorPreviewDot, backgroundColor: cat.color }} />
+                            {cat.parent_id && (() => {
+                              const p = categories.find((c) => c.id === cat.parent_id);
+                              return p ? (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-tertiary)', padding: '2px 6px', borderRadius: '4px' }}>
+                                  {p.name} ›
+                                </span>
+                              ) : null;
+                            })()}
                             <span style={styles.cellBold}>{formatCategoryName(cat.name, language)}</span>
+                            {categories.some((c) => c.parent_id === cat.id) && (
+                              <span style={{ fontSize: '0.7rem', color: '#8B5CF6', backgroundColor: '#8B5CF615', border: '1px solid #8B5CF630', padding: '1px 5px', borderRadius: '4px' }}>
+                                תחום אב
+                              </span>
+                            )}
                             {cat.is_system && <span style={styles.systemTag}>מערכת</span>}
                           </div>
                         </td>
@@ -1741,6 +1770,31 @@ CREATE POLICY "Users can delete payment mappings in their households"
                         .map((m) => (
                           <option key={m.id} value={m.id}>
                             {m.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>
+                      {language === 'he' ? 'תחום ראשי / קטגוריית אב (אופציונלי)' : 'Parent Domain / Category (Optional)'}
+                    </label>
+                    <select
+                      style={styles.select}
+                      value={formParentId}
+                      onChange={(e) => setFormParentId(e.target.value)}
+                    >
+                      <option value="">{language === 'he' ? '— ללא (קטגוריה עצמאית / ראשית) —' : '— None (Standalone / Parent) —'}</option>
+                      {categories
+                        .filter(
+                          (c) =>
+                            !c.parent_id &&
+                            (!editingItem || c.id !== editingItem.id) &&
+                            c.type === (activeSubTab === 'incomes' ? 'income' : 'expense')
+                        )
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
                           </option>
                         ))}
                     </select>

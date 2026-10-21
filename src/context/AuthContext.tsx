@@ -138,8 +138,8 @@ interface AuthContextType {
   updateMacroCategory: (id: string, name: string, color?: string, icon?: string, displayOrder?: number) => void;
   deleteMacroCategory: (id: string) => void;
   batchAddMacroCategories: (macros: Partial<MacroCategory>[]) => void;
-  addCategory: (name: string, type: 'expense' | 'income', color?: string, icon?: string, macroCategoryId?: string | null) => void;
-  updateCategory: (id: string, name: string, color?: string, icon?: string, macroCategoryId?: string | null) => void;
+  addCategory: (name: string, type: 'expense' | 'income', color?: string, icon?: string, macroCategoryId?: string | null, parentId?: string | null) => void;
+  updateCategory: (id: string, name: string, color?: string, icon?: string, macroCategoryId?: string | null, parentId?: string | null) => void;
   deleteCategory: (id: string) => void;
   batchAddCategories: (cats: Partial<Category>[]) => void;
   addBusinessMapping: (pattern: string, categoryId: string) => void;
@@ -1875,7 +1875,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     type: 'expense' | 'income',
     color?: string,
     icon?: string,
-    macroCategoryId?: string | null
+    macroCategoryId?: string | null,
+    parentId?: string | null
   ) => {
     if (!activeHousehold) return;
     const newCat: Category = {
@@ -1886,6 +1887,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       color: color || (type === 'income' ? '#10B981' : '#4F46E5'),
       icon: icon || (type === 'income' ? 'briefcase' : 'tag'),
       macro_category_id: macroCategoryId || null,
+      parent_id: parentId || null,
       is_system: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -1902,7 +1904,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     name: string,
     color?: string,
     icon?: string,
-    macroCategoryId?: string | null
+    macroCategoryId?: string | null,
+    parentId?: string | null
   ) => {
     setCategories((prev) =>
       prev.map((c) =>
@@ -1913,6 +1916,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...(color ? { color } : {}),
               ...(icon ? { icon } : {}),
               macro_category_id: macroCategoryId !== undefined ? macroCategoryId : c.macro_category_id,
+              parent_id: parentId !== undefined ? parentId : c.parent_id,
               updated_at: new Date().toISOString(),
             }
           : c
@@ -1927,6 +1931,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...(color ? { color } : {}),
           ...(icon ? { icon } : {}),
           ...(macroCategoryId !== undefined ? { macro_category_id: macroCategoryId } : {}),
+          ...(parentId !== undefined ? { parent_id: parentId } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
