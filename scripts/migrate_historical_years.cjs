@@ -482,8 +482,14 @@ async function migrateSingleYear(year) {
 
       // Card
       const cardCell = cols.card !== undefined ? s[XLSX.utils.encode_cell({ r, c: cols.card })] : null;
-      const cardStr = cardCell && cardCell.v ? String(cardCell.v).trim() : '';
-      const cardDigits = extractLastDigits(cardStr);
+      let cardStr = cardCell && cardCell.v ? String(cardCell.v).trim() : '';
+      if (cardStr.includes('פלטינום') || cardStr.includes('ויזה פלטינום')) {
+        cardStr = 'שופרסל (2285)';
+      }
+      let cardDigits = extractLastDigits(cardStr);
+      if (!cardDigits && (cardStr.includes('פלטינום') || cardStr.includes('שופרסל'))) {
+        cardDigits = '2285';
+      }
 
       // Category: first check direct category column (if exists in sheet, e.g. 2016-2019), then business mapping
       const catCell = cols.category !== undefined ? s[XLSX.utils.encode_cell({ r, c: cols.category })] : null;
