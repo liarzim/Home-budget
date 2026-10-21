@@ -704,14 +704,23 @@ export const BudgetsView: React.FC = () => {
                     <table style={styles.categoriesTable}>
                       <thead>
                         <tr>
-                          <th style={{ ...styles.thCell, textAlign: 'right', width: '30%' }}>קטגוריה</th>
-                          <th style={{ ...styles.thCell, textAlign: 'center', width: '20%' }}>ממוצע הוצאה (אמת)</th>
+                          <th style={{ ...styles.thCell, textAlign: 'right', width: matrixView ? '180px' : '30%', minWidth: matrixView ? '180px' : undefined }}>
+                            קטגוריה
+                          </th>
+                          <th style={{ ...styles.thCell, textAlign: 'center', width: matrixView ? '140px' : '20%', minWidth: matrixView ? '140px' : undefined }}>
+                            ממוצע הוצאה (אמת)
+                          </th>
                           {matrixView ? (
-                            MONTH_NAMES_HE.map((m, idx) => (
-                              <th key={idx} style={{ ...styles.thCell, textAlign: 'center' }}>
-                                {m}
+                            <>
+                              {MONTH_NAMES_HE.map((m, idx) => (
+                                <th key={idx} style={{ ...styles.thCell, textAlign: 'center', minWidth: '65px' }}>
+                                  {m}
+                                </th>
+                              ))}
+                              <th style={{ ...styles.thCell, textAlign: 'center', minWidth: '95px', backgroundColor: 'var(--primary-light)', color: 'var(--primary)', fontWeight: '800' }}>
+                                סה"כ שנתי
                               </th>
-                            ))
+                            </>
                           ) : (
                             <>
                               <th style={{ ...styles.thCell, textAlign: 'center', width: '25%' }}>
@@ -726,6 +735,10 @@ export const BudgetsView: React.FC = () => {
                         {cats.map((cat) => {
                           const stats = categoryStats[cat.id] || { last6MonthsAvg: 0, prevYearAvg: 0, last3MonthsAvg: 0 };
                           const currentVal = planState[cat.id]?.[selectedMonth] || 0;
+                          const catAnnualTotal = Array.from({ length: 12 }, (_, i) => i + 1).reduce(
+                            (sum, m) => sum + (planState[cat.id]?.[m] || 0),
+                            0
+                          );
 
                           return (
                             <tr key={cat.id} style={styles.catRow}>
@@ -758,24 +771,40 @@ export const BudgetsView: React.FC = () => {
                                 </div>
                               </td>
 
-                              {/* Matrix View (12 columns) vs Single Month View */}
+                              {/* Matrix View (12 columns + Total) vs Single Month View */}
                               {matrixView ? (
-                                Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
-                                  const mVal = planState[cat.id]?.[m] || 0;
-                                  return (
-                                    <td key={m} style={{ ...styles.tdCell, padding: '4px' }}>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        step="50"
-                                        value={mVal === 0 ? '' : mVal}
-                                        onChange={(e) => handleAmountChange(cat.id, m, e.target.value)}
-                                        placeholder="0"
-                                        style={styles.matrixInput}
-                                      />
-                                    </td>
-                                  );
-                                })
+                                <>
+                                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+                                    const mVal = planState[cat.id]?.[m] || 0;
+                                    return (
+                                      <td key={m} style={{ ...styles.tdCell, padding: '4px' }}>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="50"
+                                          value={mVal === 0 ? '' : mVal}
+                                          onChange={(e) => handleAmountChange(cat.id, m, e.target.value)}
+                                          placeholder="0"
+                                          style={styles.matrixInput}
+                                        />
+                                      </td>
+                                    );
+                                  })}
+                                  {/* Row Total (Sum of all months) */}
+                                  <td
+                                    style={{
+                                      ...styles.tdCell,
+                                      textAlign: 'center',
+                                      backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                                      fontWeight: '800',
+                                      color: 'var(--text-primary)',
+                                      whiteSpace: 'nowrap',
+                                      fontSize: '0.875rem',
+                                    }}
+                                  >
+                                    {currency} {catAnnualTotal.toLocaleString()}
+                                  </td>
+                                </>
                               ) : (
                                 <>
                                   {/* Amount Input */}
@@ -824,6 +853,40 @@ export const BudgetsView: React.FC = () => {
                           );
                         })}
                       </tbody>
+                      {/* Matrix View Subtotals Footer */}
+                      {matrixView && (
+                        <tfoot>
+                          <tr style={{ backgroundColor: 'var(--bg-app)', borderTop: '2px solid var(--border-main)', fontWeight: '800' }}>
+                            <td style={{ ...styles.tdCell, textAlign: 'right', fontWeight: '800' }}>
+                              סה"כ {macro.name}
+                            </td>
+                            <td style={{ ...styles.tdCell, textAlign: 'center', fontWeight: '800', color: 'var(--text-secondary)' }}>
+                              {currency} {macroHistoricalAvg.toLocaleString()}
+                            </td>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+                              const monthSum = cats.reduce((acc, cat) => acc + (planState[cat.id]?.[m] || 0), 0);
+                              return (
+                                <td key={m} style={{ ...styles.tdCell, textAlign: 'center', padding: '6px 4px', fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
+                                  {currency}{monthSum.toLocaleString()}
+                                </td>
+                              );
+                            })}
+                            <td
+                              style={{
+                                ...styles.tdCell,
+                                textAlign: 'center',
+                                backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                                color: 'var(--primary)',
+                                fontWeight: '900',
+                                fontSize: '0.875rem',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {currency} {macroSubtotal.toLocaleString()}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
                     </table>
                   </div>
                 )}
