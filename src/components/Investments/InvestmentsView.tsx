@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   InvestmentAsset,
   InvestmentTranche,
+  InvestmentTrancheType,
   SecurityType,
   InvestmentPeriodicSnapshot,
   InvestmentSnapshotItem,
@@ -42,9 +43,12 @@ import {
   RotateCcw,
   Landmark,
   PieChart,
+  ArrowUpDown,
+  ArrowDownLeft,
+  ArrowUpRight,
 } from 'lucide-react';
 import { fetchAssetQuote, fetchBatchAssetQuotes, fetchUsdIlsRate, MarketQuoteResult } from '../../lib/quotesService';
-import { formatDate, normalizeToISODate, healSnapshotDate, isDuplicateTranche, sortTranchesByDateDesc } from '../../lib/i18n';
+import { formatDate, normalizeToISODate, healSnapshotDate, isDuplicateTranche, sortTranchesByDateDesc, sortTranchesByDateAsc } from '../../lib/i18n';
 import { IsraeliDateInput } from '../common/IsraeliDateInput';
 import { InvestmentsCharts } from './InvestmentsCharts';
 import { InvestmentsSnapshotsTree } from './InvestmentsSnapshotsTree';
@@ -196,6 +200,8 @@ export const InvestmentsView: React.FC = () => {
   const [formTotalCost, setFormTotalCost] = useState<string>(() => initialModalDraft?.formTotalCost || '');
   const [formFee, setFormFee] = useState<string>(() => initialModalDraft?.formFee || '0');
   const [formNotes, setFormNotes] = useState<string>(() => initialModalDraft?.formNotes || '');
+  const [formTrancheType, setFormTrancheType] = useState<InvestmentTrancheType>('buy');
+  const [trancheSortOrder, setTrancheSortOrder] = useState<Record<string, 'asc' | 'desc'>>({});
   const [isPriceInAgorot, setIsPriceInAgorot] = useState<boolean>(() => {
     if (initialModalDraft?.isPriceInAgorot !== undefined) {
       return Boolean(initialModalDraft.isPriceInAgorot);
@@ -614,28 +620,103 @@ export const InvestmentsView: React.FC = () => {
     }));
   };
 
-  // Helper calculation for an asset
+  // Helper calculation for an asset with support for sales (FIFO cost basis)
   const calculateAssetMetrics = (asset: InvestmentAsset) => {
-    const totalShares = asset.tranches.reduce((sum, tr) => sum + tr.shares, 0);
-    // Purchase fee is paid separately in account and excluded from security P&L
-    const totalCost = asset.tranches.reduce(
-      (sum, tr) => sum + tr.shares * tr.price_per_share,
+    const tranches = asset.tranches || [];
+    const hasSales = tranches.some((tr) => tr.shares < 0 || tr.type === 'sell');
+    const totalFees = tranches.reduce((sum, tr) => sum + (tr.fee || 0), 0);
+
+    if (!hasSales) {
+      const totalShares = tranches.reduce((sum, tr) => sum + tr.shares, 0);
+      const totalCost = tranches.reduce(
+        (sum, tr) => sum + (tr.total_cost !== undefined ? tr.total_cost : tr.shares * tr.price_per_share),
+        0
+      );
+      const avgPrice = totalShares > 0 ? totalCost / totalShares : 0;
+      const currentValue = totalShares * asset.current_price;
+      const profit = currentValue - totalCost;
+      const returnPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+
+      return {
+        totalShares,
+        totalCost,
+        totalFees,
+        avgPrice,
+        currentValue,
+        profit,
+        returnPct,
+        realizedProfit: 0,
+        totalProceeds: 0,
+        totalBoughtCost: totalCost,
+        hasSales: false,
+      };
+    }
+
+    // Has sales -> FIFO lot accounting for open holdings and realized gains
+    const sorted = [...tranches].sort((a, b) => {
+      const d1 = normalizeToISODate(a.date);
+      const d2 = normalizeToISODate(b.date);
+      return d1.localeCompare(d2);
+    });
+
+    const buyLots: { remainingShares: number; unitCost: number }[] = [];
+    let totalShares = 0;
+    let realizedProfit = 0;
+    let totalProceeds = 0;
+    let totalBoughtCost = 0;
+
+    sorted.forEach((tr) => {
+      totalShares += tr.shares;
+      if (tr.shares > 0) {
+        const cost = tr.total_cost !== undefined ? tr.total_cost : tr.shares * tr.price_per_share;
+        totalBoughtCost += cost;
+        buyLots.push({
+          remainingShares: tr.shares,
+          unitCost: tr.price_per_share,
+        });
+      } else {
+        // Sale
+        const sharesSold = Math.abs(tr.shares);
+        const proceeds = tr.total_cost !== undefined ? tr.total_cost : sharesSold * tr.price_per_share;
+        totalProceeds += proceeds;
+        let costOfSold = 0;
+        let needed = sharesSold;
+
+        while (needed > 0.0001 && buyLots.length > 0) {
+          const oldest = buyLots[0];
+          const take = Math.min(needed, oldest.remainingShares);
+          costOfSold += take * oldest.unitCost;
+          oldest.remainingShares -= take;
+          needed -= take;
+          if (oldest.remainingShares <= 0.0001) {
+            buyLots.shift();
+          }
+        }
+        realizedProfit += (proceeds - costOfSold);
+      }
+    });
+
+    const openCostBasis = buyLots.reduce(
+      (sum, lot) => sum + lot.remainingShares * lot.unitCost,
       0
     );
-    const totalFees = asset.tranches.reduce((sum, tr) => sum + (tr.fee || 0), 0);
-    const avgPrice = totalShares > 0 ? totalCost / totalShares : 0;
+    const avgPrice = totalShares > 0 ? openCostBasis / totalShares : 0;
     const currentValue = totalShares * asset.current_price;
-    const profit = currentValue - totalCost;
-    const returnPct = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+    const profit = currentValue - openCostBasis;
+    const returnPct = openCostBasis > 0 ? (profit / openCostBasis) * 100 : 0;
 
     return {
       totalShares,
-      totalCost,
+      totalCost: openCostBasis,
       totalFees,
       avgPrice,
       currentValue,
       profit,
       returnPct,
+      realizedProfit,
+      totalProceeds,
+      totalBoughtCost,
+      hasSales: true,
     };
   };
 
@@ -827,6 +908,7 @@ export const InvestmentsView: React.FC = () => {
     setFormTotalCost('');
     setFormFee('0');
     setFormNotes('');
+    setFormTrancheType('buy');
     setIsModalOpen(true);
   };
 
@@ -861,13 +943,14 @@ export const InvestmentsView: React.FC = () => {
 
     // Set formDate in user-friendly DD/MM/YYYY
     setFormDate(tranche.date ? formatDate(tranche.date) : formatDate(new Date()));
-    setFormShares(tranche.shares.toString());
+    setFormShares(Math.abs(tranche.shares).toString());
+    setFormTrancheType(tranche.type || (tranche.shares < 0 ? 'sell' : 'buy'));
 
     // Existing tranches in the database are already stored in Shekels (never auto-toggle Agorot)
     setIsPriceInAgorot(false);
     setFormPricePerShare(tranche.price_per_share.toString());
     const effectiveUnitPrice = tranche.price_per_share;
-    const cost = tranche.shares * effectiveUnitPrice;
+    const cost = tranche.total_cost !== undefined ? tranche.total_cost : Math.abs(tranche.shares) * effectiveUnitPrice;
     setFormTotalCost(cost.toFixed(2));
     setFormFee((tranche.fee || 0).toString());
     setFormNotes(tranche.notes || '');
@@ -957,14 +1040,18 @@ export const InvestmentsView: React.FC = () => {
       );
       setTimeout(() => setActionFeedbackMsg(null), 4000);
     } else if (modalMode === 'add_tranche' && selectedAssetIdForTranche) {
+      const numShares = Math.abs(sharesNum);
+      const finalShares = formTrancheType === 'sell' ? -numShares : numShares;
+
       addInvestmentTranche(
         selectedAssetIdForTranche,
         {
           date: cleanDate,
-          shares: sharesNum,
+          shares: finalShares,
           price_per_share: effectivePrice,
           total_cost: totalCostNum,
           fee: feeNum,
+          type: formTrancheType,
           notes: formNotes.trim() || (formCurrency === 'ILS' && isPriceInAgorot ? `שער מקורי: ${priceNum} אג'` : undefined),
         },
         !isNaN(currentPriceNum) && currentPriceNum > 0 ? currentPriceNum : undefined
@@ -978,21 +1065,24 @@ export const InvestmentsView: React.FC = () => {
 
       setActionFeedbackMsg(
         isHe
-          ? 'פעימת הרכישה נוספה בהצלחה לתיק!'
-          : 'Purchase tranche added successfully!'
+          ? formTrancheType === 'sell' ? 'פעולת המכירה נרשמה בהצלחה ביומן הנייר!' : 'פעימת הרכישה נוספה בהצלחה לתיק!'
+          : formTrancheType === 'sell' ? 'Sale transaction recorded successfully!' : 'Purchase tranche added successfully!'
       );
       setTimeout(() => setActionFeedbackMsg(null), 4000);
     } else if (modalMode === 'edit_tranche' && selectedAssetIdForTranche) {
+      const numShares = Math.abs(sharesNum);
+      const finalShares = formTrancheType === 'sell' ? -numShares : numShares;
       const targetTrancheKey = selectedTrancheId || (selectedTrancheIndex >= 0 ? String(selectedTrancheIndex) : '0');
       updateInvestmentTranche(
         selectedAssetIdForTranche,
         targetTrancheKey,
         {
           date: cleanDate,
-          shares: sharesNum,
+          shares: finalShares,
           price_per_share: effectivePrice,
           total_cost: totalCostNum,
           fee: feeNum,
+          type: formTrancheType,
           notes: formNotes.trim() || undefined,
         },
         !isNaN(currentPriceNum) && currentPriceNum > 0 ? currentPriceNum : undefined,
@@ -1006,7 +1096,7 @@ export const InvestmentsView: React.FC = () => {
 
       setActionFeedbackMsg(
         isHe
-          ? `פעימת הרכישה עודכנה בהצלחה (תאריך: ${formatDate(cleanDate)})`
+          ? `פעולת ${formTrancheType === 'sell' ? 'המכירה' : 'הרכישה'} עודכנה בהצלחה (תאריך: ${formatDate(cleanDate)})`
           : `Tranche updated successfully (Date: ${formatDate(cleanDate)})`
       );
       setTimeout(() => setActionFeedbackMsg(null), 4000);
@@ -3523,21 +3613,58 @@ export const InvestmentsView: React.FC = () => {
                             </td>
                           </tr>
 
-                          {/* Tranche Drill-Down Sub-Table */}
+                          {/* Tranche Drill-Down Sub-Table (Ledger of Purchases & Sales) */}
                           {isExpanded && (
                             <tr style={styles.trancheSubTr}>
                               <td colSpan={12} style={styles.trancheSubTd}>
                                 <div style={styles.trancheSubContainer} className="animate-fade-in">
                                   <div style={styles.trancheSubHeader}>
                                     <div style={styles.trancheSubTitle}>
-                                      <Calendar size={14} color="#2563EB" />
+                                      <Calendar size={15} color="#2563EB" />
                                       <span>
-                                        {isHe
+                                        {metrics.hasSales
+                                          ? isHe
+                                            ? `יומן תנועות והשתנות פוזיציה עבור ${asset.ticker} (${asset.name}):`
+                                            : `Transaction Ledger & Position History for ${asset.ticker}:`
+                                          : isHe
                                           ? `פירוט פעימות רכישה עבור ${asset.ticker} (${asset.name}):`
                                           : `Purchase Tranche History for ${asset.ticker}:`}
                                       </span>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                      {/* Sort direction toggle button */}
+                                      <button
+                                        type="button"
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '6px',
+                                          padding: '5px 10px',
+                                          backgroundColor: '#FFFFFF',
+                                          border: '1px solid #CBD5E1',
+                                          borderRadius: '6px',
+                                          fontSize: '0.75rem',
+                                          fontWeight: '700',
+                                          color: '#334155',
+                                          cursor: 'pointer',
+                                          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+                                        }}
+                                        onClick={() => {
+                                          setTrancheSortOrder((prev) => ({
+                                            ...prev,
+                                            [asset.id]: prev[asset.id] === 'desc' ? 'asc' : 'desc',
+                                          }));
+                                        }}
+                                        title={isHe ? 'החלף סדר הצגת פעולות' : 'Toggle sort order'}
+                                      >
+                                        <ArrowUpDown size={13} color="#2563EB" />
+                                        <span>
+                                          {trancheSortOrder[asset.id] === 'desc'
+                                            ? isHe ? 'סדר: מהחדש לישן ⬇️' : 'Order: Newest First ⬇️'
+                                            : isHe ? 'סדר: מהישן לחדש (השתנות התיק) ⬆️' : 'Order: Chronological ⬆️'}
+                                        </span>
+                                      </button>
+
                                       {getAssetDuplicateCount(asset) > 0 && (
                                         <button
                                           type="button"
@@ -3586,33 +3713,108 @@ export const InvestmentsView: React.FC = () => {
                                         onClick={() => handleOpenAddModal('add_tranche', asset)}
                                       >
                                         <Plus size={13} color="#2563EB" />
-                                        <span>{isHe ? '+ הוסף פעימה חדשה' : '+ Add Tranche'}</span>
+                                        <span>{isHe ? '+ הוסף פעולה (קנייה / מכירה)' : '+ Add Transaction'}</span>
                                       </button>
                                     </div>
                                   </div>
+
+                                  {/* Summary Metrics Strip */}
+                                  {(metrics.hasSales || (asset.tranches && asset.tranches.length > 1)) && (
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '14px',
+                                        alignItems: 'center',
+                                        padding: '10px 14px',
+                                        backgroundColor: '#F8FAFC',
+                                        border: '1px solid #E2E8F0',
+                                        borderRadius: '8px',
+                                        marginBottom: '12px',
+                                        fontSize: '0.78125rem',
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ color: '#64748B' }}>{isHe ? 'יתרה שוטפת כעת:' : 'Current Position:'}</span>
+                                        <strong style={{ color: '#0F172A', fontWeight: '800' }}>
+                                          {metrics.totalShares.toLocaleString('en-US', { maximumFractionDigits: 2 })} {isHe ? 'יח\'' : 'units'}
+                                        </strong>
+                                        <span style={{ color: '#475569', fontSize: '0.75rem' }}>
+                                          ({formatVal(metrics.currentValue, asset.currency)})
+                                        </span>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ color: '#64748B' }}>
+                                          {metrics.hasSales ? (isHe ? 'עלות קובעת פתוחה (FIFO):' : 'Open FIFO Cost Basis:') : (isHe ? 'סך עלות השקעה:' : 'Total Cost Basis:')}
+                                        </span>
+                                        <strong style={{ color: '#0F172A', fontWeight: '800' }}>
+                                          {formatVal(metrics.totalCost, asset.currency)}
+                                        </strong>
+                                        <span style={{ color: '#475569', fontSize: '0.75rem' }}>
+                                          ({isHe ? 'שער ממוצע:' : 'Avg:'} {formatVal(metrics.avgPrice, asset.currency, undefined, 4)})
+                                        </span>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ color: '#64748B' }}>{isHe ? 'רווח פתוח צבור:' : 'Unrealized P&L:'}</span>
+                                        <strong style={{ color: metrics.profit >= 0 ? '#15803D' : '#DC2626', fontWeight: '800' }}>
+                                          {metrics.profit >= 0 ? `+${formatVal(metrics.profit, asset.currency)}` : formatVal(metrics.profit, asset.currency)}
+                                        </strong>
+                                        <span
+                                          dir="ltr"
+                                          style={{
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: '700',
+                                            backgroundColor: metrics.profit >= 0 ? '#DCFCE7' : '#FEE2E2',
+                                            color: metrics.profit >= 0 ? '#15803D' : '#DC2626',
+                                          }}
+                                        >
+                                          {metrics.profit >= 0 ? '+' : ''}{metrics.returnPct.toFixed(2)}%
+                                        </span>
+                                      </div>
+
+                                      {metrics.hasSales && (
+                                        <>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ color: '#64748B' }}>{isHe ? 'תקבול מצטבר ממכירות:' : 'Total Sale Proceeds:'}</span>
+                                            <strong style={{ color: '#2563EB', fontWeight: '800' }}>
+                                              {formatVal(metrics.totalProceeds, asset.currency)}
+                                            </strong>
+                                          </div>
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ color: '#64748B' }}>{isHe ? 'רווח ממומש שנפדה:' : 'Realized Gain:'}</span>
+                                            <strong style={{ color: metrics.realizedProfit >= 0 ? '#15803D' : '#DC2626', fontWeight: '800' }}>
+                                              {metrics.realizedProfit >= 0 ? `+${formatVal(metrics.realizedProfit, asset.currency)}` : formatVal(metrics.realizedProfit, asset.currency)}
+                                            </strong>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
 
                                   <table style={styles.trancheTable}>
                                     <thead>
                                       <tr style={styles.trancheThRow}>
                                         <th style={{ ...styles.trancheTh, width: '28px', textAlign: 'center' }}>#</th>
-                                        <th style={{ ...styles.trancheTh, minWidth: '95px' }}>{isHe ? 'תאריך רכישה' : 'Date'}</th>
-                                        <th style={{ ...styles.trancheTh, textAlign: 'center' }}>{isHe ? 'כמות מניות' : 'Shares'}</th>
-                                        <th style={{ ...styles.trancheTh, textAlign: 'right' }}>
-                                          {isHe ? 'שער קנייה ליחידה' : 'Price / Share'}
+                                        <th style={{ ...styles.trancheTh, minWidth: '95px' }}>{isHe ? 'תאריך' : 'Date'}</th>
+                                        <th style={{ ...styles.trancheTh, textAlign: 'center', minWidth: '85px' }}>{isHe ? 'פעולה' : 'Action'}</th>
+                                        <th style={{ ...styles.trancheTh, textAlign: 'center', minWidth: '90px' }}>{isHe ? 'כמות (+/-)' : 'Shares (+/-)'}</th>
+                                        <th style={{ ...styles.trancheTh, textAlign: 'right', minWidth: '95px' }}>
+                                          {isHe ? 'שער ליחידה' : 'Price / Share'}
                                         </th>
-                                        <th style={{ ...styles.trancheTh, textAlign: 'center' }}>
-                                          {isHe ? 'עמלת מסחר' : 'Fee'}
+                                        <th style={{ ...styles.trancheTh, textAlign: 'right', minWidth: '100px' }}>
+                                          {isHe ? 'סכום / תקבול' : 'Amount / Proceeds'}
                                         </th>
-                                        <th style={{ ...styles.trancheTh, textAlign: 'right' }}>
-                                          {isHe ? 'סך סכום רכישה' : 'Total Cost'}
+                                        <th style={{ ...styles.trancheTh, textAlign: 'center', minWidth: '115px' }}>
+                                          {isHe ? 'יתרת מניות רצה (השתנות התיק)' : 'Running Balance'}
                                         </th>
-                                        <th style={{ ...styles.trancheTh, textAlign: 'right' }}>
-                                          {isHe ? 'שווי נוכחי לפעימה' : 'Current Value'}
+                                        <th style={{ ...styles.trancheTh, textAlign: 'right', minWidth: '95px' }}>
+                                          {isHe ? 'שווי / רווח' : 'Value / P&L'}
                                         </th>
-                                        <th style={{ ...styles.trancheTh, textAlign: 'right' }}>
-                                          {isHe ? 'רווח / הפסד' : 'P&L'}
-                                        </th>
-                                        <th style={{ ...styles.trancheTh, textAlign: 'center' }}>{isHe ? 'תשואה' : 'Yield'}</th>
                                         <th style={{ ...styles.trancheTh, maxWidth: '240px', minWidth: '130px' }}>{isHe ? 'הערות' : 'Notes'}</th>
                                         <th style={{ ...styles.trancheTh, ...styles.actionsStickyTh }}>
                                           {isHe ? 'פעולות' : 'Actions'}
@@ -3620,237 +3822,432 @@ export const InvestmentsView: React.FC = () => {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {sortTranchesByDateDesc(asset.tranches).map((tr, idx) => {
-                                        const trCost = tr.shares * tr.price_per_share;
-                                        const trVal = tr.shares * asset.current_price;
-                                        const trProfit = trVal - trCost;
-                                        const trYield =
-                                          trCost > 0 ? (trProfit / trCost) * 100 : 0;
-                                        const isTrProfit = trProfit >= 0;
+                                      {(() => {
+                                        // 1. Calculate running balance and FIFO lot tracking chronologically
+                                        const sortedAsc = sortTranchesByDateAsc(asset.tranches || []);
+                                        let runningBal = 0;
+                                        const buyLots: { id: string; remainingShares: number; unitCost: number }[] = [];
 
-                                        return (
-                                          <tr key={tr.id} style={styles.trancheTr}>
-                                            <td style={styles.trancheTd}>
-                                              <span style={styles.trancheIndexPill}>{idx + 1}</span>
-                                            </td>
-                                            <td style={styles.trancheTd}>
-                                              {editingDateTrancheKey === `${asset.id}_${tr.id || idx}` ? (
-                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                  <IsraeliDateInput
-                                                    value={inlineDateInput}
-                                                    onChange={(displayVal) => setInlineDateInput(displayVal)}
-                                                    placeholder="15/06/2026"
-                                                    style={{ width: '135px' }}
-                                                    inputStyle={{
-                                                      padding: '3px 6px 3px 28px',
-                                                      fontSize: '0.8125rem',
-                                                      fontWeight: '700',
-                                                      borderRadius: '4px',
-                                                      border: '1.5px solid #2563EB',
-                                                    }}
-                                                    autoFocus
-                                                  />
-                                                  <button
+                                        const computedLedger = sortedAsc.map((tr, chronoIdx) => {
+                                          runningBal += tr.shares;
+                                          const balanceAfter = Math.round(runningBal * 100) / 100;
+                                          const isSale = tr.shares < 0 || tr.type === 'sell';
+                                          const isConvert = tr.type === 'convert';
+                                          const trType: InvestmentTrancheType = tr.type || (isSale ? 'sell' : isConvert ? 'convert' : 'buy');
+
+                                          let realizedPnl = tr.realized_pnl;
+
+                                          if (!isSale) {
+                                            buyLots.push({
+                                              id: tr.id || String(chronoIdx),
+                                              remainingShares: tr.shares,
+                                              unitCost: tr.price_per_share,
+                                            });
+                                          } else {
+                                            let needed = Math.abs(tr.shares);
+                                            const proceeds = tr.total_cost !== undefined ? tr.total_cost : needed * tr.price_per_share;
+                                            let costOfSold = 0;
+
+                                            while (needed > 0.0001 && buyLots.length > 0) {
+                                              const oldest = buyLots[0];
+                                              const take = Math.min(needed, oldest.remainingShares);
+                                              costOfSold += take * oldest.unitCost;
+                                              oldest.remainingShares -= take;
+                                              needed -= take;
+                                              if (oldest.remainingShares <= 0.0001) {
+                                                buyLots.shift();
+                                              }
+                                            }
+                                            if (realizedPnl === undefined) {
+                                              realizedPnl = Math.round((proceeds - costOfSold) * 100) / 100;
+                                            }
+                                          }
+
+                                          return {
+                                            tr,
+                                            chronoIdx,
+                                            balanceAfter,
+                                            trType,
+                                            isSale,
+                                            isConvert,
+                                            realizedPnl,
+                                          };
+                                        });
+
+                                        // 2. Determine display order
+                                        const isAsc = trancheSortOrder[asset.id] !== 'desc';
+                                        const displayRows = isAsc ? computedLedger : [...computedLedger].reverse();
+
+                                        return displayRows.map(({ tr, chronoIdx, balanceAfter, trType, isSale, isConvert, realizedPnl }, displayIdx) => {
+                                          const originalIndex = (asset.tranches || []).findIndex((t) => t.id === tr.id);
+                                          const realIdx = originalIndex >= 0 ? originalIndex : chronoIdx;
+
+                                          const trCost = tr.total_cost !== undefined
+                                            ? tr.total_cost
+                                            : Math.abs(tr.shares) * tr.price_per_share;
+                                          const trVal = Math.abs(tr.shares) * asset.current_price;
+                                          const trProfit = trVal - trCost;
+                                          const isTrProfit = trProfit >= 0;
+
+                                          return (
+                                            <tr
+                                              key={tr.id || `tr-${realIdx}`}
+                                              style={{
+                                                ...styles.trancheTr,
+                                                backgroundColor: isSale
+                                                  ? '#FFF7F7'
+                                                  : isConvert
+                                                  ? '#FAF5FF'
+                                                  : undefined,
+                                              }}
+                                            >
+                                              <td style={styles.trancheTd}>
+                                                <span style={styles.trancheIndexPill}>
+                                                  {isAsc ? chronoIdx + 1 : displayRows.length - displayIdx}
+                                                </span>
+                                              </td>
+                                              <td style={styles.trancheTd}>
+                                                {editingDateTrancheKey === `${asset.id}_${tr.id || realIdx}` ? (
+                                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                    <IsraeliDateInput
+                                                      value={inlineDateInput}
+                                                      onChange={(displayVal) => setInlineDateInput(displayVal)}
+                                                      placeholder="15/06/2026"
+                                                      style={{ width: '135px' }}
+                                                      inputStyle={{
+                                                        padding: '3px 6px 3px 28px',
+                                                        fontSize: '0.8125rem',
+                                                        fontWeight: '700',
+                                                        borderRadius: '4px',
+                                                        border: '1.5px solid #2563EB',
+                                                      }}
+                                                      autoFocus
+                                                    />
+                                                    <button
+                                                      style={{
+                                                        backgroundColor: '#059669',
+                                                        color: '#FFFFFF',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '3px 8px',
+                                                        cursor: 'pointer',
+                                                        fontWeight: '700',
+                                                        fontSize: '0.75rem',
+                                                      }}
+                                                      onClick={() => {
+                                                        const d = inlineDateInput.trim();
+                                                        if (d) {
+                                                          const isoDate = normalizeToISODate(d);
+                                                          updateInvestmentTranche(
+                                                            asset.id,
+                                                            tr.id ? String(tr.id) : String(realIdx),
+                                                            { date: isoDate },
+                                                            undefined,
+                                                            realIdx
+                                                          );
+                                                          setActionFeedbackMsg(
+                                                            isHe
+                                                              ? `תאריך פעולה #${chronoIdx + 1} עודכן בהצלחה ל-${formatDate(isoDate)}`
+                                                              : `Transaction #${chronoIdx + 1} date updated to ${formatDate(isoDate)}`
+                                                          );
+                                                          setTimeout(() => setActionFeedbackMsg(null), 4000);
+                                                        }
+                                                        setEditingDateTrancheKey(null);
+                                                      }}
+                                                      title={isHe ? 'שמור תאריך' : 'Save date'}
+                                                    >
+                                                      ✓
+                                                    </button>
+                                                    <button
+                                                      style={{
+                                                        backgroundColor: '#EF4444',
+                                                        color: '#FFFFFF',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '3px 6px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem',
+                                                      }}
+                                                      onClick={() => setEditingDateTrancheKey(null)}
+                                                      title={isHe ? 'ביטול' : 'Cancel'}
+                                                    >
+                                                      ✕
+                                                    </button>
+                                                  </div>
+                                                ) : (
+                                                  <div style={{ display: 'inline-flex', flexDirection: 'column', gap: '2px' }}>
+                                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                      <span style={{ fontWeight: '700', color: '#1E293B' }}>{formatDate(tr.date)}</span>
+                                                      <button
+                                                        style={{
+                                                          backgroundColor: '#EFF6FF',
+                                                          border: '1px solid #BFDBFE',
+                                                          borderRadius: '4px',
+                                                          cursor: 'pointer',
+                                                          padding: '2px 4px',
+                                                          display: 'flex',
+                                                          alignItems: 'center',
+                                                          gap: '2px',
+                                                        }}
+                                                        onClick={() => {
+                                                          setEditingDateTrancheKey(`${asset.id}_${tr.id || realIdx}`);
+                                                          setInlineDateInput(formatDate(tr.date));
+                                                        }}
+                                                        title={isHe ? 'עריכה מהירה של תאריך הפעולה' : 'Quick edit date'}
+                                                      >
+                                                        <Edit2 size={11} color="#2563EB" />
+                                                      </button>
+                                                    </div>
+                                                    {tr.orig_date && tr.orig_date !== tr.date && (
+                                                      <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                        {isHe ? `רכישה מקורית: ${formatDate(tr.orig_date)}` : `Orig: ${formatDate(tr.orig_date)}`}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </td>
+
+                                              {/* Action Type Badge */}
+                                              <td style={{ ...styles.trancheTd, textAlign: 'center' }}>
+                                                {isSale ? (
+                                                  <span
                                                     style={{
-                                                      backgroundColor: '#059669',
-                                                      color: '#FFFFFF',
-                                                      border: 'none',
-                                                      borderRadius: '4px',
                                                       padding: '3px 8px',
-                                                      cursor: 'pointer',
-                                                      fontWeight: '700',
+                                                      borderRadius: '6px',
                                                       fontSize: '0.75rem',
+                                                      fontWeight: 700,
+                                                      backgroundColor: '#FEE2E2',
+                                                      color: '#B91C1C',
+                                                      display: 'inline-flex',
+                                                      alignItems: 'center',
+                                                      gap: '4px',
                                                     }}
-                                                    onClick={() => {
-                                                      const d = inlineDateInput.trim();
-                                                      if (d) {
-                                                        const isoDate = normalizeToISODate(d);
+                                                  >
+                                                    <ArrowUpRight size={12} color="#DC2626" />
+                                                    <span>{isHe ? 'מכירה' : 'Sell'}</span>
+                                                  </span>
+                                                ) : isConvert ? (
+                                                  <span
+                                                    style={{
+                                                      padding: '3px 8px',
+                                                      borderRadius: '6px',
+                                                      fontSize: '0.75rem',
+                                                      fontWeight: 700,
+                                                      backgroundColor: '#F3E8FF',
+                                                      color: '#7E22CE',
+                                                      display: 'inline-flex',
+                                                      alignItems: 'center',
+                                                      gap: '4px',
+                                                    }}
+                                                  >
+                                                    <span>🟣</span>
+                                                    <span>{isHe ? 'המרה' : 'Convert'}</span>
+                                                  </span>
+                                                ) : (
+                                                  <span
+                                                    style={{
+                                                      padding: '3px 8px',
+                                                      borderRadius: '6px',
+                                                      fontSize: '0.75rem',
+                                                      fontWeight: 700,
+                                                      backgroundColor: '#DCFCE7',
+                                                      color: '#15803D',
+                                                      display: 'inline-flex',
+                                                      alignItems: 'center',
+                                                      gap: '4px',
+                                                    }}
+                                                  >
+                                                    <ArrowDownLeft size={12} color="#16A34A" />
+                                                    <span>{isHe ? 'קנייה' : 'Buy'}</span>
+                                                  </span>
+                                                )}
+                                              </td>
+
+                                              {/* Shares (+ / -) */}
+                                              <td style={{ ...styles.trancheTd, textAlign: 'center' }}>
+                                                <strong
+                                                  dir="ltr"
+                                                  style={{
+                                                    color: isSale ? '#DC2626' : '#15803D',
+                                                    fontWeight: '800',
+                                                    fontSize: '0.85rem',
+                                                    direction: 'ltr',
+                                                    display: 'inline-block',
+                                                  }}
+                                                >
+                                                  {isSale
+                                                    ? `-${Math.abs(tr.shares).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+                                                    : `+${tr.shares.toLocaleString('en-US', { maximumFractionDigits: 2 })}`}
+                                                </strong>
+                                              </td>
+
+                                              {/* Price / Share */}
+                                              <td style={styles.trancheTd}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                                  <span style={{ fontWeight: '600' }}>
+                                                    {formatVal(tr.price_per_share, asset.currency, undefined, 4)}
+                                                  </span>
+                                                  {asset.currency === 'ILS' && (
+                                                    <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                                      ({Number((tr.price_per_share * 100).toFixed(2)).toLocaleString('en-US')} אג')
+                                                    </span>
+                                                  )}
+                                                  {asset.currency === 'ILS' && !tr.ignore_agorot_fix && !tr.notes?.includes('חולק ב-100') && !tr.notes?.includes('תוקן מאגורות') && ((asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40) || tr.price_per_share >= 10000) && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        const newPrice = Number((tr.price_per_share / 100).toFixed(4));
                                                         updateInvestmentTranche(
                                                           asset.id,
-                                                          tr.id ? String(tr.id) : String(idx),
-                                                          { date: isoDate },
+                                                          tr.id ? String(tr.id) : String(realIdx),
+                                                          {
+                                                            price_per_share: newPrice,
+                                                            total_cost: Number((Math.abs(tr.shares) * newPrice).toFixed(2)),
+                                                            notes: tr.notes ? `${tr.notes} | תוקן מאגורות` : `שער מקורי: ${tr.price_per_share} אגורות`,
+                                                          },
                                                           undefined,
-                                                          idx
+                                                          realIdx
                                                         );
                                                         setActionFeedbackMsg(
                                                           isHe
-                                                            ? `תאריך פעימה #${idx + 1} עודכן בהצלחה ל-${formatDate(isoDate)}`
-                                                            : `Tranche #${idx + 1} date updated to ${formatDate(isoDate)}`
+                                                            ? `שער פעולה #${chronoIdx + 1} חולק ב-100 ותוקן לשקלים!`
+                                                            : `Transaction #${chronoIdx + 1} divided by 100!`
                                                         );
                                                         setTimeout(() => setActionFeedbackMsg(null), 4000);
-                                                      }
-                                                      setEditingDateTrancheKey(null);
-                                                    }}
-                                                    title={isHe ? 'שמור תאריך' : 'Save date'}
-                                                  >
-                                                    ✓
-                                                  </button>
-                                                  <button
-                                                    style={{
-                                                      backgroundColor: '#EF4444',
-                                                      color: '#FFFFFF',
-                                                      border: 'none',
-                                                      borderRadius: '4px',
-                                                      padding: '3px 6px',
-                                                      cursor: 'pointer',
-                                                      fontSize: '0.75rem',
-                                                    }}
-                                                    onClick={() => setEditingDateTrancheKey(null)}
-                                                    title={isHe ? 'ביטול' : 'Cancel'}
-                                                  >
-                                                    ✕
-                                                  </button>
+                                                      }}
+                                                      style={{
+                                                        fontSize: '0.68rem',
+                                                        backgroundColor: '#FEF3C7',
+                                                        color: '#B45309',
+                                                        border: '1px solid #FCD34D',
+                                                        borderRadius: '4px',
+                                                        padding: '1px 5px',
+                                                        cursor: 'pointer',
+                                                        fontWeight: 700,
+                                                        marginTop: '2px',
+                                                      }}
+                                                      title={isHe ? 'שער זה נראה באגורות - לחץ לחלוקה ב-100' : 'Price appears to be in Agorot - click to divide by 100'}
+                                                    >
+                                                      {isHe ? 'חלק ב-100 ⚡' : '➗ 100 ⚡'}
+                                                    </button>
+                                                  )}
                                                 </div>
-                                              ) : (
-                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                                                  <span style={{ fontWeight: '700', color: '#1E293B' }}>{formatDate(tr.date)}</span>
-                                                  <button
-                                                    style={{
-                                                      backgroundColor: '#EFF6FF',
-                                                      border: '1px solid #BFDBFE',
-                                                      borderRadius: '4px',
-                                                      cursor: 'pointer',
-                                                      padding: '2px 4px',
-                                                      display: 'flex',
-                                                      alignItems: 'center',
-                                                      gap: '2px',
-                                                    }}
-                                                    onClick={() => {
-                                                      setEditingDateTrancheKey(`${asset.id}_${tr.id || idx}`);
-                                                      setInlineDateInput(formatDate(tr.date));
-                                                    }}
-                                                    title={isHe ? 'עריכה מהירה של תאריך הרכישה' : 'Quick edit date'}
-                                                  >
-                                                    <Edit2 size={11} color="#2563EB" />
-                                                  </button>
-                                                </div>
-                                              )}
-                                            </td>
-                                            <td style={styles.trancheTd}>
-                                              <strong>{tr.shares}</strong>
-                                            </td>
-                                            <td style={styles.trancheTd}>
-                                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
-                                                <span style={{ fontWeight: '600' }}>{formatVal(tr.price_per_share, asset.currency, undefined, 4)}</span>
-                                                {asset.currency === 'ILS' && (
-                                                  <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                    ({Number((tr.price_per_share * 100).toFixed(0)).toLocaleString('en-US')} אג')
+                                              </td>
+
+                                              {/* Total Amount / Proceeds */}
+                                              <td style={styles.trancheTd}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                                  <strong style={{ color: isSale ? '#047857' : '#0F172A' }}>
+                                                    {formatVal(trCost, asset.currency)}
+                                                  </strong>
+                                                  <span style={{ fontSize: '0.68rem', color: isSale ? '#059669' : '#64748B', fontWeight: isSale ? 700 : 400 }}>
+                                                    {isSale ? (isHe ? 'תקבול פדיון' : 'Proceeds') : (isHe ? 'עלות רכישה' : 'Cost')}
                                                   </span>
-                                                )}
-                                                {asset.currency === 'ILS' && !tr.ignore_agorot_fix && !tr.notes?.includes('חולק ב-100') && !tr.notes?.includes('תוקן מאגורות') && ((asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40) || tr.price_per_share >= 10000) && (
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                      const newPrice = Number((tr.price_per_share / 100).toFixed(4));
-                                                      updateInvestmentTranche(
-                                                        asset.id,
-                                                        tr.id ? String(tr.id) : String(idx),
-                                                        {
-                                                          price_per_share: newPrice,
-                                                          total_cost: Number((tr.shares * newPrice).toFixed(2)),
-                                                          notes: tr.notes ? `${tr.notes} | תוקן מאגורות` : `שער מקורי: ${tr.price_per_share} אגורות`,
-                                                        },
-                                                        undefined,
-                                                        idx
-                                                      );
-                                                      setActionFeedbackMsg(
-                                                        isHe
-                                                          ? `שער פעימה #${idx + 1} חולק ב-100 ותוקן לשקלים!`
-                                                          : `Tranche #${idx + 1} divided by 100!`
-                                                      );
-                                                      setTimeout(() => setActionFeedbackMsg(null), 4000);
-                                                    }}
-                                                    style={{
-                                                      fontSize: '0.68rem',
-                                                      backgroundColor: '#FEF3C7',
-                                                      color: '#B45309',
-                                                      border: '1px solid #FCD34D',
-                                                      borderRadius: '4px',
-                                                      padding: '1px 5px',
-                                                      cursor: 'pointer',
-                                                      fontWeight: 700,
-                                                      marginTop: '2px',
-                                                    }}
-                                                    title={isHe ? 'שער זה נראה באגורות - לחץ לחלוקה ב-100' : 'Price appears to be in Agorot - click to divide by 100'}
-                                                  >
-                                                    {isHe ? 'חלק ב-100 ⚡' : '➗ 100 ⚡'}
-                                                  </button>
-                                                )}
-                                              </div>
-                                            </td>
-                                            <td style={styles.trancheTd}>
-                                              {tr.fee ? formatVal(tr.fee, asset.currency) : '—'}
-                                            </td>
-                                            <td style={styles.trancheTd}>
-                                              <strong>{formatVal(trCost, asset.currency)}</strong>
-                                            </td>
-                                            <td style={styles.trancheTd}>
-                                              {formatVal(trVal, asset.currency)}
-                                            </td>
-                                            <td style={styles.trancheTd}>
-                                              <span
-                                                dir="ltr"
-                                                style={{
-                                                  color: isTrProfit ? '#059669' : '#DC2626',
-                                                  fontWeight: '700',
-                                                  direction: 'ltr',
-                                                  display: 'inline-block',
-                                                }}
-                                              >
-                                                {isTrProfit ? `+${formatVal(trProfit, asset.currency)}` : formatVal(trProfit, asset.currency)}
-                                              </span>
-                                            </td>
-                                            <td style={styles.trancheTd}>
-                                              <span
-                                                dir="ltr"
-                                                style={{
-                                                  ...styles.yieldPillSmall,
-                                                  backgroundColor: isTrProfit
-                                                    ? '#DCFCE7'
-                                                    : '#FEE2E2',
-                                                  color: isTrProfit ? '#15803D' : '#B91C1C',
-                                                  direction: 'ltr',
-                                                  display: 'inline-block',
-                                                }}
-                                              >
-                                                {isTrProfit ? '+' : '-'}
-                                                {Math.abs(trYield).toFixed(2)}%
-                                              </span>
-                                            </td>
-                                            <td style={styles.trancheNotesTd} title={tr.notes || ''}>
-                                              <span style={styles.notesText}>{tr.notes || '—'}</span>
-                                            </td>
-                                            <td style={styles.actionsStickyTd}>
-                                              <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
-                                                <button
-                                                  style={styles.editTrancheBtn}
-                                                  onClick={() => handleOpenEditTrancheModal(asset, tr, idx)}
-                                                  title={isHe ? 'ערוך פעימה (כולל תאריך ומחיר)' : 'Edit tranche'}
-                                                >
-                                                  <Edit2 size={13} color="#2563EB" />
-                                                </button>
-                                                <button
-                                                  style={styles.deleteTrancheBtn}
-                                                  onClick={() => {
-                                                    if (
-                                                      confirm(
-                                                        isHe
-                                                          ? 'האם למחוק פעימת רכישה זו?'
-                                                          : 'Delete this purchase tranche?'
-                                                      )
-                                                    ) {
-                                                      deleteInvestmentTranche(asset.id, tr.id ? String(tr.id) : String(idx));
-                                                    }
+                                                </div>
+                                              </td>
+
+                                              {/* Running Balance (השתנות התיק) */}
+                                              <td style={{ ...styles.trancheTd, textAlign: 'center' }}>
+                                                <div
+                                                  dir="ltr"
+                                                  style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '5px',
+                                                    padding: '4px 10px',
+                                                    borderRadius: '6px',
+                                                    backgroundColor: '#F1F5F9',
+                                                    border: '1px solid #CBD5E1',
+                                                    fontWeight: '800',
+                                                    fontSize: '0.8125rem',
+                                                    color: '#0F172A',
                                                   }}
-                                                  title={isHe ? 'מחק פעימה' : 'Delete tranche'}
                                                 >
-                                                  <Trash2 size={13} color="#EF4444" />
-                                                </button>
-                                              </div>
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
+                                                  <span>{balanceAfter.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                                                  <span style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: '500' }}>
+                                                    {isHe ? 'יח\'' : 'units'}
+                                                  </span>
+                                                </div>
+                                              </td>
+
+                                              {/* Value / P&L */}
+                                              <td style={styles.trancheTd}>
+                                                {isSale ? (
+                                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                                    <span
+                                                      dir="ltr"
+                                                      style={{
+                                                        color: (realizedPnl || 0) >= 0 ? '#15803D' : '#DC2626',
+                                                        fontWeight: '800',
+                                                        direction: 'ltr',
+                                                        display: 'inline-block',
+                                                      }}
+                                                    >
+                                                      {(realizedPnl || 0) >= 0 ? `+${formatVal(realizedPnl || 0, asset.currency)}` : formatVal(realizedPnl || 0, asset.currency)}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
+                                                      {isHe ? 'רווח ממומש' : 'Realized Gain'}
+                                                    </span>
+                                                  </div>
+                                                ) : (
+                                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                                                    <span style={{ fontWeight: '600' }}>
+                                                      {formatVal(trVal, asset.currency)}
+                                                    </span>
+                                                    <span
+                                                      dir="ltr"
+                                                      style={{
+                                                        color: isTrProfit ? '#15803D' : '#DC2626',
+                                                        fontWeight: '700',
+                                                        fontSize: '0.72rem',
+                                                        direction: 'ltr',
+                                                        display: 'inline-block',
+                                                      }}
+                                                    >
+                                                      {isTrProfit ? `+${formatVal(trProfit, asset.currency)}` : formatVal(trProfit, asset.currency)}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                              </td>
+
+                                              {/* Notes */}
+                                              <td style={styles.trancheNotesTd} title={tr.notes || ''}>
+                                                <span style={styles.notesText}>{tr.notes || '—'}</span>
+                                              </td>
+
+                                              {/* Actions */}
+                                              <td style={styles.actionsStickyTd}>
+                                                <div style={{ display: 'inline-flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                                                  <button
+                                                    style={styles.editTrancheBtn}
+                                                    onClick={() => handleOpenEditTrancheModal(asset, tr, realIdx)}
+                                                    title={isHe ? 'ערוך פעולה (תאריך, שער וסכום)' : 'Edit transaction'}
+                                                  >
+                                                    <Edit2 size={13} color="#2563EB" />
+                                                  </button>
+                                                  <button
+                                                    style={styles.deleteTrancheBtn}
+                                                    onClick={() => {
+                                                      if (
+                                                        confirm(
+                                                          isHe
+                                                            ? 'האם למחוק פעולה זו מיומן הנייר?'
+                                                            : 'Delete this transaction from ledger?'
+                                                        )
+                                                      ) {
+                                                        deleteInvestmentTranche(asset.id, tr.id ? String(tr.id) : String(realIdx));
+                                                      }
+                                                    }}
+                                                    title={isHe ? 'מחק פעולה' : 'Delete transaction'}
+                                                  >
+                                                    <Trash2 size={13} color="#EF4444" />
+                                                  </button>
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          );
+                                        });
+                                      })()}
                                     </tbody>
                                   </table>
                                 </div>
@@ -4937,18 +5334,94 @@ export const InvestmentsView: React.FC = () => {
                     <span>
                       {modalMode === 'edit_tranche'
                         ? isHe
-                          ? 'עריכת פעימת הרכישה (תאריך, כמות וסכום)'
-                          : 'Edit Purchase Tranche Details'
+                          ? 'עריכת פעולה (תאריך, סוג, כמות ומחיר)'
+                          : 'Edit Transaction Details'
                         : isHe
-                        ? 'פרטי פעימת הרכישה (תאריך, כמות וסכום)'
-                        : 'Purchase Tranche Details'}
+                        ? 'פרטי הפעולה (תאריך, סוג, כמות ומחיר)'
+                        : 'Transaction Details'}
                     </span>
+                  </div>
+
+                  {/* Transaction Type Selector (Buy / Sell / Convert) */}
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{ ...styles.formLabel, marginBottom: '6px' }}>
+                      {isHe ? 'סוג פעולה *' : 'Transaction Type *'}
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                      <button
+                        type="button"
+                        style={{
+                          padding: '7px 10px',
+                          borderRadius: '8px',
+                          border: formTrancheType === 'buy' ? '2px solid #16A34A' : '1px solid #CBD5E1',
+                          backgroundColor: formTrancheType === 'buy' ? '#DCFCE7' : '#FFFFFF',
+                          color: formTrancheType === 'buy' ? '#15803D' : '#475569',
+                          fontWeight: 700,
+                          fontSize: '0.8125rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                        }}
+                        onClick={() => setFormTrancheType('buy')}
+                      >
+                        <span>🟢</span>
+                        <span>{isHe ? 'קנייה (Buy)' : 'Buy'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        style={{
+                          padding: '7px 10px',
+                          borderRadius: '8px',
+                          border: formTrancheType === 'sell' ? '2px solid #DC2626' : '1px solid #CBD5E1',
+                          backgroundColor: formTrancheType === 'sell' ? '#FEE2E2' : '#FFFFFF',
+                          color: formTrancheType === 'sell' ? '#B91C1C' : '#475569',
+                          fontWeight: 700,
+                          fontSize: '0.8125rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                        }}
+                        onClick={() => setFormTrancheType('sell')}
+                      >
+                        <span>🔴</span>
+                        <span>{isHe ? 'מכירה (Sell)' : 'Sell'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        style={{
+                          padding: '7px 10px',
+                          borderRadius: '8px',
+                          border: formTrancheType === 'convert' ? '2px solid #7E22CE' : '1px solid #CBD5E1',
+                          backgroundColor: formTrancheType === 'convert' ? '#F3E8FF' : '#FFFFFF',
+                          color: formTrancheType === 'convert' ? '#7E22CE' : '#475569',
+                          fontWeight: 700,
+                          fontSize: '0.8125rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                        }}
+                        onClick={() => setFormTrancheType('convert')}
+                      >
+                        <span>🟣</span>
+                        <span>{isHe ? 'המרה / מיזוג' : 'Convert'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div style={styles.formRow3}>
                     <div style={styles.formGroup}>
                       <label style={styles.formLabel}>
-                        {isHe ? 'תאריך רכישה *' : 'Purchase Date *'}
+                        {formTrancheType === 'sell'
+                          ? isHe ? 'תאריך מכירה *' : 'Sale Date *'
+                          : isHe ? 'תאריך רכישה *' : 'Purchase Date *'}
                       </label>
                       <IsraeliDateInput
                         value={formDate}
@@ -4960,7 +5433,9 @@ export const InvestmentsView: React.FC = () => {
 
                     <div style={styles.formGroup}>
                       <label style={styles.formLabel}>
-                        {isHe ? 'כמות מניות / יחידות *' : 'Shares / Quantity *'}
+                        {formTrancheType === 'sell'
+                          ? isHe ? 'כמות יחידות למכירה *' : 'Shares to Sell *'
+                          : isHe ? 'כמות מניות / יחידות *' : 'Shares / Quantity *'}
                       </label>
                       <input
                         style={styles.formInput}
@@ -4979,10 +5454,10 @@ export const InvestmentsView: React.FC = () => {
                           {isHe
                             ? formCurrency === 'ILS' && isPriceInAgorot
                               ? 'שער ביצוע (באגורות) *'
-                              : `מחיר ליחידה (${formCurrency === 'USD' ? '$' : '₪'}) *`
+                              : `${formTrancheType === 'sell' ? 'שער מכירה' : 'מחיר ליחידה'} (${formCurrency === 'USD' ? '$' : '₪'}) *`
                             : formCurrency === 'ILS' && isPriceInAgorot
                             ? 'Price in Agorot *'
-                            : `Price per Share (${formCurrency === 'USD' ? '$' : '₪'}) *`}
+                            : `${formTrancheType === 'sell' ? 'Sale Price' : 'Price per Share'} (${formCurrency === 'USD' ? '$' : '₪'}) *`}
                         </label>
                         {formCurrency === 'ILS' && (
                           <label
@@ -5026,7 +5501,11 @@ export const InvestmentsView: React.FC = () => {
                   <div style={styles.formRow2}>
                     <div style={styles.formGroup}>
                       <label style={styles.formLabel}>
-                        {isHe
+                        {formTrancheType === 'sell'
+                          ? isHe
+                            ? `סך תקבול / פדיון (${formCurrency === 'USD' ? '$' : '₪'})`
+                            : `Total Sale Proceeds (${formCurrency === 'USD' ? '$' : '₪'})`
+                          : isHe
                           ? `סך סכום רכישה לפעימה (${formCurrency === 'USD' ? '$' : '₪'})`
                           : `Total Tranche Amount (${formCurrency === 'USD' ? '$' : '₪'})`}
                       </label>
@@ -5039,13 +5518,19 @@ export const InvestmentsView: React.FC = () => {
                         onChange={(e) => handleTotalCostChange(e.target.value)}
                       />
                       <span style={styles.inputHelper}>
-                        {isHe ? 'סכום רכישה (קרן): כמות × מחיר' : 'Cost basis: shares × price'}
+                        {formTrancheType === 'sell'
+                          ? isHe ? 'תקבול כספי: כמות × שער מכירה' : 'Proceeds: shares × price'
+                          : isHe ? 'סכום רכישה (קרן): כמות × מחיר' : 'Cost basis: shares × price'}
                       </span>
                     </div>
 
                     <div style={styles.formGroup}>
                       <label style={styles.formLabel}>
-                        {isHe
+                        {formTrancheType === 'sell'
+                          ? isHe
+                            ? `עמלת מכירה (${formCurrency === 'USD' ? '$' : '₪'})`
+                            : `Sale Fee (${formCurrency === 'USD' ? '$' : '₪'})`
+                          : isHe
                           ? `עמלת קנייה (${formCurrency === 'USD' ? '$' : '₪'})`
                           : `Trading Fee (${formCurrency === 'USD' ? '$' : '₪'})`}
                       </label>

@@ -550,7 +550,7 @@ export function isDuplicateTranche(
 }
 
 /**
- * Sorts investment tranches descending by purchase date (newest/most recent first, earliest last).
+ * Sorts investment tranches descending by date (newest first, earliest last).
  */
 export function sortTranchesByDateDesc<T extends { date: string }>(tranches: T[]): T[] {
   if (!tranches || !Array.isArray(tranches)) return [];
@@ -558,5 +558,17 @@ export function sortTranchesByDateDesc<T extends { date: string }>(tranches: T[]
     const d1 = normalizeToISODate(a.date);
     const d2 = normalizeToISODate(b.date);
     return d2.localeCompare(d1);
+  });
+}
+
+/**
+ * Sorts investment tranches ascending by date (earliest first, newest last - ledger order).
+ */
+export function sortTranchesByDateAsc<T extends { date: string }>(tranches: T[]): T[] {
+  if (!tranches || !Array.isArray(tranches)) return [];
+  return [...tranches].sort((a, b) => {
+    const d1 = normalizeToISODate(a.date);
+    const d2 = normalizeToISODate(b.date);
+    return d1.localeCompare(d2);
   });
 }

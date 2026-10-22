@@ -388,15 +388,21 @@ export type SecurityType =
   | 'crypto' // מטבע קריפטוגרפי
   | 'other'; // נייר ערך אחר
 
+export type InvestmentTrancheType = 'buy' | 'sell' | 'convert';
+
 export interface InvestmentTranche {
   id: string;
-  date: string; // תאריך רכישה (YYYY-MM-DD)
-  shares: number; // כמות מניות
-  price_per_share: number; // מחיר קנייה למניה / יחידה
-  total_cost?: number; // סכום רכישה כולל (אופציונלי)
+  date: string; // תאריך פעולה (YYYY-MM-DD)
+  shares: number; // כמות מניות / יחידות (חיובי בקנייה/המרה, שלילי במכירה)
+  price_per_share: number; // מחיר ליחידה
+  total_cost?: number; // סכום רכישה או תקבול מכירה כולל
   fee: number; // עמלת מסחר
   notes?: string;
   ignore_agorot_fix?: boolean; // אם סומן כ-true, המשתמש בחר לא לתקן פעימה זו והיא לא תוצג שוב לתיקון
+  type?: InvestmentTrancheType; // סוג הפעולה: קנייה, מכירה או המרה
+  balance_after?: number; // יתרת מניות רצה בתיק לאחר הפעולה
+  realized_pnl?: number; // רווח / הפסד ממומש במכירה
+  orig_date?: string; // תאריך רכישה מקורי (במקרה של המרת קרן)
 }
 
 export type ManagementPillar = 'meitav' | 'bank_securities' | 'bank_deposits' | 'pension_provident';
