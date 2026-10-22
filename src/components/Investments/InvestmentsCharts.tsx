@@ -21,6 +21,7 @@ import {
   Search,
 } from 'lucide-react';
 import { SECURITY_TYPE_LABELS } from './InvestmentsView';
+import { calculateAssetMetrics } from './investmentMetrics';
 
 export interface TranchePointDetail {
   id: string;
@@ -34,6 +35,7 @@ export interface TranchePointDetail {
   valueILS: number;
   profitILS: number;
   yieldPct: number;
+  isSale?: boolean;
 }
 
 export interface ChartDataPoint {
@@ -159,15 +161,9 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
 
     filteredInvestments.forEach((asset) => {
       const rate = asset.currency === 'USD' ? usdRate : 1;
-      asset.tranches.forEach((tr) => {
-        const costILS =
-          (tr.total_cost && tr.total_cost > 0
-            ? tr.total_cost
-            : tr.shares * tr.price_per_share) * rate;
-        totalCost += costILS;
-      });
-      const totalShares = asset.tranches.reduce((sum, tr) => sum + tr.shares, 0);
-      totalVal += totalShares * asset.current_price * rate;
+      const m = calculateAssetMetrics(asset);
+      totalCost += m.totalCost * rate;
+      totalVal += m.currentValue * rate;
     });
 
     const totalProfit = totalVal - totalCost;
@@ -214,35 +210,97 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
       .filter((s) => s.total_invested > 0 || s.total_value > 0);
   }, [snapshots, filteredInvestments, selectedAssetType, selectedSecurityIds]);
 
-  // 1. Flatten all purchase tranches from filtered investments with costs and current profits
+  // 1. Flatten all purchase & sale tranches from filtered investments with proper FIFO accounting
   const allPurchases = useMemo(() => {
     const list: TranchePointDetail[] = [];
 
     filteredInvestments.forEach((asset) => {
       const rate = asset.currency === 'USD' ? usdRate : 1;
-      asset.tranches.forEach((tr, trIdx) => {
-        const iso = normalizeToISODate(tr.date);
-        const costILS =
-          (tr.total_cost && tr.total_cost > 0
-            ? tr.total_cost
-            : tr.shares * tr.price_per_share) * rate;
-        const valueILS = tr.shares * asset.current_price * rate;
-        const profitILS = valueILS - costILS;
-        const yieldPct = costILS > 0 ? (profitILS / costILS) * 100 : 0;
+      const sortedTranches = [...(asset.tranches || [])].sort((a, b) => {
+        const d1 = normalizeToISODate(a.date);
+        const d2 = normalizeToISODate(b.date);
+        return d1.localeCompare(d2);
+      });
 
-        list.push({
-          id: tr.id ? String(tr.id) : `${asset.id}_tr_${trIdx}`,
-          ticker: asset.ticker,
-          name: asset.name || asset.ticker,
-          date: iso,
-          shares: tr.shares,
-          price: tr.price_per_share,
-          currency: asset.currency,
-          costILS,
-          valueILS,
-          profitILS,
-          yieldPct,
-        });
+      const buyLots: { remainingShares: number; unitCost: number }[] = [];
+
+      sortedTranches.forEach((tr, trIdx) => {
+        const iso = normalizeToISODate(tr.date);
+        const isSale = tr.shares < 0 || tr.type === 'sell';
+
+        if (!isSale) {
+          const costILS =
+            (tr.total_cost !== undefined && tr.total_cost > 0
+              ? tr.total_cost
+              : tr.shares * tr.price_per_share) * rate;
+          const valueILS = tr.shares * asset.current_price * rate;
+          const profitILS = valueILS - costILS;
+          const yieldPct = costILS > 0 ? (profitILS / costILS) * 100 : 0;
+
+          buyLots.push({
+            remainingShares: tr.shares,
+            unitCost: tr.price_per_share,
+          });
+
+          list.push({
+            id: tr.id ? String(tr.id) : `${asset.id}_tr_${trIdx}`,
+            ticker: asset.ticker,
+            name: asset.name || asset.ticker,
+            date: iso,
+            shares: tr.shares,
+            price: tr.price_per_share,
+            currency: asset.currency,
+            costILS,
+            valueILS,
+            profitILS,
+            yieldPct,
+            isSale: false,
+          });
+        } else {
+          // Sale tranche
+          const sharesSold = Math.abs(tr.shares);
+          const proceedsILS =
+            (tr.total_cost !== undefined && tr.total_cost > 0
+              ? tr.total_cost
+              : sharesSold * tr.price_per_share) * rate;
+
+          let costOfSold = 0;
+          let needed = sharesSold;
+
+          while (needed > 0.0001 && buyLots.length > 0) {
+            const oldest = buyLots[0];
+            const take = Math.min(needed, oldest.remainingShares);
+            costOfSold += take * oldest.unitCost;
+            oldest.remainingShares -= take;
+            needed -= take;
+            if (oldest.remainingShares <= 0.0001) {
+              buyLots.shift();
+            }
+          }
+
+          const costOfSoldILS =
+            (tr.realized_pnl !== undefined
+              ? Math.max(0, proceedsILS - tr.realized_pnl * rate)
+              : costOfSold * rate) || proceedsILS;
+
+          const profitILS = proceedsILS - costOfSoldILS;
+          const yieldPct = costOfSoldILS > 0 ? (profitILS / costOfSoldILS) * 100 : 0;
+
+          list.push({
+            id: tr.id ? String(tr.id) : `${asset.id}_tr_${trIdx}`,
+            ticker: asset.ticker,
+            name: asset.name || asset.ticker,
+            date: iso,
+            shares: tr.shares,
+            price: tr.price_per_share,
+            currency: asset.currency,
+            costILS: costOfSoldILS,
+            valueILS: proceedsILS,
+            profitILS,
+            yieldPct,
+            isSale: true,
+          });
+        }
       });
     });
 
@@ -277,7 +335,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
         const retPct = tr.costILS > 0 ? (prof / tr.costILS) * 100 : 0;
         return {
           id: tr.id,
-          label: `${formatDate(tr.date)} (${tr.ticker})`,
+          label: `${formatDate(tr.date)} (${tr.ticker})${tr.isSale ? (isHe ? ' [מכירה]' : ' [Sale]') : ''}`,
           date: tr.date,
           cost: tr.costILS,
           value: val,
@@ -335,10 +393,10 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
       if (sortedPurchaseDates.length === 1 && sortedSnapshots.length === 0) {
         const singleDate = sortedPurchaseDates[0];
         const trs = tranchesByDate.get(singleDate)!;
-        const totalCost = trs.reduce((s, t) => s + t.costILS, 0);
-        const totalVal = trs.reduce((s, t) => s + t.valueILS, 0);
-        const totalProfit = totalVal - totalCost;
-        const retPct = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
+        const totalCost = filteredSummary.totalInvestedILS;
+        const totalVal = filteredSummary.currentValueILS;
+        const totalProfit = filteredSummary.totalProfitILS;
+        const retPct = filteredSummary.totalReturnPct;
 
         // Point 1: At the moment of purchase (Cost = Value, Profit = 0)
         points.push({
@@ -352,19 +410,21 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
           tranchesInPoint: trs,
         });
 
-        // Point 2: Current Live
-        const liveVal = simulationMode === 'loss' ? totalCost * 0.85 : totalVal;
-        points.push({
-          id: 'current-live',
-          label: isHe ? 'מצב נוכחי (חי)' : 'Current Live',
-          date: todayISO,
-          cost: totalCost,
-          value: liveVal,
-          profit: liveVal - totalCost,
-          returnPct: simulationMode === 'loss' ? -15.0 : retPct,
-          isLive: true,
-          tranchesInPoint: trs,
-        });
+        // Point 2: Current Live (if singleDate is not today)
+        if (singleDate !== todayISO) {
+          const liveVal = simulationMode === 'loss' ? totalCost * 0.85 : totalVal;
+          points.push({
+            id: 'current-live',
+            label: isHe ? 'מצב נוכחי (חי)' : 'Current Live',
+            date: todayISO,
+            cost: totalCost,
+            value: liveVal,
+            profit: liveVal - totalCost,
+            returnPct: simulationMode === 'loss' ? -15.0 : retPct,
+            isLive: true,
+            tranchesInPoint: trs,
+          });
+        }
 
         return points;
       }
@@ -378,24 +438,25 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
       const snapshotByDate = new Map<string, InvestmentPeriodicSnapshot>();
       sortedSnapshots.forEach((s) => snapshotByDate.set(s.date, s));
 
-      let runningCost = 0;
-      let runningValue = 0;
-
       sortedDates.forEach((d) => {
         const trs = tranchesByDate.get(d);
-        if (trs) {
-          const dayCost = trs.reduce((s, t) => s + t.costILS, 0);
-          const dayVal = trs.reduce((s, t) => s + t.valueILS, 0);
-          runningCost += dayCost;
-          runningValue += dayVal;
-        }
-
         const snap = snapshotByDate.get(d);
+
+        let dateCost = 0;
+        let dateVal = 0;
+
+        filteredInvestments.forEach((asset) => {
+          const rate = asset.currency === 'USD' ? usdRate : 1;
+          const m = calculateAssetMetrics(asset, d);
+          dateCost += m.totalCost * rate;
+          dateVal += m.currentValue * rate;
+        });
+
         if (snap && (Number(snap.total_invested) > 0 || Number(snap.total_value) > 0)) {
           // If a snapshot exists, use the higher of running accumulated cost or snapshot cost
           // (this prevents incomplete snapshots recorded before assets were imported from plunging the curve)
-          const effectiveCost = Math.max(runningCost, snap.total_invested);
-          const rawVal = Math.max(runningValue, snap.total_value);
+          const effectiveCost = Math.max(dateCost, snap.total_invested);
+          const rawVal = Math.max(dateVal, snap.total_value);
           const val = simulationMode === 'loss' ? effectiveCost * 0.85 : rawVal;
           const prof = val - effectiveCost;
           const retPct = effectiveCost > 0 ? (prof / effectiveCost) * 100 : 0;
@@ -412,18 +473,16 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
             returnPct: simulationMode === 'loss' ? -15.0 : retPct,
             tranchesInPoint: trs,
           });
-        } else if (trs && (runningCost > 0 || runningValue > 0)) {
-          const prof = runningValue - runningCost;
-          const retPct = runningCost > 0 ? (prof / runningCost) * 100 : 0;
-          const val = simulationMode === 'loss' ? runningCost * 0.85 : runningValue;
-          const p = val - runningCost;
-          const r = simulationMode === 'loss' ? -15.0 : retPct;
+        } else if (dateCost > 0 || dateVal > 0) {
+          const val = simulationMode === 'loss' ? dateCost * 0.85 : dateVal;
+          const p = val - dateCost;
+          const r = simulationMode === 'loss' ? -15.0 : (dateCost > 0 ? (p / dateCost) * 100 : 0);
 
           points.push({
             id: `cum-tranche-${d}`,
             label: formatDate(d),
             date: d,
-            cost: runningCost,
+            cost: dateCost,
             value: val,
             profit: p,
             returnPct: r,
@@ -504,8 +563,8 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
         icon: '🏷️',
       };
 
-      const shares = asset.tranches.reduce((sum, tr) => sum + tr.shares, 0);
-      const val = shares * asset.current_price * (asset.currency === 'USD' ? usdRate : 1);
+      const m = calculateAssetMetrics(asset);
+      const val = m.currentValue * (asset.currency === 'USD' ? usdRate : 1);
 
       if (!map.has(typeKey)) {
         map.set(typeKey, {
@@ -1725,7 +1784,7 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                         }}
                       >
                         <div style={{ fontWeight: '700', color: '#475569', marginBottom: '2px' }}>
-                          {isHe ? 'פעימות רכישה במועד זה:' : 'Purchases on this date:'}
+                          {isHe ? 'פעולות במועד זה:' : 'Transactions on this date:'}
                         </div>
                         {chartDataPoints[hoveredPointIndex].tranchesInPoint!.map((t, tIdx) => (
                           <div
@@ -1740,7 +1799,8 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
                             }}
                           >
                             <span>
-                              <strong>{t.ticker}</strong> ({t.shares} יח' @{' '}
+                              <strong>{t.ticker}</strong> {t.isSale ? (isHe ? '(מכירה)' : '(Sale)') : ''} (
+                              {Math.abs(t.shares).toLocaleString('en-US')} יח' @{' '}
                               {t.currency === 'USD' ? '$' : '₪'}{t.price})
                             </span>
                             <span
