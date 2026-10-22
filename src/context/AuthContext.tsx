@@ -96,7 +96,8 @@ interface AuthContextType {
     | 'bank-accounts'
     | 'system-tables'
     | 'users'
-    | 'data-audit';
+    | 'data-audit'
+    | 'backups';
   setActiveTab: (
     tab:
       | 'dashboard'
@@ -113,6 +114,7 @@ interface AuthContextType {
       | 'system-tables'
       | 'users'
       | 'data-audit'
+      | 'backups'
   ) => void;
   loginWithOAuth: (provider: OAuthProvider) => Promise<{ success: boolean; error?: string }>;
   loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -721,6 +723,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'bank-accounts',
           'system-tables',
           'users',
+          'backups',
         ].includes(saved)
       ) {
         return saved as AuthContextType['activeTab'];

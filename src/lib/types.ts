@@ -489,6 +489,28 @@ export interface SecurityDailyPrice {
   created_at?: string;
 }
 
+// ==========================================
+// SYSTEM BACKUPS & RESTORE TYPES
+// ==========================================
+
+export type BackupType = 'scheduled_nightly' | 'manual';
+
+export interface SystemBackupRecord {
+  id: string;
+  created_at: string;
+  date: string;
+  type: BackupType;
+  household_id: string; // 'all' or household UUID
+  household_name: string;
+  total_rows: number;
+  file_size_kb: number;
+  tables_summary: Record<string, number>;
+  backup_payload?: any;
+  status: 'completed' | 'failed' | 'restoring';
+  retention_days: number;
+}
+
+
 
 
 

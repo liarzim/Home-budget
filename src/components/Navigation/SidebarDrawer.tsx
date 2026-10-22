@@ -127,6 +127,12 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({ isOpen, onClose })
                 icon: ShieldCheck,
                 badge: language === 'he' ? 'אדמין כללי' : 'Super Admin',
               },
+              {
+                id: 'backups',
+                label: language === 'he' ? 'גיבוי ושחזור מערכת' : 'Daily Backups & Restore',
+                icon: Database,
+                badge: language === 'he' ? 'יומי מלא' : 'Full Daily',
+              },
             ],
           },
         ]

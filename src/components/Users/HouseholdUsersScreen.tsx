@@ -27,6 +27,8 @@ import {
   ExternalLink,
   MessageCircle,
   TableProperties,
+  Database,
+  Home,
 } from 'lucide-react';
 import { MemberRole, Household, HouseholdMember, HouseholdInvitation } from '../../lib/types';
 import { formatDate } from '../../lib/i18n';
@@ -42,8 +44,21 @@ import {
   HOUSEHOLD_COLORS,
   renderHouseholdIcon,
 } from '../../lib/householdIcons';
+import { BackupsManagementView } from '../Admin/BackupsManagementView';
 
-export const HouseholdUsersScreen: React.FC = () => {
+interface HouseholdUsersScreenProps {
+  initialSubTab?: 'users' | 'households' | 'backups';
+}
+
+export const HouseholdUsersScreen: React.FC<HouseholdUsersScreenProps> = ({ initialSubTab = 'users' }) => {
+  const [subTab, setSubTab] = useState<'users' | 'households' | 'backups'>(initialSubTab);
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
+
   const {
     user,
     activeHousehold,
@@ -522,30 +537,114 @@ export const HouseholdUsersScreen: React.FC = () => {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={styles.headerIconBox}>
-              <Users size={24} color="var(--primary)" />
+              {subTab === 'backups' ? (
+                <Database size={24} color="var(--primary)" />
+              ) : subTab === 'households' ? (
+                <Home size={24} color="var(--primary)" />
+              ) : (
+                <Users size={24} color="var(--primary)" />
+              )}
             </div>
             <div>
               <h1 style={styles.pageTitle}>
-                {language === 'he' ? 'משתמשים והרשאות משק בית' : 'Household Users & Permissions'}
+                {subTab === 'backups'
+                  ? language === 'he'
+                    ? 'גיבוי ושחזור מערכת (Daily Backups & Restore)'
+                    : 'System Backups & Restore'
+                  : subTab === 'households'
+                  ? language === 'he'
+                    ? 'כלל משקי הבית במערכת (Super Admin Portal)'
+                    : 'All System Households'
+                  : language === 'he'
+                  ? 'משתמשים והרשאות משק בית'
+                  : 'Household Users & Permissions'}
               </h1>
               <p style={styles.pageSub}>
-                {language === 'he'
-                  ? `ניהול חברי משק הבית והגדרת הרשאות גישה`
-                  : `Manage members and roles for your household`}
+                {subTab === 'backups'
+                  ? language === 'he'
+                    ? 'גיבוי יומי מלא בלילה לאחר הסנכרון, מדיניות שמירה ושחזור נתונים'
+                    : 'Daily automated nightly backups, retention & point-in-time restore'
+                  : subTab === 'households'
+                  ? language === 'he'
+                    ? 'צפייה, מעבר ועריכת שמות ואייקונים של כלל משקי הבית'
+                    : 'Switch and manage all registered households'
+                  : language === 'he'
+                  ? 'ניהול חברי משק הבית והגדרת הרשאות גישה'
+                  : 'Manage members and roles for your household'}
               </p>
             </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {canManageUsers && (
+          {subTab === 'users' && canManageUsers && (
             <button style={styles.addMemberBtn} onClick={() => setIsAddModalOpen(true)}>
               <UserPlus size={16} />
               <span>{language === 'he' ? '+ הוסף משתמש למשק הבית' : '+ Add Household Member'}</span>
             </button>
           )}
+          {subTab === 'households' && isSuperUser && (
+            <button style={styles.createHhBtn} onClick={() => setIsAddHhModalOpen(true)}>
+              <Plus size={16} />
+              <span>{language === 'he' ? 'צור משק בית וזמן מנהל משפחה' : 'Create Household & Invite Admin'}</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Sub Tabs Navigation */}
+      <div style={styles.subTabsContainer}>
+        <button
+          type="button"
+          style={{
+            ...styles.subTabBtn,
+            ...(subTab === 'users' ? styles.subTabBtnActive : {}),
+          }}
+          onClick={() => setSubTab('users')}
+        >
+          <Users size={16} />
+          <span>{language === 'he' ? 'משתמשים והרשאות' : 'Members & Roles'}</span>
+        </button>
+
+        {isSuperUser && (
+          <button
+            type="button"
+            style={{
+              ...styles.subTabBtn,
+              ...(subTab === 'households' ? styles.subTabBtnActive : {}),
+            }}
+            onClick={() => setSubTab('households')}
+          >
+            <Home size={16} />
+            <span>{language === 'he' ? 'כלל משקי הבית' : 'All Households'}</span>
+            <span style={styles.subTabBadge}>
+              {allSystemHouseholds.length || households.length}
+            </span>
+          </button>
+        )}
+
+        <button
+          type="button"
+          style={{
+            ...styles.subTabBtn,
+            ...(subTab === 'backups' ? styles.subTabBtnActive : {}),
+          }}
+          onClick={() => setSubTab('backups')}
+        >
+          <Database size={16} />
+          <span>{language === 'he' ? 'גיבוי ושחזור מערכת' : 'Backups & Restore'}</span>
+          <span style={{ ...styles.subTabBadge, backgroundColor: '#DBEAFE', color: '#1E40AF' }}>
+            {language === 'he' ? 'יומי מלא' : 'Daily'}
+          </span>
+        </button>
+      </div>
+
+      {/* SUBTAB 3: BACKUPS MANAGEMENT VIEW */}
+      {subTab === 'backups' && <BackupsManagementView />}
+
+      {/* SUBTAB 1: USERS & PERMISSIONS VIEW */}
+      {subTab === 'users' && (
+        <>
 
       {/* Active Household Summary & Customization Banner */}
       {activeHousehold && (
@@ -1078,9 +1177,11 @@ export const HouseholdUsersScreen: React.FC = () => {
           </div>
         </div>
       )}
+      </>
+      )}
 
-      {/* Super User Global Households Hub */}
-      {isSuperUser && (
+      {/* SUBTAB 2: SUPER USER GLOBAL HOUSEHOLDS HUB */}
+      {subTab === 'households' && isSuperUser && (
         <div style={styles.superHubCard}>
           <div style={styles.superHubHeader}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2115,6 +2216,45 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     flexDirection: 'column',
     gap: '24px',
+  },
+  subTabsContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    backgroundColor: '#F1F5F9',
+    padding: '4px',
+    borderRadius: '10px',
+    width: 'fit-content',
+    flexWrap: 'wrap',
+    border: '1px solid #E2E8F0',
+  },
+  subTabBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '7px 14px',
+    borderRadius: '8px',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: '#64748B',
+    fontSize: '0.85rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  subTabBtnActive: {
+    backgroundColor: '#FFFFFF',
+    color: 'var(--primary)',
+    fontWeight: '800',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+  },
+  subTabBadge: {
+    fontSize: '0.72rem',
+    fontWeight: '700',
+    backgroundColor: '#E2E8F0',
+    color: '#475569',
+    padding: '1px 6px',
+    borderRadius: '10px',
   },
   header: {
     display: 'flex',

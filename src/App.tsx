@@ -45,7 +45,8 @@ const MainScreen: React.FC = () => {
         {activeTab === 'transactions' && <TransactionsView />}
         {activeTab === 'manual-entry' && <ManualEntryScreen />}
         {activeTab === 'import' && <ImportWizard />}
-        {activeTab === 'users' && <HouseholdUsersScreen />}
+        {activeTab === 'users' && <HouseholdUsersScreen initialSubTab="users" />}
+        {activeTab === 'backups' && <HouseholdUsersScreen initialSubTab="backups" />}
         {(activeTab === 'system-tables' || activeTab === 'mappings') && <SystemTablesScreen />}
         {activeTab === 'bank-accounts' && <ConnectedAccountsScreen />}
         {activeTab === 'migration' && <HistoricalMigrationScreen />}
