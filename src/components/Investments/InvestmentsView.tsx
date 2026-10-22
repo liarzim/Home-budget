@@ -1529,16 +1529,15 @@ export const InvestmentsView: React.FC = () => {
         if (res && res.success && res.price > 0) {
           let newPrice = res.price;
 
-          // If asset is ILS, ensure quote is in Shekels (not Agorot)
+          // If asset is ILS, ensure quote is in Shekels (only divide if currency is ILA/ILX or quote came in at ~100x existing price)
           if (asset.currency === 'ILS' || res.currency === 'ILA' || res.currency === 'ILX') {
             if (res.currency === 'ILA' || res.currency === 'ILX') {
               newPrice = newPrice / 100;
             } else if (
               asset.current_price > 0 &&
-              newPrice / asset.current_price >= 70 &&
-              newPrice / asset.current_price <= 130
+              newPrice / asset.current_price >= 40
             ) {
-              // Quote came in ~100x existing current_price which user already fixed/divided
+              // Quote came in Agorot (~100x existing Shekel current_price)
               newPrice = newPrice / 100;
             } else if (asset.tranches.length > 0) {
               const validTranches = asset.tranches.filter(
@@ -1555,8 +1554,6 @@ export const InvestmentsView: React.FC = () => {
                   newPrice = newPrice / 100;
                 }
               }
-            } else if (newPrice >= 500) {
-              newPrice = newPrice / 100;
             }
           }
 
@@ -1699,13 +1696,10 @@ export const InvestmentsView: React.FC = () => {
             priceToUse = priceToUse / 100;
           } else if (
             asset.current_price > 0 &&
-            priceToUse / asset.current_price >= 70 &&
-            priceToUse / asset.current_price <= 130
+            priceToUse / asset.current_price >= 40
           ) {
             priceToUse = priceToUse / 100;
           } else if (avgPrice > 0 && priceToUse / avgPrice >= 40) {
-            priceToUse = priceToUse / 100;
-          } else if (priceToUse >= 500) {
             priceToUse = priceToUse / 100;
           }
         }
@@ -1847,13 +1841,10 @@ export const InvestmentsView: React.FC = () => {
           priceToUse = priceToUse / 100;
         } else if (
           asset.current_price > 0 &&
-          priceToUse / asset.current_price >= 70 &&
-          priceToUse / asset.current_price <= 130
+          priceToUse / asset.current_price >= 40
         ) {
           priceToUse = priceToUse / 100;
         } else if (avgPrice > 0 && priceToUse / avgPrice >= 40) {
-          priceToUse = priceToUse / 100;
-        } else if (priceToUse >= 500) {
           priceToUse = priceToUse / 100;
         }
       }

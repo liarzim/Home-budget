@@ -76,7 +76,8 @@ export async function fetchAssetQuote(
           const quotes = result.indicators?.quote?.[0]?.close || [];
           const timestamps = result.timestamp || [];
 
-          const isAgorot = currency === 'ILA' || currency === 'ILX' || cleanSym.toUpperCase().endsWith('.TA');
+          // Check explicitly if quote is in Agorot (ILA / ILX). If currency is already 'ILS', it's already in Shekels!
+          const isAgorot = currency === 'ILA' || currency === 'ILX' || (cleanSym.toUpperCase().endsWith('.TA') && currency !== 'ILS');
           if (isAgorot) {
             currency = 'ILS';
           }

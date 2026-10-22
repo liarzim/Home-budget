@@ -31,7 +31,8 @@ export async function fetchYahooQuote(symbol, periodType, year, month, quarter) 
     const timestamps = result.timestamp || [];
     const quotes = result.indicators?.quote?.[0]?.close || [];
 
-    const isAgorot = currency === 'ILA' || currency === 'ILX' || symbol.toUpperCase().endsWith('.TA');
+    // Check explicitly if quote is in Agorot (ILA / ILX). If currency is already 'ILS', it's already in Shekels!
+    const isAgorot = currency === 'ILA' || currency === 'ILX' || (symbol.toUpperCase().endsWith('.TA') && currency !== 'ILS');
     if (isAgorot) {
       currency = 'ILS';
     }
@@ -160,12 +161,9 @@ export async function fetchBizportalQuote(securityNumber, periodType, year, mont
     }
 
     function formatBizportalPrice(rawCp) {
-      let price = rawCp / 100;
-      // If price is >= 500, on TASE index certificates / ETFs have C_p in hundredths of agorot (e.g. 257400 -> 25.74 ILS)
-      if (price >= 500) {
-        price = price / 100;
-      }
-      return Number(price.toFixed(4));
+      // Bizportal C_p is quoted in Agorot on TASE -> divide by 100 to get Shekels (ILS)
+      const price = Number((rawCp / 100).toFixed(4));
+      return price;
     }
 
     // Points are sorted latest to oldest: [{ D_p: 'DD/MM/YYYY', C_p: agorot }, ...]
