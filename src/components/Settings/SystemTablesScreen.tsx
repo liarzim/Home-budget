@@ -124,6 +124,10 @@ export const SystemTablesScreen: React.FC = () => {
   const [dropTargetCategoryId, setDropTargetCategoryId] = useState<string | null>(null);
   const [isDropTargetRoot, setIsDropTargetRoot] = useState(false);
   const [movingCategory, setMovingCategory] = useState<Category | null>(null);
+  const [searchMoveQuery, setSearchMoveQuery] = useState('');
+  const [showOtherCategoriesAsParents, setShowOtherCategoriesAsParents] = useState(false);
+  const [addChildModalTab, setAddChildModalTab] = useState<'create' | 'attach'>('create');
+  const [searchAttachQuery, setSearchAttachQuery] = useState('');
 
   const toggleParent = (parentId: string) => {
     setExpandedParents((prev) => ({
@@ -140,6 +144,8 @@ export const SystemTablesScreen: React.FC = () => {
     setFormMacroId(parentCat.macro_category_id || '');
     setFormParentId(parentCat.id);
     setExpandedParents((prev) => ({ ...prev, [parentCat.id]: true }));
+    setAddChildModalTab('create');
+    setSearchAttachQuery('');
     setIsAddModalOpen(true);
   };
 
@@ -2061,6 +2067,203 @@ CREATE POLICY "Users can delete payment mappings in their households"
               </button>
             </div>
 
+            {formParentId && !editingItem && (
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setAddChildModalTab('create')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    backgroundColor: addChildModalTab === 'create' ? 'var(--primary)' : 'var(--bg-surface-subtle)',
+                    color: addChildModalTab === 'create' ? '#ffffff' : 'var(--text-secondary)',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {language === 'he' ? '+ יצירת תת-קטגוריה חדשה' : '+ Create New Sub-Category'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddChildModalTab('attach')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    backgroundColor: addChildModalTab === 'attach' ? 'var(--primary)' : 'var(--bg-surface-subtle)',
+                    color: addChildModalTab === 'attach' ? '#ffffff' : 'var(--text-secondary)',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {language === 'he' ? '🔗 צירוף קטגוריה קיימת כבת' : '🔗 Attach Existing Category'}
+                </button>
+              </div>
+            )}
+
+            {formParentId && !editingItem && addChildModalTab === 'attach' ? (() => {
+              const parentCat = categories.find((c) => c.id === formParentId);
+              const attachableCategories = categories
+                .filter(
+                  (c) =>
+                    c.type === parentCat?.type &&
+                    c.id !== formParentId &&
+                    c.parent_id !== formParentId
+                )
+                .sort((a, b) => a.name.localeCompare(b.name, 'he'));
+
+              const q = searchAttachQuery.trim().toLowerCase();
+              const filtered = q
+                ? attachableCategories.filter((c) => c.name.toLowerCase().includes(q))
+                : attachableCategories;
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <Search
+                      size={16}
+                      style={{ position: 'absolute', right: '12px', color: 'var(--text-tertiary)', pointerEvents: 'none' }}
+                    />
+                    <input
+                      type="text"
+                      value={searchAttachQuery}
+                      onChange={(e) => setSearchAttachQuery(e.target.value)}
+                      placeholder={language === 'he' ? 'חיפוש קטגוריה לצירוף...' : 'Search category to attach...'}
+                      style={{
+                        width: '100%',
+                        padding: '8px 36px 8px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-main)',
+                        backgroundColor: 'var(--bg-surface)',
+                        fontSize: '0.8125rem',
+                        color: 'var(--text-primary)',
+                        outline: 'none',
+                      }}
+                    />
+                    {searchAttachQuery && (
+                      <button
+                        onClick={() => setSearchAttachQuery('')}
+                        style={{
+                          position: 'absolute',
+                          left: '10px',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: 'var(--text-tertiary)',
+                          padding: 0,
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      maxHeight: '360px',
+                      overflowY: 'auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                      paddingRight: '2px',
+                    }}
+                  >
+                    {filtered.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)', fontSize: '0.8125rem' }}>
+                        {language === 'he' ? 'לא נמצאו קטגוריות מתאימות' : 'No matching categories'}
+                      </div>
+                    ) : (
+                      filtered.map((cat) => {
+                        const currentCatParent = categories.find((c) => c.id === cat.parent_id);
+                        return (
+                          <div
+                            key={cat.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              backgroundColor: 'var(--bg-surface)',
+                              border: '1px solid var(--border-subtle)',
+                              gap: '10px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                              <span
+                                style={{
+                                  width: '8px',
+                                  height: '8px',
+                                  borderRadius: '50%',
+                                  backgroundColor: cat.color || 'var(--primary)',
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <span style={{ fontWeight: 700, fontSize: '0.84375rem', color: 'var(--text-primary)' }}>
+                                {cat.name}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '0.6875rem',
+                                  color: 'var(--text-tertiary)',
+                                  backgroundColor: 'var(--bg-surface-subtle)',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                }}
+                              >
+                                {currentCatParent
+                                  ? (language === 'he' ? `משויכת ל: ${currentCatParent.name}` : `under: ${currentCatParent.name}`)
+                                  : (language === 'he' ? 'עצמאית' : 'standalone')}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleMoveCategoryToParent(cat.id, formParentId);
+                                setIsAddModalOpen(false);
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '5px 10px',
+                                borderRadius: '5px',
+                                backgroundColor: 'var(--primary)',
+                                color: '#ffffff',
+                                border: 'none',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Plus size={13} />
+                              <span>{language === 'he' ? 'צרף לכאן' : 'Attach here'}</span>
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '10px', borderTop: '1px solid var(--border-subtle)' }}>
+                    <button
+                      type="button"
+                      style={styles.modalCancelBtn}
+                      onClick={() => setIsAddModalOpen(false)}
+                    >
+                      {t('cancel', language)}
+                    </button>
+                  </div>
+                </div>
+              );
+            })() : (
             <form onSubmit={handleSaveModal}>
               {/* Form for MACROS */}
               {activeSubTab === 'macros' ? (
@@ -2277,130 +2480,556 @@ CREATE POLICY "Users can delete payment mappings in their households"
                 </button>
               </div>
             </form>
+          )}
           </div>
         </div>
       )}
 
       {/* Mobile / Quick Move Modal */}
-      {movingCategory && (
-        <div style={styles.modalOverlay} className="animate-fade-in" onClick={() => setMovingCategory(null)}>
+      {movingCategory && (() => {
+        const currentParent = categories.find((c) => c.id === movingCategory.parent_id);
+
+        // Candidate categories: same type, not movingCategory itself, and not children of movingCategory
+        const candidateCategories = categories.filter(
+          (c) =>
+            c.type === movingCategory.type &&
+            c.id !== movingCategory.id &&
+            c.parent_id !== movingCategory.id
+        );
+
+        // 1. Established Parent Domains (categories that have at least one child)
+        const establishedParents = candidateCategories
+          .filter((c) => categories.some((child) => child.parent_id === c.id))
+          .sort((a, b) => a.name.localeCompare(b.name, 'he'));
+
+        // 2. Standalone Root Categories (currently parent_id is null and have 0 children)
+        const otherRootCategories = candidateCategories
+          .filter((c) => !c.parent_id && !categories.some((child) => child.parent_id === c.id))
+          .sort((a, b) => a.name.localeCompare(b.name, 'he'));
+
+        // 3. Subcategories under other parents
+        const otherSubcategories = candidateCategories
+          .filter((c) => !!c.parent_id)
+          .sort((a, b) => a.name.localeCompare(b.name, 'he'));
+
+        const q = searchMoveQuery.trim().toLowerCase();
+        const filterList = (list: Category[]) =>
+          q ? list.filter((c) => c.name.toLowerCase().includes(q)) : list;
+
+        const filteredEstablished = filterList(establishedParents);
+        const filteredOtherRoots = filterList(otherRootCategories);
+        const filteredOtherSubs = filterList(otherSubcategories);
+
+        const isSearching = q.length > 0;
+
+        return (
           <div
-            style={{ ...styles.modalCard, maxWidth: '440px' }}
-            onClick={(e) => e.stopPropagation()}
+            style={styles.modalOverlay}
+            className="animate-fade-in"
+            onClick={() => {
+              setMovingCategory(null);
+              setSearchMoveQuery('');
+            }}
           >
-            <div style={styles.modalHeader}>
-              <div>
-                <h3 style={styles.modalTitle}>
-                  {language === 'he' ? 'שיוך והעברת קטגוריה' : 'Move Category'}
-                </h3>
-                <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                  {movingCategory.name}
-                </div>
-              </div>
-              <button style={styles.closeBtn} onClick={() => setMovingCategory(null)}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                {language === 'he' ? 'בחר לאיזה תחום אב לשייך קטגוריה זו:' : 'Select parent domain to assign to:'}
-              </div>
-
-              {/* Option 1: Standalone Root */}
-              <button
-                type="button"
+            <div
+              style={{
+                ...styles.modalCard,
+                maxWidth: '520px',
+                maxHeight: '85vh',
+                display: 'flex',
+                flexDirection: 'column',
+                padding: 0,
+                overflow: 'hidden',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div
                 style={{
+                  padding: '18px 22px 14px',
+                  borderBottom: '1px solid var(--border-subtle)',
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '12px 14px',
-                  borderRadius: '8px',
-                  border: !movingCategory.parent_id ? '2px solid var(--primary)' : '1px solid var(--border-main)',
-                  backgroundColor: !movingCategory.parent_id ? 'rgba(79, 70, 229, 0.08)' : 'var(--bg-surface-subtle)',
-                  cursor: 'pointer',
-                  textAlign: 'right',
-                  width: '100%',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  backgroundColor: 'var(--bg-surface)',
                 }}
-                onClick={() => handleMoveCategoryToParent(movingCategory.id, null)}
               >
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10B981' }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                    {language === 'he' ? 'קטגוריה ראשית עצמאית (ללא תחום אב)' : 'Standalone Root Category'}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                    {language === 'he' ? 'מופיעה בראש הרשימה כעצמאית' : 'Top-level independent category'}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                        color: 'var(--primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <FolderTree size={18} />
+                    </div>
+                    <div>
+                      <h3 style={{ ...styles.modalTitle, margin: 0, fontSize: '1.0625rem' }}>
+                        {language === 'he' ? 'שיוך קטגוריה לתחום אב' : 'Assign to Parent Domain'}
+                      </h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                        <span
+                          style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: movingCategory.color || 'var(--primary)',
+                          }}
+                        />
+                        <span style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: '0.875rem' }}>
+                          {movingCategory.name}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                          {currentParent
+                            ? (language === 'he' ? `(משויכת כעת תחת: ${currentParent.name})` : `(under: ${currentParent.name})`)
+                            : (language === 'he' ? '(עצמאית כעת)' : '(standalone)')}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                {!movingCategory.parent_id && <CheckCircle2 size={16} color="var(--primary)" />}
-              </button>
+                <button
+                  style={styles.closeBtn}
+                  onClick={() => {
+                    setMovingCategory(null);
+                    setSearchMoveQuery('');
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
-              {/* List of potential parents */}
-              {categories
-                .filter(
-                  (c) =>
-                    c.type === movingCategory.type &&
-                    c.id !== movingCategory.id &&
-                    c.parent_id !== movingCategory.id
-                )
-                .map((parent) => {
-                  const isCurrent = movingCategory.parent_id === parent.id;
-                  const isAlreadyParent = categories.some((c) => c.parent_id === parent.id);
-                  return (
+              {/* Search Bar */}
+              <div
+                style={{
+                  padding: '12px 20px',
+                  borderBottom: '1px solid var(--border-subtle)',
+                  backgroundColor: 'var(--bg-surface-subtle)',
+                }}
+              >
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Search
+                    size={16}
+                    style={{ position: 'absolute', right: '12px', color: 'var(--text-tertiary)', pointerEvents: 'none' }}
+                  />
+                  <input
+                    type="text"
+                    value={searchMoveQuery}
+                    onChange={(e) => setSearchMoveQuery(e.target.value)}
+                    placeholder={language === 'he' ? 'חיפוש מהיר של תחום אב או קטגוריה...' : 'Search domain...'}
+                    style={{
+                      width: '100%',
+                      padding: '8px 36px 8px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-main)',
+                      backgroundColor: 'var(--bg-surface)',
+                      fontSize: '0.8125rem',
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                    }}
+                  />
+                  {searchMoveQuery && (
                     <button
-                      key={parent.id}
+                      onClick={() => setSearchMoveQuery('')}
+                      style={{
+                        position: 'absolute',
+                        left: '10px',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--text-tertiary)',
+                        padding: 0,
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Scrollable Content */}
+              <div
+                style={{
+                  padding: '14px 20px',
+                  overflowY: 'auto',
+                  flex: 1,
+                  maxHeight: '440px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '14px',
+                }}
+              >
+                {/* 1. Root Category Option */}
+                {!isSearching && (
+                  <div>
+                    <button
                       type="button"
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '10px',
-                        padding: '12px 14px',
+                        gap: '12px',
+                        padding: '10px 14px',
                         borderRadius: '8px',
-                        border: isCurrent ? '2px solid var(--primary)' : '1px solid var(--border-main)',
-                        backgroundColor: isCurrent ? 'rgba(79, 70, 229, 0.08)' : 'var(--bg-surface-subtle)',
+                        border: !movingCategory.parent_id ? '2px solid #10B981' : '1px solid var(--border-main)',
+                        backgroundColor: !movingCategory.parent_id ? 'rgba(16, 185, 129, 0.08)' : 'var(--bg-surface)',
                         cursor: 'pointer',
                         textAlign: 'right',
                         width: '100%',
+                        transition: 'all 0.15s ease',
                       }}
-                      onClick={() => handleMoveCategoryToParent(movingCategory.id, parent.id)}
+                      onClick={() => {
+                        handleMoveCategoryToParent(movingCategory.id, null);
+                        setMovingCategory(null);
+                        setSearchMoveQuery('');
+                      }}
+                      onMouseEnter={(e) => {
+                        if (movingCategory.parent_id) e.currentTarget.style.backgroundColor = 'var(--bg-surface-subtle)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (movingCategory.parent_id) e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
+                      }}
                     >
                       <div
                         style={{
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '50%',
-                          backgroundColor: parent.color || 'var(--primary)',
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                          color: '#10B981',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
                         }}
-                      />
+                      >
+                        <Home size={15} />
+                      </div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                          {parent.name}
+                        <div style={{ fontWeight: 800, fontSize: '0.84375rem', color: 'var(--text-primary)' }}>
+                          {language === 'he' ? 'קטגוריה ראשית עצמאית (ללא תחום אב)' : 'Standalone Root Category'}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                          {isAlreadyParent
-                            ? (language === 'he' ? 'תחום ראשי קיים' : 'Existing parent domain')
-                            : (language === 'he' ? 'הפוך לתחום ראשי' : 'Make parent domain')}
+                        <div style={{ fontSize: '0.71875rem', color: 'var(--text-tertiary)' }}>
+                          {language === 'he' ? 'מופיעה ברמה העליונה של עץ הקטגוריות' : 'Top-level independent category'}
                         </div>
                       </div>
-                      {isCurrent && <CheckCircle2 size={16} color="var(--primary)" />}
+                      {!movingCategory.parent_id && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10B981', fontSize: '0.75rem', fontWeight: 700 }}>
+                          <CheckCircle2 size={16} />
+                          <span>{language === 'he' ? 'נוכחי' : 'Current'}</span>
+                        </div>
+                      )}
                     </button>
-                  );
-                })}
-            </div>
+                  </div>
+                )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 20px', borderTop: '1px solid var(--border-subtle)' }}>
-              <button
-                type="button"
-                style={styles.modalCancelBtn}
-                onClick={() => setMovingCategory(null)}
+                {/* 2. Established Parent Domains */}
+                {filteredEstablished.length > 0 && (
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 800,
+                        color: 'var(--text-secondary)',
+                        marginBottom: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <FolderTree size={14} color="var(--primary)" />
+                        <span>{language === 'he' ? 'תחומי אב קיימים (מומלץ)' : 'Established Parent Domains'}</span>
+                      </span>
+                      <span style={styles.subCountBadge}>{filteredEstablished.length} תחומים</span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {filteredEstablished.map((parent) => {
+                        const isCurrent = movingCategory.parent_id === parent.id;
+                        const childCount = categories.filter((c) => c.parent_id === parent.id).length;
+
+                        return (
+                          <button
+                            key={parent.id}
+                            type="button"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '9px 12px',
+                              borderRadius: '7px',
+                              border: isCurrent ? '2px solid var(--primary)' : '1px solid var(--border-main)',
+                              backgroundColor: isCurrent ? 'rgba(79, 70, 229, 0.08)' : 'var(--bg-surface)',
+                              cursor: 'pointer',
+                              textAlign: 'right',
+                              width: '100%',
+                              transition: 'all 0.15s ease',
+                            }}
+                            onClick={() => {
+                              handleMoveCategoryToParent(movingCategory.id, parent.id);
+                              setMovingCategory(null);
+                              setSearchMoveQuery('');
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isCurrent) e.currentTarget.style.backgroundColor = 'var(--bg-surface-subtle)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isCurrent) e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: '10px',
+                                height: '10px',
+                                borderRadius: '50%',
+                                backgroundColor: parent.color || 'var(--primary)',
+                                flexShrink: 0,
+                              }}
+                            />
+                            <div style={{ flex: 1, overflow: 'hidden' }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.84375rem', color: 'var(--text-primary)' }}>
+                                {parent.name}
+                              </div>
+                            </div>
+                            <span
+                              style={{
+                                fontSize: '0.6875rem',
+                                color: 'var(--text-tertiary)',
+                                backgroundColor: 'var(--bg-surface-subtle)',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                border: '1px solid var(--border-subtle)',
+                              }}
+                            >
+                              {childCount} תת-קטגוריות
+                            </span>
+                            {isCurrent && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--primary)', fontSize: '0.75rem', fontWeight: 700 }}>
+                                <CheckCircle2 size={16} />
+                                <span>{language === 'he' ? 'התחום הנוכחי' : 'Current'}</span>
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Other Root Categories (Independent categories with 0 children) */}
+                {filteredOtherRoots.length > 0 && (
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 800,
+                        color: 'var(--text-secondary)',
+                        marginBottom: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Tag size={13} color="var(--text-tertiary)" />
+                        <span>{language === 'he' ? 'קטגוריות ראשיות נוספות (להפוך לתחום אב)' : 'Other Root Categories'}</span>
+                      </span>
+                      <span style={styles.subCountBadge}>{filteredOtherRoots.length}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {filteredOtherRoots.map((parent) => {
+                        const isCurrent = movingCategory.parent_id === parent.id;
+                        return (
+                          <button
+                            key={parent.id}
+                            type="button"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '8px 12px',
+                              borderRadius: '7px',
+                              border: isCurrent ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
+                              backgroundColor: isCurrent ? 'rgba(79, 70, 229, 0.08)' : 'var(--bg-surface)',
+                              cursor: 'pointer',
+                              textAlign: 'right',
+                              width: '100%',
+                              transition: 'all 0.15s ease',
+                            }}
+                            onClick={() => {
+                              handleMoveCategoryToParent(movingCategory.id, parent.id);
+                              setMovingCategory(null);
+                              setSearchMoveQuery('');
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isCurrent) e.currentTarget.style.backgroundColor = 'var(--bg-surface-subtle)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isCurrent) e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                backgroundColor: parent.color || 'var(--primary)',
+                                flexShrink: 0,
+                              }}
+                            />
+                            <div style={{ flex: 1, overflow: 'hidden' }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: 'var(--text-primary)' }}>
+                                {parent.name}
+                              </div>
+                            </div>
+                            <span style={{ fontSize: '0.6875rem', color: '#D97706', backgroundColor: '#FEF3C7', padding: '1px 5px', borderRadius: '4px' }}>
+                              יהפוך לתחום ראשי
+                            </span>
+                            {isCurrent && <CheckCircle2 size={15} color="var(--primary)" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Other Subcategories (collapsible or shown when searching) */}
+                {filteredOtherSubs.length > 0 && (
+                  <div>
+                    {!isSearching ? (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setShowOtherCategoriesAsParents(!showOtherCategoriesAsParents)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            width: '100%',
+                            padding: '8px 10px',
+                            background: 'none',
+                            border: '1px dashed var(--border-main)',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            color: 'var(--text-tertiary)',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          <span>{language === 'he' ? `קטגוריות משנה נוספות (${filteredOtherSubs.length})` : `Sub-categories (${filteredOtherSubs.length})`}</span>
+                          {showOtherCategoriesAsParents ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+
+                        {showOtherCategoriesAsParents && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '6px' }}>
+                            {filteredOtherSubs.map((parent) => (
+                              <button
+                                key={parent.id}
+                                type="button"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  padding: '7px 10px',
+                                  borderRadius: '6px',
+                                  border: '1px solid var(--border-subtle)',
+                                  backgroundColor: 'var(--bg-surface)',
+                                  cursor: 'pointer',
+                                  textAlign: 'right',
+                                  width: '100%',
+                                }}
+                                onClick={() => {
+                                  handleMoveCategoryToParent(movingCategory.id, parent.id);
+                                  setMovingCategory(null);
+                                  setSearchMoveQuery('');
+                                }}
+                              >
+                                <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: parent.color || 'var(--primary)' }} />
+                                <span style={{ flex: 1, fontSize: '0.78125rem', color: 'var(--text-primary)' }}>{parent.name}</span>
+                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>הפוך לתחום ראשי</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                          תוצאות מקטגוריות משנה:
+                        </div>
+                        {filteredOtherSubs.map((parent) => (
+                          <button
+                            key={parent.id}
+                            type="button"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '7px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-subtle)',
+                              backgroundColor: 'var(--bg-surface)',
+                              cursor: 'pointer',
+                              textAlign: 'right',
+                              width: '100%',
+                            }}
+                            onClick={() => {
+                              handleMoveCategoryToParent(movingCategory.id, parent.id);
+                              setMovingCategory(null);
+                              setSearchMoveQuery('');
+                            }}
+                          >
+                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: parent.color || 'var(--primary)' }} />
+                            <span style={{ flex: 1, fontSize: '0.78125rem', color: 'var(--text-primary)' }}>{parent.name}</span>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>הפוך לתחום ראשי</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Empty Search Result */}
+                {isSearching && filteredEstablished.length === 0 && filteredOtherRoots.length === 0 && filteredOtherSubs.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '24px 10px', color: 'var(--text-tertiary)', fontSize: '0.8125rem' }}>
+                    {language === 'he' ? 'לא נמצאו קטגוריות התואמות לחיפוש' : 'No matching categories found'}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  padding: '12px 20px',
+                  borderTop: '1px solid var(--border-subtle)',
+                  backgroundColor: 'var(--bg-surface)',
+                }}
               >
-                {t('cancel', language)}
-              </button>
+                <button
+                  type="button"
+                  style={styles.modalCancelBtn}
+                  onClick={() => {
+                    setMovingCategory(null);
+                    setSearchMoveQuery('');
+                  }}
+                >
+                  {t('cancel', language)}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
