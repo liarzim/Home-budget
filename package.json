@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "backup": "node scripts/backup_system.cjs",
     "preview": "vite preview",
     "cap:init": "cap init \"Household Budget\" com.householdbudget.app --web-dir dist",
     "cap:add:android": "cap add android",

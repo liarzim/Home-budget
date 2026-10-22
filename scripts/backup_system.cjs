@@ -39,7 +39,9 @@ async function runBackup() {
     'transactions',
     'budgets',
     'savings',
-    'investments'
+    'investments',
+    'investment_snapshots',
+    'security_daily_prices'
   ];
 
   const backupData = {
