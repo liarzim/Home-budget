@@ -20,7 +20,13 @@ import {
   Sliders,
   DollarSign,
   HelpCircle,
-  X
+  X,
+  RotateCcw,
+  Trash2,
+  Plus,
+  Search,
+  FolderPlus,
+  Filter
 } from 'lucide-react';
 import { t, formatCategoryName } from '../lib/i18n';
 
@@ -42,7 +48,9 @@ export const BudgetsView: React.FC = () => {
     transactions,
     activeHousehold,
     language,
-    saveYearlyBudgetPlan
+    saveYearlyBudgetPlan,
+    updateCategory,
+    addCategory
   } = useAuth();
 
   const currency = activeHousehold?.currency === 'ILS' ? '₪' : activeHousehold?.currency || '$';
@@ -51,7 +59,21 @@ export const BudgetsView: React.FC = () => {
   const [viewMode, setViewMode] = useState<'planner' | 'tracking'>('planner');
   const [selectedYear, setSelectedYear] = useState<number>(2027);
   const [selectedMonth, setSelectedMonth] = useState<number>(1); // Default to January for 2027 planning
-  const [matrixView, setMatrixView] = useState<boolean>(false);
+  const [matrixView, setMatrixView] = useState<boolean>(true); // Default to comprehensive matrix view
+
+  // Macro filter: default 'fixed_only' for phase 1 planning (Fixed Expenses Only)
+  const [macroFilter, setMacroFilter] = useState<'fixed_only' | 'all'>('fixed_only');
+
+  // Add row modal state
+  const [isAddRowModalOpen, setIsAddRowModalOpen] = useState(false);
+  const [targetMacroForAdd, setTargetMacroForAdd] = useState<MacroCategory | null>(null);
+  const [searchCatQuery, setSearchCatQuery] = useState('');
+  const [newSubcatName, setNewSubcatName] = useState('');
+  const [newSubcatParentId, setNewSubcatParentId] = useState<string>('');
+  const [addModalTab, setAddModalTab] = useState<'existing' | 'new'>('existing');
+
+  // Action feedback message banner
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   // Expanded Macro Categories
   const [expandedMacros, setExpandedMacros] = useState<Record<string, boolean>>({});
@@ -251,6 +273,185 @@ export const BudgetsView: React.FC = () => {
     setSaveSuccess(false);
   };
 
+  // Reset all 12 months for a category row
+  const handleResetRow = (categoryId: string, catName?: string) => {
+    setPlanState((prev) => ({
+      ...prev,
+      [categoryId]: {
+        1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0,
+        7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0,
+      },
+    }));
+    setSaveSuccess(false);
+    setActionFeedback(`שורת "${catName || 'הקטגוריה'}" אופסה ל-0 ₪ לכל 12 חודשי השנה.`);
+    setTimeout(() => setActionFeedback(null), 3500);
+  };
+
+  // Reset a specific month for a category
+  const handleResetMonth = (categoryId: string, month: number, catName?: string) => {
+    setPlanState((prev) => ({
+      ...prev,
+      [categoryId]: {
+        ...(prev[categoryId] || {}),
+        [month]: 0,
+      },
+    }));
+    setSaveSuccess(false);
+    setActionFeedback(`חודש ${MONTH_NAMES_HE[month - 1]} עבור "${catName || 'הקטגוריה'}" אופס ל-0 ₪.`);
+    setTimeout(() => setActionFeedback(null), 3000);
+  };
+
+  // Remove category row from current macro table
+  const handleRemoveCategoryFromMacro = (cat: Category, currentMacro: MacroCategory) => {
+    const isConfirmed = window.confirm(
+      `האם להסיר את השורה "${cat.name}" מתכנון ${currentMacro.name}?\nנתוני התקציב לשורה זו יאופסו והיא תועבר לקבוצת "הוצאות משתנות / כללי".`
+    );
+    if (!isConfirmed) return;
+
+    // 1. Zero out local plan state for this category
+    setPlanState((prev) => ({
+      ...prev,
+      [cat.id]: {
+        1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0,
+        7: 0, 8: 0, 9: 0, 10: 0, 11: 0, 12: 0,
+      },
+    }));
+
+    // 2. Reassign category to variable expenses or unassigned
+    const altMacro =
+      macroCategories.find((m) => m.name.includes('משתנות') && m.id !== currentMacro.id) ||
+      macroCategories.find((m) => m.id !== currentMacro.id);
+
+    updateCategory(
+      cat.id,
+      cat.name,
+      cat.color,
+      cat.icon,
+      altMacro ? altMacro.id : null,
+      cat.parent_id
+    );
+
+    setSaveSuccess(false);
+    setActionFeedback(`השורה "${cat.name}" הוסרה בהצלחה מתכנון ${currentMacro.name}.`);
+    setTimeout(() => setActionFeedback(null), 3500);
+  };
+
+  // Add an existing category to target macro
+  const handleAddCategoryToMacro = (cat: Category, targetMacro: MacroCategory) => {
+    updateCategory(
+      cat.id,
+      cat.name,
+      cat.color,
+      cat.icon,
+      targetMacro.id,
+      cat.parent_id
+    );
+
+    // If category has zero planned amounts, auto-seed with historical average or default
+    const stat = categoryStats[cat.id];
+    setPlanState((prev) => {
+      const existing = prev[cat.id] || {};
+      const updated: Record<number, number> = { ...existing };
+      for (let m = 1; m <= 12; m++) {
+        if (!updated[m] || updated[m] === 0) {
+          updated[m] = stat?.monthlyDefault?.[m] || stat?.prevYearAvg || 0;
+        }
+      }
+      return { ...prev, [cat.id]: updated };
+    });
+
+    setIsAddRowModalOpen(false);
+    setSearchCatQuery('');
+    setSaveSuccess(false);
+    setActionFeedback(`הקטגוריה "${cat.name}" שויכה בהצלחה לתכנון ${targetMacro.name}.`);
+    setTimeout(() => setActionFeedback(null), 3500);
+  };
+
+  // Create brand new subcategory and add to macro
+  const handleCreateAndAddSubcategory = (targetMacro: MacroCategory) => {
+    if (!newSubcatName.trim()) return;
+
+    addCategory(
+      newSubcatName.trim(),
+      targetMacro.type,
+      targetMacro.color || '#3B82F6',
+      'Tag',
+      targetMacro.id,
+      newSubcatParentId || null
+    );
+
+    setIsAddRowModalOpen(false);
+    setNewSubcatName('');
+    setNewSubcatParentId('');
+    setSaveSuccess(false);
+    setActionFeedback(`הקטגוריה החדשה "${newSubcatName.trim()}" נוצרה ונוספה לתכנון ${targetMacro.name}.`);
+    setTimeout(() => setActionFeedback(null), 3500);
+  };
+
+  // Parent categories (Domain folders)
+  const parentCategories = useMemo(() => {
+    return categories.filter((c) => !c.parent_id);
+  }, [categories]);
+
+  // Group categories by parent domain for the Add Row modal
+  const categorizedForAddModal = useMemo(() => {
+    const parentMap = new Map<string, Category>();
+    const parentCategoryIds = new Set(categories.map((c) => c.parent_id).filter(Boolean));
+    const leafCats = categories.filter((c) => !parentCategoryIds.has(c.id));
+
+    categories.filter((c) => !c.parent_id).forEach((p) => parentMap.set(p.id, p));
+
+    const domainGroups: {
+      parent: Category | null;
+      domainName: string;
+      items: Category[];
+    }[] = [];
+
+    const groupedByParentId = new Map<string, Category[]>();
+    const unparentedItems: Category[] = [];
+
+    leafCats.forEach((c) => {
+      // Filter by search query if present
+      if (searchCatQuery.trim()) {
+        const q = searchCatQuery.trim().toLowerCase();
+        const pName = c.parent_id ? parentMap.get(c.parent_id)?.name.toLowerCase() || '' : '';
+        if (!c.name.toLowerCase().includes(q) && !pName.includes(q)) {
+          return;
+        }
+      }
+
+      if (c.parent_id && parentMap.has(c.parent_id)) {
+        const arr = groupedByParentId.get(c.parent_id) || [];
+        arr.push(c);
+        groupedByParentId.set(c.parent_id, arr);
+      } else {
+        unparentedItems.push(c);
+      }
+    });
+
+    // Populate domains
+    parentMap.forEach((parent) => {
+      const items = groupedByParentId.get(parent.id) || [];
+      if (items.length > 0) {
+        domainGroups.push({
+          parent,
+          domainName: parent.name,
+          items,
+        });
+      }
+    });
+
+    if (unparentedItems.length > 0) {
+      domainGroups.push({
+        parent: null,
+        domainName: 'קטגוריות כלליות נוספות',
+        items: unparentedItems,
+      });
+    }
+
+    return domainGroups;
+  }, [categories, searchCatQuery]);
+
   // Floating Tooltip State for hover on amounts
   const [hoveredTooltip, setHoveredTooltip] = useState<{
     title: string;
@@ -448,6 +649,15 @@ export const BudgetsView: React.FC = () => {
 
     return groups;
   }, [macroCategories, categories, activeHousehold]);
+
+  // Filtered displayed groups (Phase 1: Fixed Expenses Only, or All)
+  const displayedGroupedCategories = useMemo(() => {
+    if (macroFilter === 'fixed_only') {
+      const fixedGroups = groupedCategories.filter((g) => g.macro.name.includes('קבועות'));
+      return fixedGroups.length > 0 ? fixedGroups : groupedCategories;
+    }
+    return groupedCategories;
+  }, [groupedCategories, macroFilter]);
 
   // Financial KPIs Calculations (for Selected Month or Annual Sum)
   const kpis = useMemo(() => {
@@ -778,7 +988,65 @@ export const BudgetsView: React.FC = () => {
       {/* 4. PLANNER VIEW: Hierarchical Macro Accordions */}
       {viewMode === 'planner' && (
         <div style={styles.plannerContainer}>
-          {groupedCategories.map(({ macro, categories: cats }) => {
+          {/* Phase 1 Focus Filter Bar */}
+          <div style={styles.phaseFilterBar}>
+            <div style={styles.phaseFilterLeft}>
+              <div style={styles.phaseBadge}>
+                <span style={styles.phaseBadgeNum}>שלב 1</span>
+                <span>מיקוד תכנוני</span>
+              </div>
+              <div style={styles.phaseToggleGroup}>
+                <button
+                  onClick={() => setMacroFilter('fixed_only')}
+                  style={{
+                    ...styles.phaseToggleBtn,
+                    ...(macroFilter === 'fixed_only' ? styles.phaseToggleBtnActive : {}),
+                  }}
+                >
+                  <Lock size={15} />
+                  <span>הוצאות קבועות בלבד (מומלץ לשלב ראשון)</span>
+                </button>
+                <button
+                  onClick={() => setMacroFilter('all')}
+                  style={{
+                    ...styles.phaseToggleBtn,
+                    ...(macroFilter === 'all' ? styles.phaseToggleBtnActive : {}),
+                  }}
+                >
+                  <Filter size={15} />
+                  <span>כלל התקציבים והקטגוריות</span>
+                </button>
+              </div>
+            </div>
+            {macroFilter === 'fixed_only' && (
+              <div style={styles.phaseHint}>
+                💡 התמקדות בהוצאות הידועות מראש (שכירות/משכנתא, ארנונה, חשמל, מים, אינטרנט, מנויים קבועים וכו').
+              </div>
+            )}
+          </div>
+
+          {/* Action Feedback Banner */}
+          {actionFeedback && (
+            <div
+              style={{
+                padding: '10px 16px',
+                backgroundColor: '#ECFDF5',
+                color: '#065F46',
+                border: '1px solid #A7F3D0',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '0.875rem',
+                fontWeight: '600',
+              }}
+            >
+              <CheckCircle2 size={18} color="#10B981" />
+              <span>{actionFeedback}</span>
+            </div>
+          )}
+
+          {displayedGroupedCategories.map(({ macro, categories: cats }) => {
             const isExpanded = expandedMacros[macro.id] !== false;
 
             // Calculate macro subtotal for selected month or year
@@ -840,10 +1108,10 @@ export const BudgetsView: React.FC = () => {
                     <table style={{ ...styles.categoriesTable, tableLayout: matrixView ? 'fixed' : 'auto' }}>
                       <thead>
                         <tr>
-                          <th style={{ ...styles.thCell, textAlign: 'right', width: matrixView ? '16%' : '30%', padding: matrixView ? '8px 4px' : '10px 16px' }}>
+                          <th style={{ ...styles.thCell, textAlign: 'right', width: matrixView ? '15%' : '28%', padding: matrixView ? '8px 4px' : '10px 16px' }}>
                             קטגוריה
                           </th>
-                          <th style={{ ...styles.thCell, textAlign: 'center', width: matrixView ? '10%' : '20%', padding: matrixView ? '8px 2px' : '10px 16px' }}>
+                          <th style={{ ...styles.thCell, textAlign: 'center', width: matrixView ? '8%' : '18%', padding: matrixView ? '8px 2px' : '10px 16px' }}>
                             {matrixView ? 'ממוצע' : 'ממוצע הוצאה (אמת)'}
                           </th>
                           {matrixView ? (
@@ -853,16 +1121,19 @@ export const BudgetsView: React.FC = () => {
                                   {m}
                                 </th>
                               ))}
-                              <th style={{ ...styles.thCell, textAlign: 'center', backgroundColor: 'var(--primary-light)', color: 'var(--primary)', fontWeight: '800', padding: '8px 2px', fontSize: '0.71875rem', width: '9.2%' }}>
+                              <th style={{ ...styles.thCell, textAlign: 'center', backgroundColor: 'var(--primary-light)', color: 'var(--primary)', fontWeight: '800', padding: '8px 2px', fontSize: '0.71875rem', width: '7%' }}>
                                 סה"כ
+                              </th>
+                              <th style={{ ...styles.thCell, textAlign: 'center', width: '5.2%', padding: '8px 2px', fontSize: '0.71875rem' }}>
+                                פעולות
                               </th>
                             </>
                           ) : (
                             <>
-                              <th style={{ ...styles.thCell, textAlign: 'center', width: '25%' }}>
+                              <th style={{ ...styles.thCell, textAlign: 'center', width: '22%' }}>
                                 תקציב מתוכנן ({MONTH_NAMES_HE[selectedMonth - 1]})
                               </th>
-                              <th style={{ ...styles.thCell, textAlign: 'center', width: '25%' }}>פעולות מהירות</th>
+                              <th style={{ ...styles.thCell, textAlign: 'center', width: '32%' }}>פעולות מהירות</th>
                             </>
                           )}
                         </tr>
@@ -953,7 +1224,7 @@ export const BudgetsView: React.FC = () => {
                                 </div>
                               </td>
 
-                              {/* Matrix View (12 columns + Total) vs Single Month View */}
+                              {/* Matrix View (12 columns + Total + Actions) vs Single Month View */}
                               {matrixView ? (
                                 <>
                                   {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
@@ -998,6 +1269,63 @@ export const BudgetsView: React.FC = () => {
                                   >
                                     {currency}{catAnnualTotal.toLocaleString()}
                                   </td>
+                                  {/* Row Actions: Reset Row & Remove from Macro */}
+                                  <td style={{ ...styles.tdCell, textAlign: 'center', padding: '2px 1px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                                      <button
+                                        onClick={() => handleResetRow(cat.id, cat.name)}
+                                        style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          padding: '3px 4px',
+                                          borderRadius: '4px',
+                                          color: 'var(--text-tertiary)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                        title={`איפוס שורה: איפוס כל 12 החודשים בשורה זו ל-0 ₪`}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.color = '#F59E0B';
+                                          e.currentTarget.style.backgroundColor = 'rgba(245, 158, 11, 0.12)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.color = 'var(--text-tertiary)';
+                                          e.currentTarget.style.backgroundColor = 'transparent';
+                                        }}
+                                      >
+                                        <RotateCcw size={13} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleRemoveCategoryFromMacro(cat, macro)}
+                                        style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          padding: '3px 4px',
+                                          borderRadius: '4px',
+                                          color: 'var(--text-tertiary)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                        title={`הסר שורה זו מתכנון ${macro.name}`}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.color = 'var(--danger)';
+                                          e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.12)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.color = 'var(--text-tertiary)';
+                                          e.currentTarget.style.backgroundColor = 'transparent';
+                                        }}
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  </td>
                                 </>
                               ) : (
                                 <>
@@ -1022,7 +1350,7 @@ export const BudgetsView: React.FC = () => {
                                     </div>
                                   </td>
 
-                                  {/* Quick Actions: Copy to all months */}
+                                  {/* Quick Actions: Copy to all months, Reset Row, Remove Row */}
                                   <td style={{ ...styles.tdCell, textAlign: 'center' }}>
                                     <div style={styles.quickActionsGroup}>
                                       <button
@@ -1032,6 +1360,22 @@ export const BudgetsView: React.FC = () => {
                                       >
                                         <Copy size={13} />
                                         <span>החל על כל השנה</span>
+                                      </button>
+                                      <button
+                                        onClick={() => handleResetRow(cat.id, cat.name)}
+                                        style={{ ...styles.quickActionBtn, color: '#D97706' }}
+                                        title="אפס את כל 12 החודשים בשורה זו ל-0"
+                                      >
+                                        <RotateCcw size={13} />
+                                        <span>אפס שורה</span>
+                                      </button>
+                                      <button
+                                        onClick={() => handleRemoveCategoryFromMacro(cat, macro)}
+                                        style={{ ...styles.quickActionBtn, color: 'var(--danger)' }}
+                                        title={`הסר שורה זו מתכנון ${macro.name}`}
+                                      >
+                                        <Trash2 size={13} />
+                                        <span>הסר שורה</span>
                                       </button>
                                       {stats.monthlyDefault?.[selectedMonth] > 0 && (
                                         <button
@@ -1084,10 +1428,56 @@ export const BudgetsView: React.FC = () => {
                             >
                               {currency}{macroSubtotal.toLocaleString()}
                             </td>
+                            <td style={{ ...styles.tdCell, textAlign: 'center', padding: '6px 1px' }}></td>
                           </tr>
                         </tfoot>
                       )}
                     </table>
+
+                    {/* Add Category Row to this Macro */}
+                    <div
+                      style={{
+                        padding: '10px 16px',
+                        backgroundColor: 'var(--bg-surface)',
+                        borderTop: '1px dashed var(--border-main)',
+                        display: 'flex',
+                        justifyContent: 'flex-start',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <button
+                        onClick={() => {
+                          setTargetMacroForAdd(macro);
+                          setIsAddRowModalOpen(true);
+                          setSearchCatQuery('');
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '7px 14px',
+                          borderRadius: '6px',
+                          backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                          color: 'var(--primary)',
+                          border: '1px solid rgba(59, 130, 246, 0.25)',
+                          fontSize: '0.8125rem',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.16)';
+                          e.currentTarget.style.borderColor = 'var(--primary)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.08)';
+                          e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.25)';
+                        }}
+                      >
+                        <Plus size={15} />
+                        <span>הוסף שורה לתכנון {macro.name} (על בסיס מבנה הקטגוריות)</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1107,7 +1497,7 @@ export const BudgetsView: React.FC = () => {
           </div>
 
           <div style={styles.trackingGrid}>
-            {groupedCategories.map(({ macro, categories: cats }) => (
+            {displayedGroupedCategories.map(({ macro, categories: cats }) => (
               <div key={macro.id} style={styles.trackingMacroSection}>
                 <div style={styles.trackingMacroTitle}>
                   <div style={{ ...styles.macroIconCircle, backgroundColor: `${macro.color}15`, color: macro.color }}>
@@ -1294,6 +1684,268 @@ export const BudgetsView: React.FC = () => {
                 <span>החל הצעת תקציב על כל החודשים</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Row based on Category Structure Modal */}
+      {isAddRowModalOpen && targetMacroForAdd && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.modalContent, maxWidth: '640px', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {/* Header */}
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleRow}>
+                <FolderPlus size={20} color="var(--primary)" />
+                <h3 style={styles.modalTitle}>
+                  הוספת שורה לתכנון: {targetMacroForAdd.name}
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setIsAddRowModalOpen(false);
+                  setSearchCatQuery('');
+                }}
+                style={styles.closeBtn}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ ...styles.modalDesc, marginBottom: 0 }}>
+              בחר קטגוריה קיימת מתוך המבנה הטבלאי ההיררכי של הקטגוריות או צור קטגוריית משנה חדשה ישירות לקבוצה זו.
+            </p>
+
+            {/* Modal Tabs: Existing vs New */}
+            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-main)', paddingBottom: '8px' }}>
+              <button
+                onClick={() => setAddModalTab('existing')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  fontSize: '0.8125rem',
+                  fontWeight: '700',
+                  border: 'none',
+                  cursor: 'pointer',
+                  backgroundColor: addModalTab === 'existing' ? 'var(--primary)' : 'var(--bg-app)',
+                  color: addModalTab === 'existing' ? '#ffffff' : 'var(--text-secondary)',
+                }}
+              >
+                בחירה מתוך עץ הקטגוריות הקיים
+              </button>
+              <button
+                onClick={() => setAddModalTab('new')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  fontSize: '0.8125rem',
+                  fontWeight: '700',
+                  border: 'none',
+                  cursor: 'pointer',
+                  backgroundColor: addModalTab === 'new' ? 'var(--primary)' : 'var(--bg-app)',
+                  color: addModalTab === 'new' ? '#ffffff' : 'var(--text-secondary)',
+                }}
+              >
+                + יצירת קטגוריית משנה חדשה
+              </button>
+            </div>
+
+            {/* Tab 1: Existing Categories Tree */}
+            {addModalTab === 'existing' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minHeight: 0 }}>
+                {/* Search Bar */}
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Search size={16} style={{ position: 'absolute', right: '10px', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    value={searchCatQuery}
+                    onChange={(e) => setSearchCatQuery(e.target.value)}
+                    placeholder="חיפוש קטגוריה לפי שם או תחום אב..."
+                    style={{
+                      width: '100%',
+                      padding: '8px 34px 8px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-main)',
+                      backgroundColor: 'var(--bg-app)',
+                      fontSize: '0.8125rem',
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                    }}
+                  />
+                  {searchCatQuery && (
+                    <button
+                      onClick={() => setSearchCatQuery('')}
+                      style={{ position: 'absolute', left: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Categories List (Grouped by Parent Category) */}
+                <div style={{ overflowY: 'auto', flex: 1, maxHeight: '340px', paddingRight: '4px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {categorizedForAddModal.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                      לא נמצאו קטגוריות התואמות לחיפוש
+                    </div>
+                  ) : (
+                    categorizedForAddModal.map((group, gIdx) => (
+                      <div key={gIdx} style={{ backgroundColor: 'var(--bg-app)', borderRadius: '8px', padding: '10px 12px', border: '1px solid var(--border-main)' }}>
+                        <div style={{ fontSize: '0.8125rem', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: group.parent?.color || 'var(--primary)' }} />
+                          <span>{group.domainName}</span>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                            ({group.items.length})
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px' }}>
+                          {group.items.map((cat) => {
+                            const isAlreadyInTarget = cat.macro_category_id === targetMacroForAdd.id;
+                            const currentMacro = macroCategories.find((m) => m.id === cat.macro_category_id);
+
+                            return (
+                              <div
+                                key={cat.id}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '6px 10px',
+                                  backgroundColor: 'var(--bg-surface)',
+                                  borderRadius: '6px',
+                                  border: '1px solid var(--border-subtle)',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: cat.color || 'var(--primary)' }} />
+                                  <span style={{ fontSize: '0.8125rem', fontWeight: '600', color: 'var(--text-primary)' }}>
+                                    {cat.name}
+                                  </span>
+                                  {currentMacro && (
+                                    <span
+                                      style={{
+                                        fontSize: '0.6875rem',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        backgroundColor: isAlreadyInTarget ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg-tertiary)',
+                                        color: isAlreadyInTarget ? '#10B981' : 'var(--text-muted)',
+                                        fontWeight: isAlreadyInTarget ? '700' : 'normal',
+                                      }}
+                                    >
+                                      {isAlreadyInTarget ? '✓ משויך כעת לקבוצה זו' : `שיוך נוכחי: ${currentMacro.name}`}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div>
+                                  {isAlreadyInTarget ? (
+                                    <span style={{ fontSize: '0.75rem', color: '#10B981', fontWeight: '700' }}>
+                                      קיים בטבלה
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleAddCategoryToMacro(cat, targetMacroForAdd)}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        padding: '4px 10px',
+                                        borderRadius: '5px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: '700',
+                                        backgroundColor: 'var(--primary)',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      <Plus size={13} />
+                                      <span>הוסף לתכנון</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: Create New Subcategory */}
+            {addModalTab === 'new' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={styles.modalField}>
+                  <label style={styles.modalLabel}>תחום אב (קטגוריית אב):</label>
+                  <select
+                    value={newSubcatParentId}
+                    onChange={(e) => setNewSubcatParentId(e.target.value)}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-main)',
+                      backgroundColor: 'var(--bg-app)',
+                      fontSize: '0.8125rem',
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                    }}
+                  >
+                    <option value="">ללא תחום אב (עצמאי)</option>
+                    {parentCategories.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={styles.modalField}>
+                  <label style={styles.modalLabel}>שם קטגוריית המשנה החדשה:</label>
+                  <input
+                    type="text"
+                    value={newSubcatName}
+                    onChange={(e) => setNewSubcatName(e.target.value)}
+                    placeholder="לדוגמה: שכר דירה, ועד בית, מנוי שירות ענן..."
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-main)',
+                      backgroundColor: 'var(--bg-app)',
+                      fontSize: '0.8125rem',
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+
+                <div style={styles.modalActions}>
+                  <button
+                    onClick={() => {
+                      setIsAddRowModalOpen(false);
+                      setNewSubcatName('');
+                    }}
+                    style={styles.cancelBtn}
+                  >
+                    ביטול
+                  </button>
+                  <button
+                    onClick={() => handleCreateAndAddSubcategory(targetMacroForAdd)}
+                    disabled={!newSubcatName.trim()}
+                    style={{
+                      ...styles.applyBtn,
+                      opacity: newSubcatName.trim() ? 1 : 0.5,
+                      cursor: newSubcatName.trim() ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    <Plus size={16} />
+                    <span>צור והוסף לתכנון {targetMacroForAdd.name}</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1672,6 +2324,79 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'var(--primary)',
     color: '#ffffff',
     borderColor: 'var(--primary)',
+  },
+  phaseFilterBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '16px',
+    backgroundColor: 'var(--bg-surface)',
+    padding: '12px 18px',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--border-main)',
+    flexWrap: 'wrap',
+  },
+  phaseFilterLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    flexWrap: 'wrap',
+  },
+  phaseBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '0.75rem',
+    fontWeight: '800',
+    color: '#D97706',
+    backgroundColor: '#FEF3C7',
+    padding: '4px 10px',
+    borderRadius: '20px',
+  },
+  phaseBadgeNum: {
+    backgroundColor: '#D97706',
+    color: '#FFFFFF',
+    borderRadius: '50%',
+    width: '18px',
+    height: '18px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '0.6875rem',
+  },
+  phaseToggleGroup: {
+    display: 'flex',
+    backgroundColor: 'var(--bg-app)',
+    padding: '3px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border-main)',
+  },
+  phaseToggleBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 14px',
+    borderRadius: 'var(--radius-sm)',
+    fontSize: '0.8125rem',
+    fontWeight: '600',
+    color: 'var(--text-secondary)',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  phaseToggleBtnActive: {
+    backgroundColor: 'var(--primary)',
+    color: '#ffffff',
+    fontWeight: '700',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  phaseHint: {
+    fontSize: '0.8125rem',
+    color: 'var(--text-secondary)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
   },
   plannerContainer: {
     display: 'flex',
