@@ -856,11 +856,10 @@ export const InvestmentsView: React.FC = () => {
     setFormDate(tranche.date ? formatDate(tranche.date) : formatDate(new Date()));
     setFormShares(tranche.shares.toString());
 
-    // Check if tranche was recorded prior to division (e.g. price_per_share >= 100 for ILS)
-    const likelyAgorot = asset.currency === 'ILS' && tranche.price_per_share >= 100;
-    setIsPriceInAgorot(likelyAgorot);
+    // Existing tranches in the database are already stored in Shekels (never auto-toggle Agorot)
+    setIsPriceInAgorot(false);
     setFormPricePerShare(tranche.price_per_share.toString());
-    const effectiveUnitPrice = likelyAgorot ? tranche.price_per_share / 100 : tranche.price_per_share;
+    const effectiveUnitPrice = tranche.price_per_share;
     const cost = tranche.shares * effectiveUnitPrice;
     setFormTotalCost(cost.toFixed(2));
     setFormFee((tranche.fee || 0).toString());
@@ -878,7 +877,7 @@ export const InvestmentsView: React.FC = () => {
         return;
       }
       let curPrice = parseFloat(formCurrentPrice);
-      if (formCurrency === 'ILS' && !isNaN(curPrice) && (isPriceInAgorot || curPrice >= 100)) {
+      if (formCurrency === 'ILS' && !isNaN(curPrice) && isPriceInAgorot) {
         curPrice = Number((curPrice / 100).toFixed(4));
       }
       const resolvedSecNum = formSecurityNumber.trim() || (/^\d+$/.test(formTicker.trim()) ? formTicker.trim() : undefined);
@@ -900,7 +899,7 @@ export const InvestmentsView: React.FC = () => {
     const effectivePrice = (formCurrency === 'ILS' && isPriceInAgorot) ? priceNum / 100 : priceNum;
     const curPriceInput = parseFloat(formCurrentPrice);
     let currentPriceNum = !isNaN(curPriceInput) && curPriceInput > 0 ? curPriceInput : effectivePrice;
-    if (formCurrency === 'ILS' && isPriceInAgorot && currentPriceNum >= 100) {
+    if (formCurrency === 'ILS' && isPriceInAgorot) {
       currentPriceNum = Number((currentPriceNum / 100).toFixed(4));
     }
     const totalCostNum = parseFloat(formTotalCost) || (sharesNum * effectivePrice);
@@ -1009,7 +1008,7 @@ export const InvestmentsView: React.FC = () => {
     setIsModalOpen(false);
   };
 
-  // Detect any ILS tranches that were saved in Agorot (e.g. price_per_share >= 100 or 40x current market price)
+  // Detect any ILS tranches that were saved in Agorot (e.g. 40x current market price or astronomical >= 10,000)
   const suspectedAgorotTranches = useMemo(() => {
     const list: {
       assetId: string;
@@ -1026,8 +1025,14 @@ export const InvestmentsView: React.FC = () => {
         asset.tranches.forEach((tr, idx) => {
           // If user previously chose NOT to fix this tranche, skip it permanently
           if (tr.ignore_agorot_fix) return;
+          // Never flag tranches that were already converted to Shekels
+          if (tr.notes?.includes('חולק ב-100') || tr.notes?.includes('תוקן מאגורות')) return;
 
-          if (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40)) {
+          const isSuspected =
+            (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40) ||
+            tr.price_per_share >= 10000;
+
+          if (isSuspected) {
             list.push({
               assetId: asset.id,
               assetTicker: asset.ticker,
@@ -1045,7 +1050,7 @@ export const InvestmentsView: React.FC = () => {
     return list;
   }, [investments]);
 
-  // Detect any ILS assets whose current_price appears to be in Agorot (e.g. >= 100 or >= 40x avg buy price)
+  // Detect any ILS assets whose current_price appears to be in Agorot (e.g. >= 40x avg buy price or >= 10,000)
   const suspectedAgorotCurrentPrices = useMemo(() => {
     return investments.filter((asset) => {
       if (asset.currency !== 'ILS') return false;
@@ -1055,8 +1060,8 @@ export const InvestmentsView: React.FC = () => {
       const totalShares = validTranches.reduce((sum, t) => sum + t.shares, 0);
       const avgBuy = totalShares > 0 ? totalCost / totalShares : 0;
 
-      if (asset.current_price >= 100) return true;
       if (avgBuy > 0 && asset.current_price / avgBuy >= 40) return true;
+      if (avgBuy === 0 && asset.current_price >= 10000) return true;
       return false;
     });
   }, [investments]);
@@ -1136,7 +1141,13 @@ export const InvestmentsView: React.FC = () => {
       const avgBuy = totalShares > 0 ? totalCost / totalShares : 0;
 
       const newTranches = asset.tranches.map((tr) => {
-        if (!tr.ignore_agorot_fix && (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40))) {
+        const isAlreadyConverted = tr.notes?.includes('חולק ב-100') || tr.notes?.includes('תוקן מאגורות');
+        const isSuspected =
+          !tr.ignore_agorot_fix &&
+          !isAlreadyConverted &&
+          ((asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40) || tr.price_per_share >= 10000);
+
+        if (isSuspected) {
           const newPrice = Number((tr.price_per_share / 100).toFixed(4));
           return {
             ...tr,
@@ -1149,9 +1160,9 @@ export const InvestmentsView: React.FC = () => {
         return tr;
       });
 
-      // Also fix current_price if it was saved in Agorot (>= 100 or >= 40x avgBuy)
+      // Also fix current_price if it was saved in Agorot (>= 40x avgBuy or >= 10,000)
       let newCurrentPrice = asset.current_price;
-      if (newCurrentPrice >= 100 || (avgBuy > 0 && newCurrentPrice / avgBuy >= 40)) {
+      if ((avgBuy > 0 && newCurrentPrice / avgBuy >= 40) || (avgBuy === 0 && newCurrentPrice >= 10000)) {
         newCurrentPrice = Number((newCurrentPrice / 100).toFixed(4));
       }
 
@@ -3378,8 +3389,8 @@ export const InvestmentsView: React.FC = () => {
                                     <Edit2 size={12} color="var(--primary)" />
                                   </button>
                                   {asset.currency === 'ILS' &&
-                                    (asset.current_price >= 100 ||
-                                      (metrics.avgPrice > 0 && asset.current_price / metrics.avgPrice >= 40)) && (
+                                    ((metrics.avgPrice > 0 && asset.current_price / metrics.avgPrice >= 40) ||
+                                      (metrics.avgPrice === 0 && asset.current_price >= 10000)) && (
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -3728,7 +3739,7 @@ export const InvestmentsView: React.FC = () => {
                                                     ({Number((tr.price_per_share * 100).toFixed(0)).toLocaleString('en-US')} אג')
                                                   </span>
                                                 )}
-                                                {asset.currency === 'ILS' && !tr.ignore_agorot_fix && (tr.price_per_share >= 100 || (asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40)) && (
+                                                {asset.currency === 'ILS' && !tr.ignore_agorot_fix && !tr.notes?.includes('חולק ב-100') && !tr.notes?.includes('תוקן מאגורות') && ((asset.current_price > 0 && tr.price_per_share / asset.current_price >= 40) || tr.price_per_share >= 10000) && (
                                                   <button
                                                     type="button"
                                                     onClick={() => {
@@ -5082,7 +5093,7 @@ export const InvestmentsView: React.FC = () => {
                           const effectiveCost = trShares * effectiveUnitPrice;
                           const sym = formCurrency === 'USD' ? '$' : '₪';
                           let trCurPrice = parseFloat(formCurrentPrice);
-                          if (formCurrency === 'ILS' && isPriceInAgorot && trCurPrice >= 100) {
+                          if (formCurrency === 'ILS' && isPriceInAgorot) {
                             trCurPrice = trCurPrice / 100;
                           }
                           const hasCurPrice = !isNaN(trCurPrice) && trCurPrice > 0;
