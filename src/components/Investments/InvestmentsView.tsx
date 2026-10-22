@@ -667,7 +667,12 @@ export const InvestmentsView: React.FC = () => {
   }, [currentSecurities, usdRate]);
 
   // Format currency value based on mode
-  const formatVal = (amount: number, assetCurrency: 'USD' | 'ILS', forceCurrency?: 'ILS' | 'USD') => {
+  const formatVal = (
+    amount: number,
+    assetCurrency: 'USD' | 'ILS',
+    forceCurrency?: 'ILS' | 'USD',
+    maxDecimals: number = 2
+  ) => {
     const targetCurr = forceCurrency || (currencyMode === 'original' ? assetCurrency : currencyMode);
     let convertedAmount = amount;
 
@@ -679,9 +684,11 @@ export const InvestmentsView: React.FC = () => {
 
     const symbol = targetCurr === 'USD' ? '$' : '₪';
     const isNegative = convertedAmount < 0;
-    const absStr = Math.abs(convertedAmount).toLocaleString('en-US', {
+    const absVal = Math.abs(convertedAmount);
+    const hasMoreDecimals = maxDecimals > 2 && Math.abs(absVal - Number(absVal.toFixed(2))) > 0.0001;
+    const absStr = absVal.toLocaleString('en-US', {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      maximumFractionDigits: hasMoreDecimals ? maxDecimals : 2,
     });
     return isNegative ? `-${symbol}${absStr}` : `${symbol}${absStr}`;
   };
@@ -3335,7 +3342,7 @@ export const InvestmentsView: React.FC = () => {
                             {/* Weighted Avg Cost */}
                             <td style={styles.tdCell}>
                               <span style={styles.cellText}>
-                                {formatVal(metrics.avgPrice, asset.currency)}
+                                {formatVal(metrics.avgPrice, asset.currency, undefined, 4)}
                               </span>
                             </td>
 
@@ -3367,7 +3374,7 @@ export const InvestmentsView: React.FC = () => {
                               ) : (
                                 <div style={styles.priceDisplayRow}>
                                   <span style={styles.boldCellText}>
-                                    {formatVal(asset.current_price, asset.currency)}
+                                    {formatVal(asset.current_price, asset.currency, undefined, 4)}
                                   </span>
                                   <button
                                     style={styles.inlineEditTriggerBtn}
@@ -3724,7 +3731,7 @@ export const InvestmentsView: React.FC = () => {
                                             </td>
                                             <td style={styles.trancheTd}>
                                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
-                                                <span style={{ fontWeight: '600' }}>{formatVal(tr.price_per_share, asset.currency)}</span>
+                                                <span style={{ fontWeight: '600' }}>{formatVal(tr.price_per_share, asset.currency, undefined, 4)}</span>
                                                 {asset.currency === 'ILS' && (
                                                   <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
                                                     ({Number((tr.price_per_share * 100).toFixed(0)).toLocaleString('en-US')} אג')
