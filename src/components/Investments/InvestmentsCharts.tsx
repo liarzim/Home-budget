@@ -184,7 +184,14 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
   // Filter snapshots according to selected securities if filter is active
   const relevantSnapshots = useMemo(() => {
     const isFiltered = selectedAssetType !== 'all' || selectedSecurityIds.length > 0;
-    if (!isFiltered) return snapshots;
+    if (!isFiltered) {
+      return snapshots.filter(
+        (s) =>
+          (Number(s.total_invested) > 0 || Number(s.total_value) > 0) &&
+          s.items &&
+          s.items.length > 0
+      );
+    }
 
     const allowedTickers = new Set(filteredInvestments.map((a) => a.ticker.toUpperCase()));
     return snapshots
@@ -384,10 +391,14 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
         }
 
         const snap = snapshotByDate.get(d);
-        if (snap) {
-          const val = simulationMode === 'loss' ? snap.total_invested * 0.85 : snap.total_value;
-          const prof = val - snap.total_invested;
-          const retPct = snap.total_invested > 0 ? (prof / snap.total_invested) * 100 : 0;
+        if (snap && (Number(snap.total_invested) > 0 || Number(snap.total_value) > 0)) {
+          // If a snapshot exists, use the higher of running accumulated cost or snapshot cost
+          // (this prevents incomplete snapshots recorded before assets were imported from plunging the curve)
+          const effectiveCost = Math.max(runningCost, snap.total_invested);
+          const rawVal = Math.max(runningValue, snap.total_value);
+          const val = simulationMode === 'loss' ? effectiveCost * 0.85 : rawVal;
+          const prof = val - effectiveCost;
+          const retPct = effectiveCost > 0 ? (prof / effectiveCost) * 100 : 0;
 
           points.push({
             id: snap.id || `snap-${d}`,
@@ -395,13 +406,13 @@ export const InvestmentsCharts: React.FC<InvestmentsChartsProps> = ({
               ? snap.period_label.replace('סגירת חודש ', '').replace('סיום רבעון ', '').replace('סגירה יומית ', '')
               : formatDate(d),
             date: d,
-            cost: snap.total_invested,
+            cost: effectiveCost,
             value: val,
             profit: prof,
             returnPct: simulationMode === 'loss' ? -15.0 : retPct,
             tranchesInPoint: trs,
           });
-        } else {
+        } else if (trs && (runningCost > 0 || runningValue > 0)) {
           const prof = runningValue - runningCost;
           const retPct = runningCost > 0 ? (prof / runningCost) * 100 : 0;
           const val = simulationMode === 'loss' ? runningCost * 0.85 : runningValue;

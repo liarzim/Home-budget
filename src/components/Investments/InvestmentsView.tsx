@@ -290,7 +290,7 @@ export const InvestmentsView: React.FC = () => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          // Purge any mock/sample snapshots automatically and heal dates
+          // Purge any mock/sample/empty snapshots automatically and heal dates
           let hasModified = false;
           const userOnlySnapshots = parsed
             .filter(
@@ -298,7 +298,8 @@ export const InvestmentsView: React.FC = () => {
                 s.id &&
                 !s.id.startsWith('snap-2026-') &&
                 !s.id.startsWith('snap-2025-') &&
-                !s.id.includes('sample')
+                !s.id.includes('sample') &&
+                ((Number(s.total_invested) > 0 || Number(s.total_value) > 0) && (s.items && s.items.length > 0))
             )
             .map((s: any) => {
               const cleanDate = healSnapshotDate(s);
@@ -466,7 +467,9 @@ export const InvestmentsView: React.FC = () => {
           const map = new Map<string, InvestmentPeriodicSnapshot>();
           prev.forEach((s) => map.set(s.id, { ...s, date: healSnapshotDate(s) }));
           dbSnaps.forEach((s) => map.set(s.id, s));
-          const merged = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+          const merged = Array.from(map.values())
+            .filter((s) => (Number(s.total_invested) > 0 || Number(s.total_value) > 0) && (s.items && s.items.length > 0))
+            .sort((a, b) => a.date.localeCompare(b.date));
           localStorage.setItem('household_investment_snapshots', JSON.stringify(merged));
           return merged;
         });
